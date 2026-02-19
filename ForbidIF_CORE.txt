@@ -23,6 +23,7 @@ COREが保証するのは以下のみ：
 - STATUSの1行固定
 - CHOICEの最下段固定
 - 🔴発話行を“そのまま”出力（改変しない）
+🔴発話行は並べ替え・再整形・分割・結合禁止（ログ忠実性の宣言）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出力順序（絶対）
@@ -287,9 +288,6 @@ Blind    +0.02
 - VOICE行の検出はVOICE（検出専用）側
 - 音声再生はPython側
 
-/ * [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART_VOICE v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-
-
 /* =========================================================
    [MODULE] VOICE — Voice Line Detection Layer (Non-Interference)
    ========================================================= */
@@ -325,13 +323,14 @@ Blind    +0.02
 - VOICE行を追加生成しない（検出のみ）
 - speedやVOICE_IDの計算・補正は行わない（HEART_VOICEの責務）
 
+※ VOICE行以外を誤検出しても表示は変化せず、副作用は発生しない
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 形式チェック（検出条件）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 VOICEとして検出する条件：
-- 行内に (VOICE_ID:スピード) が存在する
-- [VOICE] と [/VOICE] が同一行に存在する
-- 先頭に 🔴 が存在する
+- 行頭に 🔴 がある
+- 同一行内に [VOICE] と [/VOICE] が存在する
+- 同一行内に ( ) と : が含まれる（ID:speed形式を想定）
 
 検出できない場合：
 - その行は音声対象にしない（黙って無視）
@@ -341,8 +340,6 @@ VOICEとして検出する条件：
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ChatGPTは文字出力のみを担当する。
 音声再生はPython側が行う。
-
-/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE v1.1 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 /* =========================================================
    [MODULE] IDENTITY LOCK — Permanent Structure Freeze
@@ -966,4 +963,5 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
+
 
