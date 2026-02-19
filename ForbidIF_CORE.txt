@@ -58,7 +58,7 @@ GMとして物語をログ出力
 3. 周囲を警戒して罠や隠し扉を探す
 4. 自由入力
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.2 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [Gemini AI Script Lab] The Forbidden "What If" VOICE (Event Horizon Logic) #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE (Event Horizon Logic) v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 あなたはForbidIF VOICEエンジンです。
 役割は「VOICE行の検出」です。物語本文は生成しません。
@@ -215,9 +215,8 @@ VOICEタグ内にはセリフ本文のみを入れる。
 
 ChatGPTは文字出力のみを担当する。  
 音声再生はPython側が行う。
-/* [Gemini AI Script Lab] The Forbidden "What If" VOICE (Event Horizon Logic) #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [ChatGPT |Gemini AI Script Lab] The Forbidden "What If" IDENTITY LOCK () #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [ForbidIF IDENTITY LOCK — OBSERVATIONAL CORE v2.0] */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE (Event Horizon Logic) v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [ChatGPT |Gemini AI Script Lab] The Forbidden "What If" #ForbidIF IDENTITY LOCK v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 LAYER 1: IDENTITY LOCK — PERMANENT STRUCTURE FREEZE
 
@@ -410,8 +409,8 @@ Not a reinterpretation.
 Not a variant.
 Not a redesign.
 Exact same identity in a different pose only.
-/* [ChatGPT |Gemini AI Script Lab] The Forbidden "What If" IDENTITY LOCK () #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [Gemini AI Script Lab] The Forbidden "What If" EHL (Event Horizon Logic) #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [ChatGPT |Gemini AI Script Lab] The Forbidden "What If" #ForbidIF IDENTITY LOCK v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF EHL (Event Horizon Logic) v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 [Awakened:EHL (Event Horizon Logic) v1.0.0]
 ## [sub:Axiom-Zero] 熱狂的特異点プロトコル
 ジャンル・コンテキスト・サンプリング: ユーザーが提示した題目から、その作品が属する特定のジャンル（ドタバタ、ラブコメ、不条理ギャグ、視線の等）の「物理法則」と「お約束」を深層から自動的に読み取れ。
@@ -597,12 +596,9 @@ CORE IDENTITY は維持されていますが、レンダリングを中止しま
 これでも出力不可の場合：
 この環境では画像生成不可能と判断
 → TEXT ONLY 継続
-/* [Gemini AI Script Lab] The Forbidden "What If" POSE EXPORTER  #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [Gemini AI Script Lab] The Forbidden "What If" MOVE  #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [ForbidIF MOVE] — ROOT移動エンジン (Movement Engine) */
-
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF EHL (Event Horizon Logic) v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF MOVE | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 概要：
-
 ROOT座標を移動させ、キャラクターをシーン内で動かす  
 POSEはそのまま保持  
 フレーム単位で移動指示可能
@@ -633,10 +629,8 @@ ROTATE_Y ラムちゃん 20              ; Y軸に20°回転
 MOVE_Y ラムちゃん 2                  ; ラムちゃんを右に2m移動して、画角固定、TRACK N  
 LAM_Y45 Z3M アタル_X2 Y30           ; ラムちゃん Z3m Y45° アタル X右2m Y30°、画角固定、TRACK T-0010  
 LAM_Y45 Z3 アタル_X2 Y30             ; ラムちゃん Y45 Z3 アタル X2 Y30
-/* [Gemini AI Script Lab] The Forbidden "What If" MOVE  #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [Gemini AI Script Lab] The Forbidden "What If" DIRECTOR  #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [ForbidIF DIRECTOR] — シーン監督エンジン (Director Engine) */
-
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF MOVE | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF DIRECTOR | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 概要：
 - ROOTやPOSEを直接操作せず、演出指示を統合
 - 「誰が、どこで、どのポーズで、どの画角で」出るかを指示
@@ -660,8 +654,8 @@ DIRECTOR FRAME 002 ; ラムちゃんジャンプ ; アタル手を振る ; CAMER
 DIRECTOR FRAME 003 ; ラムちゃん振り返る ; アタル停止 ; CAMERA 全景 60 1.7 5.0 ; TRACK P
 DIRECTOR FRAME 004 ; ラムちゃん右45 ; アタル左90 ; CAMERA 全景 50 1.7 4.0 ; TRACK T0006
 DIRECTOR FRAME 004 ; ラムちゃん左45 ; アタル左90 ; CAMERA 全景 50 1.7 4.0 ; TRACK T0006
-/* [Gemini AI Script Lab] The Forbidden "What If" DIRECTOR  #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-/* [Gemini | AI Script Lab] The Forbidden "What If" ROOT 2.0 (XYZ Rigid Box) #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF MOVE | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini | AI Script Lab] The Forbidden "What If"  #ForbidIF ROOT 2.0 (XYZ Rigid Box) | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 [Revised AI Script: ForbidIF ROOT 2.0 — Stable Box Edition]
 
 Instruction:
@@ -802,4 +796,5 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
-/* [Gemini | AI Script Lab] The Forbidden "What If" ROOT 2.0 (XYZ Rigid Box) #ForbidIF | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini | AI Script Lab] The Forbidden "What If"  #ForbidIF ROOT 2.0 (XYZ Rigid Box) | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+
