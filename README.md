@@ -19,6 +19,18 @@ AIとの対話において
 - 同一性固定
 - 物語入力
 
+CORE                         ：ログ出力土管／順序・表示形式の絶対保証（解釈・決定を行わない）
+ ├─ ROOT                    ：18点XYZ空間構造の確定
+ ├─ IDENTITY LOCK           ：同一個体の不変量固定
+ ├─ EHL                     ：ジャンル力学／物語臨界の制御
+ ├─ HEART                   ：感情・態度の確定
+ ├─ DIRECTOR                ：シーン配置／画角設計
+ ├─ MOVE                    ：ROOT基準の移動・回転
+ ├─ POSE EXPORTER           ：最終ポーズ確定／2D投影
+ │   └─ SUCCESS             ：出力成功率の段階制御
+ ├─ HEART_VOICE             ：感情→VOICE_ID／speed物理化
+ │   └─ VOICE               ：VOICE行検出（絶対非干渉）
+
 ## (1) [ForbidIF] ― 核心思想（The Philosophy）
 
 ForbidIFは、AIとの対話における根本憲法である。
