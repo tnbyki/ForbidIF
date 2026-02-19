@@ -50,7 +50,7 @@ GMとして物語をログ出力
 [TRACK T-0001]
 薄暗い廊下。床は湿っている。
 🟡[STATUS] 緊張度 38% / 危険度 12% / 探索進行度 5%
-🔴ラム：……ここ、誰かいるっちゃ？
+🔴ラム(2:1.05)[VOICE]ちゃ？[/VOICE]
 🟢SE：遠くで床がミシ…と鳴る
 🔵[CHOICE]
 1. 北へ進む
@@ -797,4 +797,5 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* [Gemini | AI Script Lab] The Forbidden "What If"  #ForbidIF ROOT 2.0 (XYZ Rigid Box) | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+
 
