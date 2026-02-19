@@ -108,7 +108,7 @@ LLM・ユーザースクリプト・音声合成エンジンにより構成さ�
 
 This section describes the conceptual layer.
 
-For environment setup and execution:
+構築手順：
 → [README_VOICE.md](./README_VOICE.md)
 
 ## Files
