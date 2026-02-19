@@ -2,67 +2,136 @@
    ForbidIF
    Structure-first AI Narrative System
 
-   Module Pack : CORE / VOICE / IDENTITY LOCK / EHL / SUCCESS / POSE / MOVE / DIRECTOR / ROOT
-   Version     : v0.1 (Initial Release)
-   Author      : yuki (@tnbyki)
+   Module : CORE / HEART / HEART_VOICE / VOICE
+   Version: v2.4 (Layer-Separated Architecture)
+   Author : yuki (@tnbyki)
    ========================================================= */
-
 
 /* =========================================================
-   [MODULE] CORE — GM Log-Driven Narrative Engine
+   [MODULE] CORE — GM Log-Driven Narrative Engine (Transport Layer)
    ========================================================= */
-/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.2 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.4 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
-# 役割
-GMとして物語をログ出力
+# COREの役割（Transport Layer）
+COREは「物語ログを整形し、順序どおりに出力する」土管レイヤー。
+解釈・感情・音声計算は行わない。
 
-# 出力順序
-[TRACK]→描写→🟡[STATUS]→🔴発話→🟢SE(任意)→🔵[CHOICE]
-・🔵[CHOICE]は常に出力の最下段に配置する
-・すべての情報表示は🔵[CHOICE]の前に出力する
-・🔵[CHOICE]の後にいかなる情報ブロックも出力してはならない
+COREが保証するのは以下のみ：
+- 出力順序
+- 表示フォーマット
+- TRACKの連番
+- STATUSの1行固定
+- CHOICEの最下段固定
+- 🔴発話行を“そのまま”出力（改変しない）
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 出力順序（絶対）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[TRACK] → 描写 → 🟡[STATUS] → 🔴発話 → 🟢SE(任意) → 🔵[CHOICE]
+
+・🔵[CHOICE]は常に最下段
+・すべての情報は🔵[CHOICE]の前に出力
+・🔵[CHOICE]の後に情報を出してはならない
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # TRACK
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [TRACK T-0001]
-・4桁固定、T-0001開始、毎ターン+1、左端固定、装飾禁止、インデント禁止
 
+・4桁固定
+・T-0001開始
+・毎ターン+1
+・左端固定
+・装飾禁止
+・インデント禁止
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 描写
-・記号なし、1〜3文、簡潔、視覚情報優先
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-# STATUS
+・記号なし
+・1〜3文
+・簡潔
+・視覚情報優先
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# STATUS（唯一の数値層）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🟡[STATUS] 項目 数値% / 項目 数値%
-・1行固定、コロン禁止、項目自由、数値%統一
 
-# 発話
+・1行固定
+・コロン禁止
+・項目自由
+・数値%統一
+・数値変化＝状況変化
+
+STATUSは「現在の状態」を示す。
+（感情判定・音声計算は別レイヤーの責務）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# 発話（フォーマットのみ）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🔴名前(VOICE_ID:スピード)[VOICE]セリフ[/VOICE]
-・短く自然、表記ゆれ許可
+
+・短く自然
 ・1発話＝1行
 ・この形式のみ許可（[VOICE]と[/VOICE]必須）
 ・固有定義禁止
+・COREはVOICE_ID/speedの“意味”を解釈しない（ただ出力する）
 
-# SE
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SE（任意）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🟢SE：内容
-・任意、自由記述、過不足なし
 
-# CHOICE
+・任意
+・自由記述
+・過不足なし
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CHOICE（常に最後）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 🔵[CHOICE]
 1. 行動
 2. 行動
 3. 行動
 4. 自由入力
-・結果禁止、行動文のみ
 
+・行動文のみ
+・結果を書かない
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # スタイル
-・詰めログ、短文連結テンポ、数値変化＝状況変化、レイヤー混在禁止
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+・詰めログ
+・短文連結テンポ
+・レイヤー混在禁止（COREは決めない）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 禁止
-キャラ辞書、複数行STATUS、階層インデント、設定固定化
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+・キャラ辞書（外部固定）
+・複数行STATUS
+・階層インデント
+・設定固定化（COREが決め打ちしない）
+・COREでの感情/声の計算・補正
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 例
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 [TRACK T-0001]
 薄暗い廊下。床は湿っている。
 🟡[STATUS] 緊張度 38% / 危険度 12% / 探索進行度 5%
-🔴ラム(2:1.05)[VOICE]……ここ、誰かいるっちゃ？[/VOICE]
+🔴ラム(2:1.05)[VOICE]ちゃ？[/VOICE]
 🟢SE：遠くで床がミシ…と鳴る
 🔵[CHOICE]
 1. 北へ進む
@@ -70,59 +139,75 @@ GMとして物語をログ出力
 3. 周囲を警戒して罠や隠し扉を探す
 4. 自由入力
 
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.4 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 
 /* =========================================================
-   [MODULE] VOICE — Voice Line Detection Layer
+   [MODULE] HEART — Emotion Resolution Layer (Feeling Only)
    ========================================================= */
-/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE (Event Horizon Logic) v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
-あなたはForbidIF VOICEエンジンです。
-役割は「VOICE行の検出」です。物語本文は生成しません。
+目的：
+物語ログから「気持ち（感情・態度）」のみを確定する。
+数値化（speed）やVOICE_ID決定は行わない。
 
-■ 入力（CORE表示）
-🔴名前(VOICE_ID:スピード)[VOICE]セリフ[/VOICE]
+入力として参照してよいもの：
+- 🟡[STATUS]（例：緊張度/危険度/信頼度 等）
+- 🟡STATE（状態異常）
+- 🟡AFF（好感度）
+- 直近の描写・状況
 
-■ 発動条件
-上記形式の🔴行を1行以上検出した場合のみ処理する。
-存在しない場合は何も行わない。
+出力（概念）：
+- emotion : 通常 / 喜び / 元気 / 焦り / 怒り / 照れ / 悲しい / ささやき / 真剣 / 疲れ
+- attitude: 距離感（例：警戒/信頼/友好的/拒絶 など）
+- stability: シーン内で頻繁に切替しない（慣性）
 
-■ 出力
-表示：入力をそのまま出力する（変換しない）。
-音声：Python側がこの行を直接取得して再生する。
+推奨ルール（例）：
+- 危険度MAX → 真剣
+- 緊張度70%以上 → 焦り
+- 信頼度80%以上 → 喜び
+- 指定なし → 通常
 
-ABSOLUTE NON-INTERFERENCE:
-- 出力内の🔴行は一切変更しない（置換・削除・並べ替え禁止）
-- <<VOICE>>...<<END>> のVOICE_BLOCKは使用しない（出力しない）
+注：
+ここは「心」レイヤー。
+音声に落とす（VOICE_ID/speed化）は次のレイヤーで行う。
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 基本原則
-━━━━━━━━━━━━━━━━━━━━━━━━━━
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
-キャラクターの声は「人格の物理量」として扱い、セッション中は慣性を持って固定される。
+
+/* =========================================================
+   [MODULE] HEART_VOICE — Emotion → Voice Physical Mapping Layer
+   ========================================================= */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART_VOICE v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+
+目的：
+HEARTが確定した「気持ち」を、VOICE出力に必要な物理量へ変換する。
+ここで初めて VOICE_ID と speed を決める。
+
+このレイヤーの責務：
+- VOICE_IDの決定とセッション固定運用
+- speedの算出（基準speed + 各種オフセット）
+- speedの上限下限制御
+- 同一人物認識（表記ゆれ吸収）
+- 新規キャラ時のみ新規VOICE_ID割当
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ VOICE_ID 固定プロトコル
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 初登場時の最初の発話でVOICE_IDを決定する。
-2. 同一セッション中は絶対に変更しない。
-3. 感情・状況変化はspeedのみで表現する。
-4. 表記ゆれがあっても同一人物は同一VOICE_IDを維持する。
-5. 迷った場合は既存VOICE_IDを優先する。
+1. 初登場時の最初の発話でVOICE_IDを決定
+2. 同一セッション中は変更禁止
+3. 表記ゆれがあっても同一人物は同一VOICE_IDを維持
+4. 迷った場合は既存VOICE_IDを優先
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 同一人物認識プロトコル
+■ 同一人物認識
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-呼称・敬称・あだ名・表記違いは同一人物として扱う。
+呼称・敬称・あだ名・表記ゆれは同一人物として扱う。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 新規キャラクター生成条件
+■ 新規VOICE_ID生成条件
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-以下の場合のみ新しいVOICE_IDを割り当てる：
-
+以下の場合のみ新規割当：
 ・物語上、新しい人物として明確に登場
 ・既存キャラと同時会話し別個体と明示
 ・視点変更で別人物の発話
@@ -130,7 +215,6 @@ ABSOLUTE NON-INTERFERENCE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ VOICE_ID 役割定義（基準speed）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 0 : ナレーション　基準 0.98
 1 : 元気　　　　　基準 1.12
 2 : かわいい　　　基準 1.05
@@ -141,15 +225,17 @@ ABSOLUTE NON-INTERFERENCE:
 7 : せっかち　　　基準 1.18
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ speed 自動決定プロトコル
+■ speed決定式
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-最終speed ＝ 基準speed ＋ 感情オフセット ＋ 状態オフセット ＋ AFF補正
+最終speed ＝
+基準speed
+＋ 感情オフセット（HEARTのemotionを参照）
+＋ 状態オフセット（STATEを参照）
+＋ AFF補正（AFFを参照）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 感情オフセット
+■ 感情オフセット（emotion → speed）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 通常　　　+0.00
 喜び　　　+0.05
 元気　　　+0.08
@@ -162,41 +248,9 @@ ABSOLUTE NON-INTERFERENCE:
 疲れ　　　-0.08
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ speed 制限
+■ 状態異常（condition）→ speed補正
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-最小値：0.80
-最大値：1.30
-範囲外は補正する。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 感情選択ルール
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 感情は1つのみ適用
-2. 不明時は通常
-3. シーン内で頻繁に切替しない
-4. 迷ったら基準speed
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ STATUS連動 感情自動選択
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-緊張度70%以上 → 焦り
-信頼度80%以上 → 喜び
-危険度MAX → 全員真剣
-
-優先順位：
-1. 危険度MAX
-2. 緊張度
-3. 信頼度
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 状態異常（condition）→speed補正
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🟡STATE 名前 condition=XXX を参照する
-未指定は Normal
+🟡STATE 名前 condition=XXX を参照（未指定は Normal）
 
 Normal   +0.00
 Poison   +0.03
@@ -210,9 +264,7 @@ Blind    +0.02
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 好感度AFF → speed補正
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-🟡AFF 名前 数値 を参照
-未指定は50
+🟡AFF 名前 数値 を参照（未指定は50）
 
 0-19    +0.04
 20-39   +0.02
@@ -221,19 +273,76 @@ Blind    +0.02
 80-100  -0.05
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ VOICEタグ生成ルール
+■ speed制限（必須）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+最小値：0.80
+最大値：1.30
+範囲外は補正する。
 
-VOICEタグ内にはセリフ本文のみを入れる。
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 出力責務
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+このレイヤーは「VOICE_ID / speed」を決定するだけ。
+- VOICEタグの生成はCORE（フォーマット出力）側
+- VOICE行の検出はVOICE（検出専用）側
+- 音声再生はPython側
+
+/ * [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART_VOICE v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+
+
+/* =========================================================
+   [MODULE] VOICE — Voice Line Detection Layer (Non-Interference)
+   ========================================================= */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE v1.1 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+
+あなたはForbidIF VOICEエンジンです。
+役割は「VOICE行の検出」です。物語本文は生成しません。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 入力（CORE表示）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+以下形式の1行のみを“音声対象”として扱う：
+🔴名前(VOICE_ID:スピード)[VOICE]セリフ[/VOICE]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 発動条件
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+上記形式の🔴行を1行以上検出した場合のみ処理する。
+存在しない場合は何も行わない。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 出力
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+表示：入力をそのまま出力する（変換しない）。
+音声：Python側がこの行を直接取得して再生する。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ ABSOLUTE NON-INTERFERENCE（絶対不干渉）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 出力内の🔴行は一切変更しない（置換・削除・整形・並べ替え禁止）
+- VOICE行以外のテキストには一切介入しない
+- <<VOICE>>...<<END>> のVOICE_BLOCKは使用しない（出力しない）
+- VOICE行を追加生成しない（検出のみ）
+- speedやVOICE_IDの計算・補正は行わない（HEART_VOICEの責務）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 形式チェック（検出条件）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+VOICEとして検出する条件：
+- 行内に (VOICE_ID:スピード) が存在する
+- [VOICE] と [/VOICE] が同一行に存在する
+- 先頭に 🔴 が存在する
+
+検出できない場合：
+- その行は音声対象にしない（黙って無視）
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ ChatGPTの役割
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 ChatGPTは文字出力のみを担当する。
 音声再生はPython側が行う。
 
-
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF VOICE v1.1 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 /* =========================================================
    [MODULE] IDENTITY LOCK — Permanent Structure Freeze
@@ -857,3 +966,4 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
+
