@@ -106,6 +106,11 @@ VOICEは、ログを現実の時間軸へ接続する出力層である。
 LLM・ユーザースクリプト・音声合成エンジンにより構成される  
 （実装例：ChatGPT + Tampermonkey + Python + VOICEVOX）。
 
+This section describes the conceptual layer.
+
+For environment setup and execution:
+→ [README_VOICE.md](./README_VOICE.md)
+
 ## Files
 
 - ForbidIF_CORE.txt → コアプロトコル
