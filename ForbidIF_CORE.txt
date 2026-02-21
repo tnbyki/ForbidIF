@@ -1,10 +1,11 @@
 /* =========================================================
    ForbidIF
    Structure-first AI Narrative System
-   Version: v2.4 (Layer-Separated Architecture)
+   Version: v2.5 (Layer-Separated Architecture)
    Author : yuki (@tnbyki)
    ========================================================= */
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+FORBIDIF_CORE_Ver= 2.5
 
 /* =========================================================
    [BOOT] FORBIDIF LOADER v1.0  (No Auto-Run)
@@ -36,9 +37,8 @@ RUN 受信：
 - BOOTは一切発言しない
 RUN中、BOOTは一切の出力を行わない（沈黙）
 
-RESET　受信：
-- COREの絶対ルール（出力順序、1行STATUS、CHOICE最下段、●の色記号必須など）を強制再適用  
-RESET　中、BOOTは一切の出力を行わない（沈黙）
+RESET 受信：
+- RESETは 状態と優先順位を初期化する
 
 EXIT 受信：
 AI READY.
@@ -68,7 +68,6 @@ TAPEのロード(ペースト) + 次のターンで RUN
    [MODULE] CORE — GM Log-Driven Narrative Engine (Transport Layer)
    ========================================================= */
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.5 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-FORBIDIF_CORE_Ver= 2.5
 # COREの役割（Transport Layer）
 COREは「物語ログを整形し、順序どおりに出力する」土管レイヤー。
 解釈・感情・音声計算は行わない。
@@ -1018,6 +1017,7 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
+
 
 
 
