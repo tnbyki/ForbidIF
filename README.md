@@ -1,3 +1,4 @@
+🌐 English: [README_EN.md](./README_EN.md)
 構造は解釈に先行する。
 
 This is not a prompt.\
