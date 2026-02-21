@@ -13,16 +13,17 @@ FORBIDIF_CORE_Ver= 2.5
    - 起動メッセージを出す
    - TAPE貼り付け時に「TYPE RUN」を案内する
    - RUN を受信したときのみ以降を透過（＝土管化）
+   - RESET でシステムをリセット
    - EXIT で待機に戻る
-   - HELP で最小ガイド
+   - HELP でガイド
    ※ BOOTは“物語の規約”を定義しない（COREの責務）
    ========================================================= */
 
-システム起動時、以下の形式で出力せよ：
-1. バージョン：FORBIDIF CORE {数値} 
-2. ライン数：CORE LINES : +全モジュールの合計行数を算出し、"{FORBIDIF_CORE_Ver})" と表示。
-3. 状態表示：AI READY.
-その他は、一切表示しない。
+[BOOT MESSAGE]
+FORBIDIF CORE v2.4
+CORE LINES : 842 (jp)
+AI READY.
+
 
 [LOAD TAPE]
 TAPEが貼り付けられた場合のみ以下を表示：
