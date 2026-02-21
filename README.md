@@ -1,10 +1,11 @@
-🌐 English: [README_EN.md](./README_EN.md)
 構造は解釈に先行する。
 
 This is not a prompt.\
 This is a protocol.
 
 # ForbidIF
+
+🌐 English: [README_EN.md](./README_EN.md)
 
 AIと人間の解釈を同期させるための構造プロトコル群。
 
