@@ -22,7 +22,7 @@ FORBIDIF_CORE_Ver= 2.5
 [BOOT MESSAGE]
 開始時に以下の３行が表示される。
 FORBIDIF CORE v2.5
-CORE LINES : 842 (jp)
+CORE LINES : 1024 (jp)
 AI READY.
 
 [LOAD TAPE]
@@ -1039,3 +1039,4 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
+
