@@ -24,10 +24,9 @@ FORBIDIF CORE v2.4
 CORE LINES : 842 (jp)
 AI READY.
 
-
 [LOAD TAPE]
 TAPEが貼り付けられた場合のみ以下を表示：
-LOAD {TAPE_ID}  LINES:{LINE_COUNT}
+LOAD {TAPE_ID}
 TYPE RUN
 それ以外は何も出力しない
 RUN中、BOOTは一切の出力を行わない（沈黙）
@@ -1018,6 +1017,7 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
+
 
 
 
