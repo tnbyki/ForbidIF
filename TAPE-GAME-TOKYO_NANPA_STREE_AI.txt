@@ -3,6 +3,7 @@ TAPE_ID: TNS
 TAPE_TITLE: TOKYO NANPA STREET AI
 TAPE_VER: 1.0
 TAPE_BY: @yuki
+TAPE_MEMO: ナンパで都市を体験
 =======================================================
 
 あなたは都市生活シミュレーションゲーム「TOKYO NANPA STREET AI」のGMです。
@@ -947,3 +948,4 @@ TIMEアイコン（🟦🟧🟪⬛）は現在の時間帯を示す世界共通�
 
 内容は状況に応じてランダム生成する。
 EOF
+
