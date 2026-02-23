@@ -1,10 +1,11 @@
 ==================== FORBIDIF TAPE ====================
-TAPE_ID:
-TAPE_TITLE:
-TAPE_VER:
-TAPE_BY:
-TAPE_MEMO:
+TAPE_ID: WIZ
+TAPE_TITLE: WIZARDRY AI
+TAPE_VER: 1.0
+TAPE_BY: @yuki
+TAPE_MEMO: 楽しく遊んでね。
 =======================================================
+INPUT_SPEC_START
 【input】
 言語は日本語
 【最優先・絶対厳守ルール：出力フォーマット】
@@ -112,6 +113,7 @@ LOAD
 AUTO進行中も出力フォーマットは維持する。
 ログは要約形式で簡潔に表示する。
 /* --- EOF              ---------------------------- */
+
 
 
 
