@@ -40,7 +40,5 @@ INPUT_SPEC_START
 
 ### 4. ENDING BRANCH
 - 最終地点の金庫の中身は、探索の丁寧さに応じて【ダイアモンド】か【「お疲れさまでした」の紙】に分岐せよ。
-EOF
 
-
-
+INPUT_SPEC_END
