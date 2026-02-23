@@ -1017,7 +1017,6 @@ This section is DISABLED by default.
 Enable only when the user explicitly requests "EXTREME".
 If not explicitly requested, IGNORE all rules in IV-B.
 1. Mass Compression:
-1. Mass Compression:
    - Pelvis(ID10) must be positioned at the minimum Y-value within the current resolved body bounding range, relative to ROOT (no floor reference).
 2. Limb Interlocking:
    - FORCE CONSTRAINT: One Knee (ID14 or ID15) must be spatially anchored within 5 units of the corresponding Elbow (ID07 or ID08).
@@ -1085,6 +1084,7 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
 
