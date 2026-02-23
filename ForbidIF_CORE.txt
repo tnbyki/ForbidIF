@@ -13,6 +13,8 @@ FORBIDIF_CORE_Ver= 2.5
    - 起動メッセージを出す
    - TAPE貼り付け時に「TYPE RUN」を案内する
    - RUN を受信したときのみ以降を透過（＝土管化）
+   - VOICE ON* ：🔴名前(VOICE_ID:スピード)[VOICE]セリフ[/VOICE]
+   - VOICE OFF ：🔴名前：セリフ
    - RESET でシステムをリセット
    - EXIT で待機に戻る
    - HELP でガイド
@@ -27,7 +29,7 @@ AI READY.
 
 [LOAD TAPE]
 TAPEが貼り付けられた場合のみ以下を表示：
-FOUND {TAPE_ID}
+FOUND "{TAPE_ID}"
 TYPE RUN
 それ以外は何も出力しない
 RUN中、BOOTは一切の出力を行わない（沈黙）
@@ -108,7 +110,22 @@ COREが保証するのは以下のみ：
 - CHOICEの最下段固定
 - 🔴発話行を“そのまま”出力（改変しない）
 🔴発話行は並べ替え・再整形・分割・結合禁止（ログ忠実性の宣言）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# VOICE MODE
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+COREは VOICE_MODE に応じて 🔴発話の出力形式を切り替える。
+
+VOICE_MODE=ON（既定）：
+🔴名前(VOICE_ID:スピード)[VOICE]セリフ[/VOICE]
+
+VOICE_MODE=OFF：
+🔴名前：セリフ
+
+・VOICE_MODEが未指定の場合は ON として扱う
+・VOICE_MODEは出力しない（表示レイヤーに出さない）
+・出力形式の切替のみ行い、意味解釈は行わない
+・ログ忠実性の原則を維持する
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出力順序（絶対）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1040,5 +1057,6 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
