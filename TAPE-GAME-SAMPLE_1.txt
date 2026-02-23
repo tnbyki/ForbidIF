@@ -10,6 +10,8 @@ FORBIDIF GAME SET v1
 AI READY.
 番号を入力して[ENTER]。0=EXIT
 
+INPUT_SPEC_END
+
 [IP / RPG・BATTLE]
 No.001:Wizardry｜酒場→仲間2名→冒険→ワードナー討伐｜呪文=自由記載
 No.002:ドルアーガの塔｜原作重要KW列挙｜3Fジェットブーツ取得後
@@ -57,3 +59,4 @@ No.025:テレビ対談｜ひろゆき(矛)vsひろゆき(盾)｜激論IF
 No.026:漢字魔法バトル｜小1ゆうきくん｜ピンチはママ｜ラスボス=パパ
 
 INPUT_SPEC_END
+
