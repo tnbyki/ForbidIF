@@ -9,9 +9,15 @@ import threading
 import queue
 import uuid
 import os
+from pathlib import Path
 import requests
 import pygame
 from flask import Flask, request, jsonify
+# ===== Temp directory setup =====
+BASE_DIR = Path(__file__).parent
+TEMP_DIR = BASE_DIR / "Temp"
+TEMP_DIR.mkdir(exist_ok=True)
+
 
 VOICEVOX_URL = "http://127.0.0.1:50021"
 
@@ -126,17 +132,17 @@ def player_worker():
             wav_bytes = synth_wav_bytes(text, speaker, speed)
 
             # ★重要：毎回ファイル名を変える（temp.wav固定だとPermission deniedになりやすい）
-            fname = f"temp_{uuid.uuid4().hex}.wav"
+            fname = TEMP_DIR / f"temp_{uuid.uuid4().hex}.wav"
             with open(fname, "wb") as f:
                 f.write(wav_bytes)
 
-            pygame.mixer.music.load(fname)
+            pygame.mixer.music.load(str(fname))
             pygame.mixer.music.play()
 
             while pygame.mixer.music.get_busy():
                 time.sleep(0.02)
 
-            safe_remove(fname)
+            # auto-delete disabled (Temp mode)
 
         except Exception as e:
             print("再生エラー:", e)
