@@ -1,19 +1,5 @@
-/* =========================================================
-   ForbidIF
-   Structure-first AI Narrative System
-
-   Module : CORE / VOICE JS / VOICE PY / GAME PROMPT
-   Version: v0.1 (Initial Release)
-   Author : yuki (@tnbyki)
-   ========================================================= */
-/* =========================================================
-   ForbidIF VOICE Exporter (Browser → Python)
-   Real-time VOICE line detection
-   ========================================================= */
-
-
 // ==UserScript==
-// @name         VOICE Export (Last 5 Only)
+// @name         VOICE Export + UI Clean (No Read on Reload)
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://grok.com/*
@@ -30,12 +16,16 @@
   "use strict";
 
   const PY_URL = "http://127.0.0.1:5000/voice_input";
-  const LAST_N = 5;              // ★最後N行だけ喋る（ここを変える）
-  const COOLDOWN_MS = 800;       // 連打防止（UI更新の揺れ吸収）
+  const LAST_N = 5;
+  const COOLDOWN_MS = 800;
 
-  // 「送ったやつ」記録（ページリロードで消える＝過去ログは喋らない方針なのでOK）
+  // ★リロード後の「起動ガード」：この秒数の間は絶対送信しない
+  const BOOT_GUARD_MS = 8000;
+
   const sent = new Set();
   let lastSendAt = 0;
+  const bootAt = Date.now();
+  let primed = false;
 
   function sendToPython(text) {
     if (!text) return;
@@ -49,7 +39,7 @@
 
   function norm(s) {
     return (s || "")
-      .replace(/[\u200B-\u200D\uFEFF]/g, "") // ゼロ幅
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
       .replace(/\r/g, "")
       .replace(/\u00A0/g, " ")
       .replace(/\u3000/g, " ")
@@ -57,47 +47,112 @@
       .trim();
   }
 
-  function extractVoiceLines(text) {
-    if (!text || !text.includes("[VOICE]")) return [];
-    return text
-      .split("\n")
-      .map(norm)
-      .filter(l =>
-        l.includes("[VOICE]") &&
-        l.includes("[/VOICE]") &&
-        l.includes("(") &&
-        l.includes(")")
-      );
+  const VOICE_LINE_RE =
+    /^🔴\s*([^(]+?)\s*\((\d+):([0-9]+(?:\.[0-9]+)?)\)\[VOICE\]([\s\S]*?)\[\/VOICE\]\s*$/;
+
+  function isVoiceLine(s) {
+    return VOICE_LINE_RE.test(norm(s));
   }
 
-  // 「最新メッセージっぽい領域」を探す（DOM差異に強い）
-  function getTailText() {
-    // 1) まず一番下付近のメッセージを狙う（あれば）
-    const articles = document.querySelectorAll("article");
-    if (articles && articles.length) {
-      const tail = articles[articles.length - 1];
-      const t = tail?.innerText || "";
-      if (t.includes("[VOICE]")) return t;
-    }
+  function toUiLine(voiceLine) {
+    const m = VOICE_LINE_RE.exec(norm(voiceLine));
+    if (!m) return null;
+    const name = norm(m[1]);
+    const txt = norm(m[4]);
+    return `🔴${name}：${txt}`;
+  }
 
-    // 2) ダメなら「画面末尾のテキストだけ」を使う（過去全体ではなく末尾）
-    const whole = document.body?.innerText || "";
-    const lines = whole.split("\n");
-    // 末尾から200行だけ見る（ここは保険）
-    return lines.slice(Math.max(0, lines.length - 200)).join("\n");
+  function getTailRoot() {
+    const articles = document.querySelectorAll("article");
+    if (articles && articles.length) return articles[articles.length - 1];
+    return document.body;
+  }
+
+  function collectVoiceLinesFromDOM(root) {
+    const res = [];
+    if (!root) return res;
+
+    const nodes = root.querySelectorAll("p, li, div");
+    for (const n of nodes) {
+      if (n.classList && n.classList.contains("forbidif-voice-ui")) continue;
+
+      const raw = norm(n.textContent || "");
+      if (!raw.startsWith("🔴")) continue;
+      if (!raw.includes("[VOICE]") || !raw.includes("[/VOICE]")) continue;
+
+      if (isVoiceLine(raw)) res.push(raw);
+    }
+    return res;
+  }
+
+  function replaceVoiceLinesIn(root) {
+    if (!root) return;
+
+    const nodes = root.querySelectorAll("p, li, div");
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.dataset && n.dataset.forbidifVoiceReplaced === "1") continue;
+
+      const raw = norm(n.textContent || "");
+      if (!isVoiceLine(raw)) continue;
+
+      const ui = toUiLine(raw);
+      if (!ui) continue;
+
+      const next = n.nextElementSibling;
+      if (next && next.classList && next.classList.contains("forbidif-voice-ui")) {
+        n.dataset.forbidifVoiceReplaced = "1";
+        continue;
+      }
+
+      n.style.display = "none";
+      n.dataset.forbidifVoiceReplaced = "1";
+
+      const uiEl = document.createElement("div");
+      uiEl.className = "forbidif-voice-ui";
+      uiEl.textContent = ui;
+      uiEl.style.whiteSpace = "pre-wrap";
+      uiEl.style.margin = "0.25em 0";
+
+      n.insertAdjacentElement("afterend", uiEl);
+    }
+  }
+
+  // ★起動ガード判定
+  function inBootGuard() {
+    return (Date.now() - bootAt) < BOOT_GUARD_MS;
+  }
+
+  function prime() {
+    const tailRoot = getTailRoot();
+    replaceVoiceLinesIn(tailRoot);
+
+    const voiceLines = collectVoiceLinesFromDOM(tailRoot);
+    // 「いま存在するもの」は全部“送信済み”にする
+    for (const l of voiceLines) sent.add(norm(l));
+
+    primed = true;
   }
 
   function scanAndSend() {
     const now = Date.now();
     if (now - lastSendAt < COOLDOWN_MS) return;
 
-    const tailText = getTailText();
-    const voiceLines = extractVoiceLines(tailText);
+    const tailRoot = getTailRoot();
+    replaceVoiceLinesIn(tailRoot);
 
-    // ★最後N行だけ
+    // 起動直後は送らない（全部読み上げ防止）
+    if (inBootGuard()) return;
+
+    // guardを抜けたら一度だけprimeして“過去分”を確実に潰す
+    if (!primed) {
+      prime();
+      return;
+    }
+
+    const voiceLines = collectVoiceLinesFromDOM(tailRoot);
     const last = voiceLines.slice(Math.max(0, voiceLines.length - LAST_N));
 
-    // 未送信だけ送る
     const fresh = [];
     for (const line of last) {
       const key = norm(line);
@@ -112,15 +167,6 @@
     }
   }
 
-  // 起動直後：過去を喋らないために「いま見えてる最後N行」を送信済みに登録しておく
-  function prime() {
-    const tailText = getTailText();
-    const voiceLines = extractVoiceLines(tailText);
-    const last = voiceLines.slice(Math.max(0, voiceLines.length - LAST_N));
-    for (const l of last) sent.add(norm(l));
-  }
-
-  // 監視（更新があったら末尾だけスキャン）
   let timer = null;
   function schedule() {
     if (timer) clearTimeout(timer);
@@ -134,5 +180,9 @@
     if (!document.hidden) scanAndSend();
   });
 
-  setTimeout(prime, 900);
+  // 初回：UIだけ整形して、送信はしない（guard中）
+  setTimeout(() => {
+    try { replaceVoiceLinesIn(getTailRoot()); } catch {}
+  }, 900);
+
 })();
