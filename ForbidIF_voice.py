@@ -41,14 +41,14 @@ def get_style_id(speaker_name: str, style_name: str = "ノーマル") -> int:
 # あなたの「役割VOICE_ID」 -> VOICEVOX style_id
 # ===============================
 VOICE_STYLE_SPEC = {
-    0: ("青山龍星", "ノーマル"),      # ナレーション（予約）
-    1: ("白上虎太郎", "ノーマル"),    # 元気
-    2: ("四国めたん", "あまあま"),    # かわいい
-    3: ("波音リツ", "ノーマル"),      # おとな
-    4: ("春日部つむぎ", "ノーマル"),  # クール
-    5: ("冥鳴ひまり", "ノーマル"),    # セクシー
-    6: ("九州そら", "ノーマル"),      # まったり
-    7: ("春日部つむぎ", "ノーマル"),  # せっかち（環境によりノーマルのみのことが多い）
+0: ("青山龍星", "ノーマル"),   # ナレーション（予約）
+1: ("白上虎太郎", "ふつう"),   # 元気
+2: ("四国めたん", "あまあま"), # かわいい
+3: ("波音リツ", "ノーマル"),   # おとな
+4: ("春日部つむぎ", "ノーマル"),# クール
+5: ("冥鳴ひまり", "ノーマル"), # セクシー
+6: ("九州そら", "ノーマル"),   # まったり
+7: ("春日部つむぎ", "ノーマル"),# せっかち
 }
 
 VOICE_MAP: dict[int, int] = {}
@@ -120,6 +120,7 @@ def player_worker():
 
         name, text, role_vid, speed, volume = item
         speaker = VOICE_MAP.get(role_vid, VOICE_MAP.get(DEFAULT_VOICE_ID, DEFAULT_VOICE_ID))
+        print("SPEAKER:", speaker, "ROLE_ID:", role_vid, "SPEC:", VOICE_STYLE_SPEC.get(role_vid))
 
         try:
             wav_bytes = synth_wav_bytes(text, speaker, speed, volume)
@@ -204,6 +205,10 @@ def tam_alias():
 
 if __name__ == "__main__":
     print("🎤 VOICEサーバー起動中...")
+
+    print("=== VOICEVOX speakers ===")
+    print(requests.get("http://127.0.0.1:50021/speakers").json())
+    print("=========================")
 
     build_voice_map()
     print("VOICE_MAP:", VOICE_MAP)
