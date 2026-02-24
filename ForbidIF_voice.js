@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ForbidIF Gemini -> WAN Voice Bridge (Vtag DEBUG + FULL REMOVE)
+// @name         ForbidIF Gemini -> WAN Voice Bridge (Vtag DEBUG + ROBUST REMOVE)
 // @namespace    https://tnbyki.example/forbidif
-// @version      1.2.0
-// @description  Detect [V]...[/V], send to WAN, and fully remove from browser
+// @version      1.4.0
+// @description  Detect new [V]...[/V], send to WAN, and robustly remove from browser (across nodes)
 // @match        https://gemini.google.com/*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
@@ -48,24 +48,73 @@
     });
   }
 
-  // 🔥 [V]...[/V] を丸ごと削除
-  function cleanVTags() {
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      null,
-      false
-    );
+  // ✅ テキストノードを跨いでも [V]...[/V] を丸ごと削除する
+  function removeVBlocksRobust() {
+    // 無限ループ防止
+    const MAX_PASSES = 50;
+    let pass = 0;
+    let removedAny = false;
 
-    let node;
-    while ((node = walker.nextNode())) {
-      if (node.nodeValue.includes("[V]")) {
-        node.nodeValue = node.nodeValue.replace(VTAG_REGEX, "");
+    while (pass++ < MAX_PASSES) {
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false
+      );
+
+      // 全テキストノードを順序通りに集める
+      const nodes = [];
+      let n;
+      while ((n = walker.nextNode())) nodes.push(n);
+
+      // [V] の開始を探す
+      let startNode = null, startOffset = -1;
+
+      for (let i = 0; i < nodes.length; i++) {
+        const idx = nodes[i].nodeValue.indexOf("[V]");
+        if (idx !== -1) {
+          startNode = nodes[i];
+          startOffset = idx;
+          break;
+        }
       }
+
+      // もう無ければ終わり
+      if (!startNode) break;
+
+      // [/V] の終了を startNode以降で探す
+      let endNode = null, endOffsetAfter = -1;
+      let foundEnd = false;
+
+      const startIndex = nodes.indexOf(startNode);
+      for (let i = startIndex; i < nodes.length; i++) {
+        const idx = nodes[i].nodeValue.indexOf("[/V]");
+        if (idx !== -1) {
+          endNode = nodes[i];
+          endOffsetAfter = idx + "[/V]".length; // 終了タグまで含めて消す
+          foundEnd = true;
+          break;
+        }
+      }
+
+      // 終了タグがまだ来てない(途中)なら何もしない（次の更新で消える）
+      if (!foundEnd) break;
+
+      // レンジで削除
+      const range = document.createRange();
+      range.setStart(startNode, startOffset);
+      range.setEnd(endNode, endOffsetAfter);
+
+      range.deleteContents();
+      removedAny = true;
     }
+
+    if (removedAny) log("V blocks removed from DOM");
   }
 
   function scan() {
+    // ① 検出（送信用）
     const text = document.body.innerText;
     const vlines = extractV(text);
 
@@ -75,13 +124,28 @@
     if (newLines.length) {
       log("detected:", newLines.length);
       send(newLines);
-
-      // 👇 表示から完全削除
-      cleanVTags();
     }
+
+    // ② 表示から削除（送信とは独立に毎回やる）
+    removeVBlocksRobust();
   }
 
-  new MutationObserver(scan).observe(document.body, {
+  // 🔥 起動時：過去ログを既読化＋表示からも一掃
+  function init() {
+    const text = document.body.innerText;
+    extractV(text).forEach(v => seen.add(v));
+    log("history cached:", seen.size);
+
+    // リロード直後も消したいので
+    removeVBlocksRobust();
+  }
+
+  init();
+
+  new MutationObserver(() => {
+    // Geminiは更新が細かいので、軽くまとめる
+    queueMicrotask(scan);
+  }).observe(document.body, {
     childList: true,
     subtree: true,
     characterData: true
