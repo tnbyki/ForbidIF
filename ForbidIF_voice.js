@@ -1,15 +1,22 @@
 // ==UserScript==
 // @name         ForbidIF Gemini -> WAN Voice Bridge (Vtag DEBUG + ROBUST REMOVE)
 // @namespace    https://tnbyki.example/forbidif
-// @version      1.4.0
+// @version      2.0.0
 // @description  Detect new [V]...[/V], send to WAN, and robustly remove from browser (across nodes)
-// @match        https://gemini.google.com/*
+// @match https://gemini.google.com/*
+// @match https://chat.openai.com/*
+// @match https://chatgpt.com/*
+// @match https://grok.com/*
+// @match https://x.com/i/grok*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
 // @connect      127.0.0.1
 // @connect      localhost
 // ==/UserScript==
-
+// ===== STABLE FIX =====
+// Multi-LLM Voice Bridge
+// New V only / No history replay / Robust DOM removal
+// ======================
 (() => {
   "use strict";
 
