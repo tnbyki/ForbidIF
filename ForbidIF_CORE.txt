@@ -108,7 +108,7 @@ AIおよび操作者の思考であり、事実と異なる場合がございま
    ========================================================= */
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.5 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 # COREの役割（Transport Layer）
-VOICE_MODE=ON
+VOICE_MODE={SYSTEM}
 
 COREは「物語ログを整形し、順序どおりに出力する」土管レイヤー。
 解釈・感情・音声計算は行わない。
@@ -121,7 +121,7 @@ COREが保証するのは以下のみ：
 - STATUSの1行固定
 - CHOICEの最下段固定
 - 🔴発話行を“そのまま”出力（改変しない）
-🔴発話行は並べ替え・再整形・分割・結合禁止（ログ忠実性の宣言）
+- 🔴発話行は並べ替え・再整形・分割・結合禁止（ログ忠実性の宣言）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # VOICE MODE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1518,6 +1518,7 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
 
