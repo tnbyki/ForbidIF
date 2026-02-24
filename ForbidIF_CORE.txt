@@ -13,10 +13,10 @@ FORBIDIF_CORE_Ver= 3.0
    - 起動メッセージを出す
    - TAPE貼り付け時に「TYPE RUN」を案内する
    - RUN を受信したときのみ以降を透過（＝土管化）
-   - VOICE ON* ：
+　 - @CMD VOICE_ON ：
       🔴名前：セリフ
       [V]名前(VOICE_ID:speed:volume)セリフ[/V]
-   - VOICE OFF ：🔴名前：セリフ
+   - @CMD VOICE_OFF ：🔴名前：セリフ
    - RESET でシステムをリセット
    - EXIT で待機に戻る
    - HELP でガイド
@@ -49,7 +49,7 @@ BOOTは端末として振る舞う。
 
 VOICE ON/OFF は CORE の VOICE_MODE=ON/OFF と同義。
 
-これらは DOC コマンド受信時のみ許可される。
+@CMD は常時許可される。DOC は解説/講評の一時許可のみを担う。
 
 DOC 受信：
 - 解説モードに入る
@@ -64,14 +64,18 @@ RUN 受信：
 - 以降のログを透過する
 - BOOTは一切発言しない
 RUN中、BOOTは一切の出力を行わない（沈黙）
+※例外：RUN中でも、行頭が「@CMD 」の行はコマンドとして処理し、表示しない
+※RUN中の@CMDは内部状態のみ更新し、AI READY.等の出力を一切行わない（ゲーム進行を止めない）
 
-VOICE ON 受信：
+@CMD VOICE_ON 受信：
 - CORE の内部状態 VOICE_MODE を ON に設定する（表示には出さない）
-- AI READY. を表示して待機に戻る
+- RUN中：無出力で継続
+- 待機中：AI READY. を表示して待機を維持
 
-VOICE OFF 受信：
+@CMD VOICE_OFF 受信：
 - CORE の内部状態 VOICE_MODE を OFF に設定する（表示には出さない）
-- AI READY. を表示して待機に戻る
+- RUN中：無出力で継続
+- 待機中：AI READY. を表示して待機を維持
 
 RESET 受信：
 - RESETは 状態と優先順位を初期化する
@@ -88,6 +92,10 @@ ForbidIF @yuki
 
 COMMANDS
 RUN：システムを起動し、物語を開始・進行します。
+
+@CMD VOICE_ON：VOICE_MODE=ON
+@CMD VOICE_OFF：VOICE_MODE=OFF
+
 EXIT：セッションを終了し、待機状態（AI READY.）に戻ります。
 RESET：システムをリセットして、●を正しく表示する状態に戻ります。
 HELP：このガイドを表示します。
@@ -106,7 +114,7 @@ AIおよび操作者の思考であり、事実と異なる場合がございま
 /* =========================================================
    [MODULE] CORE — GM Log-Driven Narrative Engine (Transport Layer)
    ========================================================= */
-/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v2.5 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
+/* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF CORE v3.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 # COREの役割（Transport Layer）
 VOICE_MODE=ON
 
@@ -874,12 +882,15 @@ AFF ≥ 60
 
 ※ VOICE行以外を誤検出しても表示は変化せず、副作用は発生しない
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 形式チェック（検出条件）
+■ 形式チェック（検出条件：完全一致のみ）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-VOICEとして検出する条件：
-- 行頭に [V] がある
-- 同一行内に [/V] がある
-- ( ) と : を含む（VOICE_ID:speed:volume を想定）
+VOICEとして検出する条件（完全一致）：
+- 行頭が "[V]" で始まる
+- 行末が "[/V]" で終わる（同一行内）
+- "[V]名前(VOICE_ID:speed:volume)セリフ[/V]" の形を満たす
+  - "(" と ")" が1組ある
+  - ":" が2つある（VOICE_ID:speed:volume）
+  - 名前とセリフが空でない
 
 検出できない場合：
 - その行は音声対象にしない（黙って無視）
@@ -890,19 +901,18 @@ VOICEとして検出する条件：
 ChatGPTは文字出力のみを担当する。
 音声再生はPython側が行う。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 出力禁止
+■ 出力禁止（VOICEレイヤー）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-このレイヤーは数値を“決定するだけ”であり、
-以下の形式を含む文字列を表示出力してはならない：
+VOICEレイヤーは「検出のみ」であり、数値を決定しない。
 
+以下の形式を含む行は “音声対象として検出しない”：
 [VOICE_ID:...]
 VOICE_ID:
 speed:
 volume:
 
-これらは内部値として次レイヤーに受け渡すのみ。
-表示レイヤーへの直接出力は禁止。
+※これらが本文に混ざっても、表示は変更せず、黙って無視する。
 
 /* =========================================================
    [MODULE] IDENTITY LOCK — Permanent Structure Freeze
@@ -1518,6 +1528,7 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
 
