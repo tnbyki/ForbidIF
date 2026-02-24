@@ -162,6 +162,10 @@ VOICE_MODE=ON のとき：
   - 名前 or セリフが欠けている
   - 余計な文字が混ざる
 
+  - 行頭が [VOICE_ID: で始まる
+  - 行頭が VOICE_ID: / speed: / volume: で始まる
+  - 角括弧で始まり [V] ではない（例：[VOICE] / [VOICE_ID] / [V1] 等）
+
 禁止に該当した場合：
 その行を出力しない（🔴表示行には影響しない）
 
@@ -1514,6 +1518,7 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
 
