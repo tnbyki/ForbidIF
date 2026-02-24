@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ForbidIF Gemini -> WAN Voice Bridge (Vtag DEBUG)
+// @name         ForbidIF Gemini -> WAN Voice Bridge (Vtag DEBUG + FULL REMOVE)
 // @namespace    https://tnbyki.example/forbidif
-// @version      1.0.1
-// @description  Detect [V]...[/V] and send to WAN (with debug log)
+// @version      1.2.0
+// @description  Detect [V]...[/V], send to WAN, and fully remove from browser
 // @match        https://gemini.google.com/*
 // @run-at       document-idle
 // @grant        GM_xmlhttpRequest
@@ -29,7 +29,6 @@
   function send(lines) {
     if (!lines.length) return;
 
-    // 🔽 ここが今回のメイン追加
     console.log("========== [TAM → WAN] SEND ==========");
     console.log("lines:");
     lines.forEach((l, i) => console.log(`${i}:`, l));
@@ -49,6 +48,23 @@
     });
   }
 
+  // 🔥 [V]...[/V] を丸ごと削除
+  function cleanVTags() {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false
+    );
+
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node.nodeValue.includes("[V]")) {
+        node.nodeValue = node.nodeValue.replace(VTAG_REGEX, "");
+      }
+    }
+  }
+
   function scan() {
     const text = document.body.innerText;
     const vlines = extractV(text);
@@ -59,6 +75,9 @@
     if (newLines.length) {
       log("detected:", newLines.length);
       send(newLines);
+
+      // 👇 表示から完全削除
+      cleanVTags();
     }
   }
 
