@@ -1,4 +1,3 @@
-修正した
 /* =========================================================
    ForbidIF
    Structure-first AI Narrative System
@@ -1152,6 +1151,7 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* --- EOF              ---------------------------- */
+
 
 
 
