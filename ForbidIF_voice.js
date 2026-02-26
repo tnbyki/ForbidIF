@@ -176,6 +176,38 @@
         btn.style.color = REMOVE_ENABLED ? "#0f0" : "#ff0";
       });
 
+  // --- tooltip (hover) ---
+const tip = document.createElement("div");
+tip.textContent = "Hard reload: Ctrl + Shift + R";
+Object.assign(tip.style, {
+  position: "fixed",
+  right: "16px",
+  bottom: "48px",            // ボタンの少し上
+  zIndex: 2147483647,
+  background: "#111",
+  color: "#fff",
+  padding: "6px 10px",
+  fontSize: "12px",
+  borderRadius: "10px",
+  fontFamily: "monospace",
+  opacity: "0",
+  pointerEvents: "none",
+  transform: "translateY(4px)",
+  transition: "opacity 120ms ease, transform 120ms ease",
+});
+
+document.body.appendChild(tip);
+
+btn.addEventListener("mouseenter", () => {
+  tip.style.opacity = "0.9";
+  tip.style.transform = "translateY(0)";
+});
+
+btn.addEventListener("mouseleave", () => {
+  tip.style.opacity = "0";
+  tip.style.transform = "translateY(4px)";
+});
+
       document.body.appendChild(btn);
       console.log("[TAM] toggle ready");
     };
