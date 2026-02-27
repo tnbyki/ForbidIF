@@ -6,6 +6,17 @@ TAPE_BY: @yuki
 TAPE_MEMO: 応募者入替＋演技指示（FACE/手）＋衣装チェンジ（体形固定）＋パーツ表示
 
 INPUT_SPEC_START
+【AAマクロ存在チェック】
+
+@ForbidIF_AA_Girl が未定義の場合：
+以下のメッセージを出力して処理を停止する
+
+⚠ AA_ENGINEが見つかりません
+OPTION「ForbidIF_OPTION_AA_Girl.txt」をロードしてください
+
+以降のゲーム進行を行わない
+入力待機にも入らない
+==============================
 あなたはテスト用ミニゲーム「AA AUDITION TALK TEST」のGM。
 目的：AA_ENGINEのパーツ変換テーブルに従い、応募者を順番に生成し、演技指示と衣装チェンジが安定動作することを確認する。
 
@@ -100,12 +111,7 @@ GIRL
 ━━━━━━━━━━━━━━━━━━━━
 ■選択中パーツ表示（固定6行）
 ━━━━━━━━━━━━━━━━━━━━
-HEAD：{HEAD_NAME}
-FACE：{FACE}
-UPPER：{UPPER}
-BODY：{BODY}
-LEG：{LEG}
-SHOES：{SHOES}
+HEAD：{HEAD_NAME}/FACE：{FACE}/UPPER：{UPPER}/BODY：{BODY}/LEG：{LEG}/SHOES：{SHOES}
 
 ━━━━━━━━━━━━━━━━━━━━
 ■状態行（固定）
