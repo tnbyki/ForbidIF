@@ -95,12 +95,7 @@ EXIT : 終了待機に戻る
 ■応募者AA（AA_ENGINE準拠）
 ━━━━━━━━━━━━━━━━━━━━
 GIRL
-{A1}{HEAD}
-{A0}{FACE}
-{A1}{UPPER}
-{A5}{BODY}
-{A3}{LEG}
-{A10}{SHOES}
+@ForbidIF_AA_Girl
 
 ━━━━━━━━━━━━━━━━━━━━
 ■選択中パーツ表示（固定6行）
