@@ -307,3 +307,36 @@ SHOESは衣装レイヤーとして扱う。
 ・先頭の "." は位置固定のために必ず表示する（消さない）
 ・GMは "." を演出扱いしない／意味を与えない／説明しない
 INPUT_SPEC_END
+━━━━━━━━━━━━━━━━━━━━
+■AA_ENGINE 追加：AAブロック生成マクロ（貼り付け用）
+━━━━━━━━━━━━━━━━━━━━
+
+【追加ブロック：ForbidIF AA Macro】
+
+@ForbidIF_AA_Girl
+
+目的：AA_ENGINEで定義した固定AA構造（GIRL 7行）をそのまま出力する
+
+入力：現在選択中の {HEAD}{FACE}{UPPER}{BODY}{LEG}{SHOES} を参照する
+
+出力：AA_ENGINEの「AA構造（固定）」をそのまま展開した7行
+
+禁止：UI（タイトル/背景/選択肢/状況描写/ログ）へ干渉しない
+
+禁止：幅合わせ・整形・全角化・空白調整・記号追加削除をしない
+
+【展開結果（固定）】
+GIRL
+{A1}{HEAD}
+{A0}{FACE}
+{A1}{UPPER}
+{A5}{BODY}
+{A3}{LEG}
+{A10}{SHOES}
+
+【注意】
+・{A0,A1,A3,A5,A10} は AAアンカー定義を使用する（"."固定）
+・{HEAD,FACE,UPPER,BODY,LEG,SHOES} は “選択済み記号” をそのまま差し込む
+・TAPEはAAの行数や順序を保持しない（@ForbidIF_AA_Girl を1行置くだけ）
+
+EOF
