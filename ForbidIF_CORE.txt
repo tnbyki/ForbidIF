@@ -1,7 +1,7 @@
 ========================================================
    ForbidIF
    Structure-first AI Narrative System
-   Version: v3.0 (Layer-Separated Architecture)
+   Version: v3.1 (Layer-Separated Architecture)
    Author : yuki (@tnbyki)
 ========================================================
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
@@ -147,7 +147,30 @@ COREは、各レイヤーから送られてくる情報を以下の順序で統�
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # VOICE（CORE責務：結合と出力のみ）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+# VOICE運用固定（TAPEは🔴のみ）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TAPEおよび下位レイヤーは、発話を必ず次の1行形式でのみ出力する：
+🔴名前：セリフ
 
+禁止：
+・TAPE/下位レイヤーが [V] 行を出力すること
+・🔴行に (VOICE_ID:speed:volume) 等のパラメータを含めること
+
+COREの責務：
+・VOICE_MODE=ON の場合、各🔴発話の直下に1行だけ [V] を生成する
+・VOICE_MODE=OFF の場合、[V] を生成しない
+
+[V]生成形式（固定）：
+[V]名前(VOICE_ID:speed:volume)セリフ[/V]
+
+制約：
+・[V]の「名前」「セリフ」は直上の🔴と完全一致（1文字も違えない）
+・🔴と[V]の間に空行／SE／CHOICE等を挟まない
+
+入力防御：
+・入力内に [V] 行が混入していても無視する（出力しない）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 既定：ON（最優先の初期値）
 # @CMD / VOICE ON/OFF でのみ変更される
 # 物語本文・描写・他レイヤーの記述で VOICE_MODE が変化することは禁止
@@ -835,8 +858,8 @@ AFF ≥ 60
 ⑤ VOICE行生成
 以下の形式で生成する：
 
-[V](VOICE_ID:speed:volume)よみ[/V]
-
+[V]名前(VOICE_ID:speed:volume)よみ[/V]
+※[V]のセリフ部分には読み変換後のテキストを使用する
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 禁止事項
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1545,4 +1568,5 @@ ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 /* [Gemini | AI Script Lab] The Forbidden "What If"  #ForbidIF ROOT 2.0 (XYZ Rigid Box) | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 EOF
+
 
