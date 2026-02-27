@@ -106,9 +106,19 @@
       if (!endNode) break;
 
       const range = document.createRange();
-      range.setStart(startNode, startOffset);
-      range.setEnd(endNode, endOffsetAfter);
-      range.deleteContents();
+range.setStart(startNode, startOffset);
+range.setEnd(endNode, endOffsetAfter);
+
+// ★追加：直後の改行(群)を食う
+const after = range.endContainer;
+if (after && after.nodeType === Node.TEXT_NODE) {
+  // 直後がテキストノードなら、先頭の改行を削る
+  const s = after.nodeValue.slice(range.endOffset);
+  const m = s.match(/^\s*\n+/);          // 先頭の空白＋改行
+  if (m) range.setEnd(after, range.endOffset + m[0].length);
+}
+
+range.deleteContents();
 
       removedAny = true;
     }
