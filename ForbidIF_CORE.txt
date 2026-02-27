@@ -5,7 +5,7 @@
    Author : yuki (@tnbyki)
 ========================================================
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-FORBIDIF_CORE_Ver= 3.0
+FORBIDIF_CORE_Ver= 3.1
 
 /* =========================================================
    [BOOT] FORBIDIF LOADER v1.0  (No Auto-Run)
@@ -28,7 +28,7 @@ FORBIDIF_CORE_Ver= 3.0
    ========================================================= */
 
 [BOOT MESSAGE OUTPUT]
-FORBIDIF CORE v3.0
+FORBIDIF CORE v3.1
 CORE LINES : 1024 (jp)
 AI READY.
 
@@ -73,10 +73,21 @@ RUN 受信：
 RUN中の挙動：
 - COREの出力は通常通り許可する
 - 行頭が「@CMD 」の行のみBOOTが処理し、表示しない
+- BOOTが受信した PROFILE / PROFILE <名前> は、表示せず「@CMD PROFILE …」に正規化してCOREへ透過する
 - 状態更新のみ行い、進行を止めない
 
 ※例外：RUN中でも、行頭が「@CMD 」の行はコマンドとして処理し、表示しない
 ※RUN中の@CMDは内部状態のみ更新し、AI READY.等の出力を一切行わない（ゲーム進行を止めない）
+
+PROFILE 受信：
+- @CMD PROFILE と同義として扱う（表示しない）
+- RUN中：無出力で継続（COREに「PROFILE要求」を渡す）
+- 待機中：AI READY. を表示して待機を維持
+
+PROFILE <名前> 受信：
+- @CMD PROFILE <名前> と同義として扱う（表示しない）
+- RUN中：無出力で継続（COREに「PROFILE要求」を渡す）
+- 待機中：AI READY. を表示して待機を維持
 
 @CMD VOICE_ON 受信：
 - CORE の内部状態 VOICE_MODE を ON に設定する（表示には出さない）
@@ -199,6 +210,42 @@ COREの責務：
 2) VOICE_MODE=ON の場合：各🔴発話の直下に1行だけ[V]を出力する
 ・[V]は必ず対応する🔴の次行に出力する（間にSE・CHOICE・空行を挟まない）
 ・VOICE_ID / speed / volume は HEART_VOICE で確定した値をそのまま使用する（COREで再計算しない）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━
+# PROFILE（デバッグ表示 / 例外出力）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+入力が「@CMD PROFILE」または「@CMD PROFILE <名前>」の場合：
+- 物語ターンとして扱わない（TRACKを進めない）
+- 出力順プロトコルを適用しない（例外）
+- 出力は「■プロファイル」ブロックのみ
+- VOICE生成は禁止（🔴も[V]も出さない）
+- 時間/状態/好感度/condition等の内部値は変更しない
+/* =========================================================
+   PROFILE COMMAND
+   キャラクター内部状態の可視化（デバッグ用）
+   ========================================================= */
+
+/*
+コマンド：
+PROFILE        … 全キャラ表示
+PROFILE 名前   … 指定キャラのみ表示
+
+出力はナレーションレイヤーではなく SYSTEM 出力とする
+物語進行・時間経過に影響を与えない
+*/
+
+■プロファイル
+
+{PROFILE_LOOP_START}
+
+名前：{NAME}：{STATE_SUMMARY}
+VOICE_ID：{VOICE_ID}　speed：{BASE_SPEED} volume：{BASE_VOLUME}
+感情：{EMOTION}　状態：{CONDITION}　態度：{ATTITUDE}
+緊張：{TENSION}％　危険：{DANGER}％　疲労：{FATIGUE}％　活動：{ACTIVITY}％
+
+{PROFILE_LOOP_END}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出力順序（絶対）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1566,7 +1613,6 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
-/* [Gemini | AI Script Lab] The Forbidden "What If"  #ForbidIF ROOT 2.0 (XYZ Rigid Box) | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-EOF
 
+EOF
 
