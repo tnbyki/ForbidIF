@@ -4,8 +4,9 @@ TAPE_TITLE: AA AUDITION TALK TEST
 TAPE_VER: 1.1
 TAPE_BY: @yuki
 TAPE_MEMO: 応募者入替＋演技指示（FACE/手）＋衣装チェンジ（体形固定）＋パーツ表示
-
+==============================
 INPUT_SPEC_START
+==============================
 【AAマクロ存在チェック】
 
 @ForbidIF_AA_Girl が未定義の場合：
