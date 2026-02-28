@@ -1,58 +1,87 @@
 # ✅ ForbidIF VOICE Setup
 
-このドキュメントは「動かす」ためだけの手順です。
+→ 概要・特徴は README_VOICE.md を参照
 
 ---
 
-## 0) 必要なもの
+# ⚡ 最短1分クイックスタート
 
-- VOICEVOX
-- Python 3.x
-- Tampermonkey
-- ForbidIF_voice.js
-- ForbidIF_voice.py
+① VOICEVOX 起動  
+② python ForbidIF_voice.py  
+③ Tampermonkey を ON  
+④ @CMD VOICE_ON  
 
----
-
-## 1) VOICEVOX を起動
-
-VOICEVOX Engine を起動し、以下が開く状態にします：
-
-http://127.0.0.1:50021
+→ 発話の直下に [V] が出れば成功
 
 ---
 
-## 2) Python VOICE Server を起動
+# 🖼 Tampermonkey 設定手順
+
+1. Chrome に Tampermonkey をインストール  
+2. ダッシュボードを開く  
+3. 「＋ 新規スクリプト」  
+4. ForbidIF_voice.js を貼り付けて保存  
+5. Enabled を確認  
+
+対象ページで F12 → Console
+
+[TAM] injected
+
+が出ればOK
+
+---
+
+# 🖥 Python 起動コマンド
+
+## Windows
 
 python ForbidIF_voice.py
 
----
+または
 
-## 3) Tampermonkey を有効化
+py ForbidIF_voice.py
 
-- Tampermonkey をインストール
-- ForbidIF_voice.js を追加
-- 対象サイトで ON
+## Mac
 
----
-
-## 4) VOICE を ON にする
-
-@CMD VOICE_ON
+python3 ForbidIF_voice.py
 
 ---
 
-## 5) 動作確認
+# 🔧 ポート番号を変更した場合
 
-発話の直下に `[V]` 行が出たら成功です。
+ForbidIF_voice.py
 
-```text
-🔴名前：セリフ
-[V]名前(VOICE_ID:speed:volume)セリフ[/V]
-```
+app.run(port=5000)
+
+⬆ ここを変更
+
+Tampermonkey 側：
+
+WAN_ENDPOINT = "http://127.0.0.1:5000/voice_input"
+
+⬆ 同じ番号にする
 
 ---
 
-## 6) VOICE OFF
+# 📦 Downloads
 
-@CMD VOICE_OFF
+VOICEVOX  
+https://voicevox.hiroshiba.jp/
+
+Python  
+https://www.python.org/downloads/
+
+Tampermonkey  
+https://chromewebstore.google.com/
+
+---
+
+# ⚠️ Chrome の設定
+
+chrome://extensions/
+
+Tampermonkey  
+→ サイトアクセス許可
+
+自動再生ブロック  
+→ 許可
