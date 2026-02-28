@@ -21,10 +21,10 @@
 4. ForbidIF_voice.js を貼り付けて保存  
 5. Enabled を確認  
 
-画面の右下に[TAM: ON]になってれば動作している。
+**画面の右下に[TAM: ON]になってれば動作している。
 ※これはボタンになっていて、押すことによって、
 　VOICEBOXに送るパラメータが画面に表示される。
-CNTR+SHIFT+R　でリロードでTampermonkeyが有効になる場合があります。
+CNTR+SHIFT+R　でリロードでTampermonkeyが有効になる場合があります。**
 ---
 
 # 🖥 Python 起動コマンド
