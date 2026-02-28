@@ -1,8 +1,8 @@
-# 🎤 ForbidIF VOICE
+# 🎤 ForbidIF_CORE VOICE
 
 > 同じセリフでも、状況が変われば、声が変わる。
 
-ForbidIF VOICE は、AIの発話をリアルタイムで感情付き音声として再生するシステムです。  
+ForbidIF_CORE VOICE は、AIの発話をリアルタイムで感情付き音声として再生するシステムです。  
 ただの読み上げではなく、物語の状態・関係性・緊張度から声の速度・音量・キャラクター性を自動生成します。
 
 ---
@@ -59,4 +59,5 @@ VOICEVOX（音声合成）
 @CMD VOICE_ON
 @CMD VOICE_OFF
 ```
+
 
