@@ -4,7 +4,7 @@
 → 概要・特徴は README_VOICE.md を参照
 ---
 # ⚡ 最短1分クイックスタート
-
+概要
 1) VOICEVOX 起動  
 2) python ForbidIF_voice.py  
 3) Tampermonkey を ON  
@@ -14,7 +14,7 @@
 ---
 
 # 🖼 Tampermonkey 設定手順
-
+> 💡ダウンロードファイルは末端に記載
 1. Chrome に Tampermonkey をインストール  
 2. ダッシュボードを開く  
 3. 「＋ 新規スクリプト」  
