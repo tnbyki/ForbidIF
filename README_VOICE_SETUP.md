@@ -8,7 +8,7 @@
 1) VOICEVOX 起動  
 2) python ForbidIF_voice.py  
 3) Tampermonkey を ON  
-4) AI CHATで、ForbidIF_CORE.txt ※起動
+4) AI CHATで、ForbidIF_CORE.txt ※コピーペースト
 5) VOICE_ON ※音声モードをONに変更
 6) TAPEもしくは、手動入力でシナリオを開始
 ---
