@@ -1617,6 +1617,6 @@ ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 
 EOF
-
+/* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
 
 
