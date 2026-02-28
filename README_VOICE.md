@@ -20,6 +20,7 @@ ForbidIF_CORE VOICE は、AIの発話をリアルタイムで感情付き音声�
 
 ### 🎭 声が「キャラとして固定」される
 初登場時に VOICE_ID を決定し、セッション中は変更しません。
+>💡ForbidIF_COREから、対象人物の性別、性格より設定します。
 
 ### 💓 感情で「演技」が変わる
 同じセリフでも状況が違えば speed / volume が変化します。
@@ -59,5 +60,6 @@ VOICEVOX（音声合成）
 @CMD VOICE_ON
 @CMD VOICE_OFF
 ```
+
 
 
