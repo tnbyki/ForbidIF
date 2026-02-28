@@ -38,7 +38,7 @@ ForbidIF_CORE VOICE は、AIの発話をリアルタイムで感情付き音声�
 ## 🏗 Architecture
 
 ```text
-AI（ForbidIF CORE）
+AI（ForbidIF CORE & VOICE）
    ↓
 Tampermonkey（ForbidIF_voice.js）
    ↓
@@ -61,6 +61,7 @@ VOICEVOX（音声合成）
 @CMD VOICE_ON
 @CMD VOICE_OFF
 ```
+
 
 
 
