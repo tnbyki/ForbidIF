@@ -24,6 +24,7 @@ ForbidIF_CORE VOICE は、AIの発話をリアルタイムで感情付き音声�
 
 ### 💓 感情で「演技」が変わる
 同じセリフでも状況が違えば speed / volume が変化します。
+>💡ForbidIF_COREより、対象人物の状況により設定します。
 
 ### 🔉 漢字のよみかた
 漢字は一度AIが解釈するため、自然な感じで漢字を読みます。
@@ -60,6 +61,7 @@ VOICEVOX（音声合成）
 @CMD VOICE_ON
 @CMD VOICE_OFF
 ```
+
 
 
 
