@@ -41,11 +41,15 @@ python3 ForbidIF_voice.py
 
 # 🔧 ポート番号を変更した場合
 ForbidIF_voice.py
+
 app.run(port=5000)
+
 ⬆ ここを変更
 
 Tampermonkey 側：
+
 WAN_ENDPOINT = "http://127.0.0.1:5000/voice_input"
+
 ⬆ 同じ番号にする
 
 ---
