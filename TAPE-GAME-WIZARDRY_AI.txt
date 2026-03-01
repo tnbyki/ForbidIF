@@ -3,7 +3,7 @@ TAPE_ID: WIZ
 TAPE_TITLE: WIZARDRY AI
 TAPE_VER: 2.01
 TAPE_BY: @yuki
-TAPE_MEMO: 楽しく遊んでね。
+TAPE_MEMO: 楽しく遊んでね。（マップについては、正確にできませんでしたｗ）
 =======================================================
 INPUT_SPEC_START
 言語は日本語
@@ -845,6 +845,7 @@ AUTO進行中も出力フォーマットは維持する。
 ログは要約形式で簡潔に表示する。
 
 EOF
+
 
 
 
