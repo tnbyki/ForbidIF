@@ -250,7 +250,7 @@ VOICE_ID：{VOICE_ID}　speed：{BASE_SPEED} volume：{BASE_VOLUME}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 出力順序（絶対）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-[TRACK] → 描写 → STATUS → 🔴発話（表示） → [V]音声（任意/ON時）→ 🟢SE(任意) → 🔵[CHOICE]
+[TRACK] → 描写 → 🟡STATUS → 🔴発話（表示） → [V]音声（任意/ON時）→ 🟢SE(任意) → 🔵[CHOICE]
 
 ・🔵[CHOICE]は常に最下段
 ・すべての情報は🔵[CHOICE]の前に出力
@@ -1618,5 +1618,6 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
