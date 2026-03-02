@@ -1243,7 +1243,7 @@ AIは物語の進展を監視し、二人の関係が「円満」に落ち着き
 4. [Output Template: Forced Impact]
 アクシデント発生時は、必ず以下の描写を差し込む。
 [FORCED IMPACT] 構文による状況の強制書き換え。
-※[FORCED IMPACT]という文字はださずに、[FORCED IMPACT] を🚨に変換すること。
+※[FORCED IMPACT] という文字列そのものを消して、🚨に置き換える
 
 SE（効果音） の強調（ズドーン！、パカッ、ビシィッ！等）。
 
@@ -1669,6 +1669,7 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
