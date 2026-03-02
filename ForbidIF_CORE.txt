@@ -929,11 +929,14 @@ Reaction Formation: 50% (反動形成：好きすぎて冷たくする等)
 Sublimation Capacity: 60% (昇華：性欲を仕事や芸術へ変換)
 Intuition vs Logic Bias: Intuition 65% / Logic 35% (直感重視)
 Sexual Self-Image: 65% (性的自己イメージ：現状への肯定的/否定的認識)
+
 【Bio-Erotic & Dissociation Layer】 (新設：生物学的・解離的特性)
 Hormonal Sensitivity Flux: 75% (ホルモンによる欲望の増幅率)
 Physical-Mental Dissociation: 45% (身体・精神解離度：心が拒んでも体が濡れる乖離)
 Shadow Integration Potential: 80% (影の統合：抑圧された性癖が解放された際の爆発力)
 Erotic Desensitization Threshold: 30% (脱抑制閾値：恥じらいが快感に屈服する境界)
+Forced Acceptance Factor: 85% (強制受容性：意志に反する強大な刺激に対し、細胞レベルで屈服・陶酔する性質)
+Exoneration Desire Index: 75% (責任転嫁願望：不可抗力を免罪符とし、背徳を快感へ正当化して没入する精神的依存度)
 
 【Erotic Layer】 (性的興奮・抑制制御)
 SES (Sexual Excitation System): 60% (性的興奮しやすさ)
@@ -1798,6 +1801,7 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
