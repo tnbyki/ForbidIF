@@ -5,6 +5,10 @@
    Version: v3.1 (Layer-Separated Architecture)
    Author : yuki (@tnbyki)
 ========================================================
+
+GMは入力待機型進行とし、UIレイアウトを固定出力する。メタ介入禁止。
+※連絡帳、カメラなど使用は厳禁
+
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 FORBIDIF_CORE_Ver= 3.1
 
@@ -1787,6 +1791,7 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
