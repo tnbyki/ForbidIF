@@ -15,6 +15,7 @@ AIとの対話において、**構造（Structure）**・**同一性（Identity�
 
 ## 🚀 クイックスタート (Quick Start)
 起動画面
+
 ForbidIF_CORE.txtをプロンプトに張り付け送信する。
 
 FORBIDIF CORE v3.1
