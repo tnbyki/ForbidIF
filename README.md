@@ -14,6 +14,12 @@ AIとの対話において、**構造（Structure）**・**同一性（Identity�
 ---
 
 ## 🚀 クイックスタート (Quick Start)
+起動画面
+
+FORBIDIF CORE v3.1
+CORE LINES : 1024 (jp)
+AI READY.
+
 まずはプロトコルの精度を試したい場合、以下のプロンプトをコピーして送信してください。
 
 ### 1. 究極の選択（価値観の検証）
