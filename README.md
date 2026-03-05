@@ -15,9 +15,12 @@ AIとの対話において、**構造（Structure）**・**同一性（Identity�
 
 ## 🚀 クイックスタート (Quick Start)
 起動画面
+ForbidIF_CORE.txtをプロンプトに張り付け送信する。
 
 FORBIDIF CORE v3.1
+
 CORE LINES : 1024 (jp)
+
 AI READY.
 
 まずはプロトコルの精度を試したい場合、以下のプロンプトをコピーして送信してください。
