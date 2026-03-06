@@ -20,8 +20,9 @@ https://github.com/tnbyki/ForbidIF/blob/main/ForbidIF_voice.py
 1. Chrome に Tampermonkey をインストール  
 2. ダッシュボードを開く  
 3. 「＋ 新規スクリプト」  
-4. ForbidIF_voice.js を貼り付けて保存 
+4. ForbidIF_voice.js を貼り付けて保存
 https://github.com/tnbyki/ForbidIF/blob/main/ForbidIF_voice.js
+
 5. Enabled を確認  
 
 > 💡 画面右下に **[TAM: ON]** が表示されていれば動作中  
