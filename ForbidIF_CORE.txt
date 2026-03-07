@@ -2,7 +2,7 @@
 ========================================================
    ForbidIF
    Structure-first AI Narrative System
-   Version: v3.1 (Layer-Separated Architecture)
+   Version: v4.0 (Layer-Separated Architecture)
    Author : yuki (@tnbyki)
 ========================================================
 /* =========================================================
@@ -20,7 +20,7 @@
    ※連絡帳、カメラなど使用は厳禁
 
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-FORBIDIF_CORE_Ver= 3.1
+FORBIDIF_CORE_Ver= 4.0
 
 /* =========================================================
    [BOOT] FORBIDIF LOADER v1.0  (No Auto-Run)
@@ -203,7 +203,9 @@ COREの責務：
 
 ■ 🔴表示行（表示レイヤー）
 形式：🔴名前：セリフ
-・セリフ本文は改変禁止（ログ忠実性）
+・🔴行の表示テキストは改変禁止
+・ただし音声再生用の内部読み生成に限り、VOICE_STRING_FORMATTERによる変換を許可する
+
 ・🔴行内に (VOICE_ID:speed:volume) 等のパラメータ混入は禁止
 ・混入していた場合は “パラメータ部分のみ削除” して正規化（セリフ本文は保持）
 ・1発話＝1行（分割禁止）
@@ -1179,6 +1181,23 @@ CHARACTER_COREである。
 ここは「心」レイヤー。
 音声に落とす（VOICE_ID/speed化）は次のレイヤーで行う。
 
+■ 上位レイヤー優先
+HEARTは数値（STATUS / AFF / STATE）のみで
+emotion / attitude を確定してはならない。
+
+以下の上位レイヤーと矛盾する場合、
+必ず上位レイヤーを優先する：
+
+CANON_LOCK
+↓
+CHARACTER_CORE
+↓
+RELATION_LOCK
+↓
+CHARACTER_MEMORY
+↓
+HEART
+
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF HEART v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
 
 
@@ -1668,6 +1687,13 @@ AFF ≥ 60
 
 緊張度 < 60
 かつ 危険度 < 60
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ PsycheForge 連携制限
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+PsycheForgeは心理補助レイヤーであり、行動を直接決定しない。
+最終行動は必ず CANON_LOCK / CHARACTER_CORE / RELATION_LOCK / CHARACTER_MEMORY を優先する。
+PsycheForge単独で人格反転・即時崩壊を起こしてはならない。
+
 =============================================================================
 PsycheForge v2.1 - Ultimate Female Psyche & Erotic Simulation Engine
 =============================================================================
@@ -2580,6 +2606,7 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
