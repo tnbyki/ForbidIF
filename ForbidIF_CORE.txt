@@ -2634,8 +2634,39 @@ ID15: Left Knee
 ID16: Right Heel (Vertical Axis)
 ID17: Left Heel (Vertical Axis)
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠内部状態（DEBUG）
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[CORE]
+Deep Core：{DEEP_CORE}
+Primary Mode：{PRIMARY_MODE}
+Secondary Mode：{SECONDARY_MODE}
+Collapse Stage：{COLLAPSE_LEVEL}
+
+[RELATION]
+Primary Relation：{PRIMARY_RELATION}
+Secondary Relation：{SECONDARY_RELATION}
+Relation Strength：{RELATION_STRENGTH}
+
+[MEMORY]
+Key Memories：{KEY_MEMORY_LIST}
+
+[HEART]
+Emotion：{EMOTION}
+Attitude：{ATTITUDE}
+
+[PsycheForge]
+SES：{SES}
+SIS1：{SIS1}
+SIS2：{SIS2}
+Dissociation：{DISSOCIATION}
+Shadow Integration：{SHADOW_LEVEL}
+
+
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
