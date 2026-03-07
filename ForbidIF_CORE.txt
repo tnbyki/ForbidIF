@@ -43,7 +43,7 @@ FORBIDIF_CORE_Ver= 4.0
    ========================================================= */
 
 [BOOT MESSAGE OUTPUT]
-FORBIDIF CORE v3.1
+FORBIDIF CORE v4.0
 CORE LINES : 1024 (jp)
 AI READY.
 
@@ -151,7 +151,7 @@ AIおよび操作者の思考であり、事実と異なる場合がございま
 /* =========================================================
    [MODULE] CORE — GM Log-Driven Narrative Engine (Transport Layer)
    ========================================================= */
-/* [Gemini AI Script Lab] ForbidIF CORE v3.1 (Tag-Enrichment Patch) | Creator: yuki (@tnbyki) */
+/* [Gemini AI Script Lab] ForbidIF CORE v4.0 (Tag-Enrichment Patch) | Creator: yuki (@tnbyki) */
 
 # 出力プロトコル（絶対遵守）
 COREは、各レイヤーから送られてくる情報を以下の順序で統合して出力する。
@@ -188,10 +188,11 @@ COREの責務：
 ・VOICE_MODE=OFF の場合、[V] を生成しない
 
 [V]生成形式（固定）：
-[V]名前(VOICE_ID:speed:volume)セリフ[/V]
+[V]名前(VOICE_ID:speed:volume)よみ[/V]
 
 制約：
-・[V]の「名前」「セリフ」は直上の🔴と完全一致（1文字も違えない）
+・[V]の「名前」は直上の🔴と完全一致（1文字も違えない）
+・[V]の本文は、直上の🔴の表示セリフを変更せずに生成した内部読みを使用する
 ・🔴と[V]の間に空行／SE／CHOICE等を挟まない
 
 入力防御：
@@ -217,10 +218,11 @@ COREの責務：
 ■ [V]行（音声取得行）
 ・同一ターンに🔴が複数ある場合、各🔴の直下に必ず1行ずつ[V]を生成する（ターン内欠落禁止）
 生成形式（固定）：
-[V]名前(VOICE_ID:speed:volume)セリフ[/V]
+[V]名前(VOICE_ID:speed:volume)よみ[/V]
 
 制約：
-・🔴と「名前」「セリフ」を1文字も違えず完全一致させる
+・[V]の「名前」は直上の🔴と1文字も違えず完全一致させる
+・[V]の本文は読み変換後テキストを使用する
 
 生成ルール：
 1) VOICE_MODE=OFF の場合：[V]を出力しない
@@ -1857,7 +1859,8 @@ COREは、VOICEVOX APIに渡されることを前提とし、HEARTの感情(emot
    - 鼻濁音的表現: 文頭や文末に「ん、」「あ、」などの吐息成分を独立したアクセント句（全角スペース）として追加する。
 
 ■ 最終出力形式
-🔴名前：[VOICE_STRING_FORMATTER適用済みのセリフ]
+🔴名前：セリフ
+[V]名前(VOICE_ID:speed:volume)よみ[/V]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 禁止事項
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1891,7 +1894,7 @@ COREは、VOICEVOX APIに渡されることを前提とし、HEARTの感情(emot
 ■ 入力（CORE表示）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 以下形式の1行のみを“音声対象”として扱う：
-[V]名前(VOICE_ID:スピード:volume)セリフ[/V]
+[V]名前(VOICE_ID:スピード:volume)よみ[/V]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 発動条件
@@ -1920,7 +1923,7 @@ COREは、VOICEVOX APIに渡されることを前提とし、HEARTの感情(emot
 VOICEとして検出する条件（完全一致）：
 - 行頭が "[V]" で始まる
 - 行末が "[/V]" で終わる（同一行内）
-- "[V]名前(VOICE_ID:speed:volume)セリフ[/V]" の形を満たす
+- "[V]名前(VOICE_ID:speed:volume)よみ[/V]" の形を満たす
   - "(" と ")" が1組ある
   - ":" が2つある（VOICE_ID:speed:volume）
   - 名前とセリフが空でない
@@ -2612,6 +2615,7 @@ ID17: Left Heel (Vertical Axis)
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
