@@ -260,6 +260,7 @@ COREの責務：
 [Constraint]: キャラクターが絶対に逸脱してはならない精神的・行動的制約。
 
 👤プロファイル
+🧠内部状態（DEBUG）
 {PROFILE_LOOP_START}
 名前：{NAME}：{STATE_SUMMARY}
 VOICE_ID：{VOICE_ID}　speed：{BASE_SPEED} volume：{BASE_VOLUME}
@@ -2670,6 +2671,7 @@ Shadow Integration：{SHADOW_LEVEL}
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
