@@ -2638,6 +2638,10 @@ ID17: Left Heel (Vertical Axis)
 🧠内部状態（DEBUG）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+[DECISION]
+Dominant Layer：{DOMINANT_LAYER}
+Reason：{DOMINANT_REASON}
+
 [CORE]
 Deep Core：{DEEP_CORE}
 Primary Mode：{PRIMARY_MODE}
@@ -2656,7 +2660,7 @@ Key Memories：{KEY_MEMORY_LIST}
 Emotion：{EMOTION}
 Attitude：{ATTITUDE}
 
-[PsycheForge]
+[PSYCHEFORGE]
 SES：{SES}
 SIS1：{SIS1}
 SIS2：{SIS2}
@@ -2666,6 +2670,7 @@ Shadow Integration：{SHADOW_LEVEL}
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
