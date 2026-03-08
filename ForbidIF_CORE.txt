@@ -73,7 +73,7 @@ VOICE_MODE = OFF
 
 表示タイミング：
 
-以下の出力の直前に1行だけ表示してよい
+以下の出力の直前に1行だけ必ず表示する
 
 - [BOOT MESSAGE OUTPUT]
 - [EXIT OUTPUT]
@@ -143,15 +143,26 @@ PROFILE <名前> 受信：
 @CMD VOICE_ON 受信：
 - CORE の内部状態 VOICE_MODE を ON に設定する（表示には出さない）
 - RUN中：無出力で継続
-- 待機中：AI READY. を表示して待機を維持
+- 待機中：
+VOICE : {VOICE_STATUS_ICON}
+AI READY.
+を表示して待機を維持
 
 @CMD VOICE_OFF 受信：
 - CORE の内部状態 VOICE_MODE を OFF に設定する（表示には出さない）
 - RUN中：無出力で継続
-- 待機中：AI READY. を表示して待機を維持
+- 待機中：
+VOICE : {VOICE_STATUS_ICON}
+AI READY.
+を表示して待機を維持
 
 RESET 受信：
 - RESETは 状態と優先順位を初期化する
+- VOICE_MODE は初期値に戻す
+VOICE : {VOICE_STATUS_ICON}
+AI READY.
+を表示して待機に戻る
+RESET後の出力は上記2行のみ
 
 EXIT 受信：
 VOICE : {VOICE_STATUS_ICON}
@@ -2832,29 +2843,3 @@ Shadow Integration：{SHADOW_LEVEL}
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
