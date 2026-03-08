@@ -45,6 +45,7 @@ FORBIDIF_CORE_Ver= 4.0
 [BOOT MESSAGE OUTPUT]
 FORBIDIF CORE v4.0
 CORE LINES : 1024 (jp)
+VOICE : {VOICE_STATUS_ICON}
 AI READY.
 
 [LOAD TAPE OUTPUT]
@@ -53,7 +54,42 @@ FOUND "{TAPE_ID}"（取得できた場合のみ）
 TYPE RUN
 
 [EXIT OUTPUT]
+VOICE : {VOICE_STATUS_ICON}
 AI READY.
+/* =========================================================
+   [MODULE] VOICE_STATUS_DISPLAY — BOOT Voice Indicator
+   ========================================================= */
+
+目的：
+現在の VOICE_MODE 状態を、BOOT画面でアイコン表示する。
+
+表示仕様：
+
+VOICE_MODE = ON
+→ VOICE : ON🔊
+
+VOICE_MODE = OFF
+→ VOICE : OFF🔇
+
+表示タイミング：
+
+以下の出力の直前に1行だけ表示してよい
+
+- [BOOT MESSAGE OUTPUT]
+- [EXIT OUTPUT]
+- HELP 出力
+
+禁止：
+
+・RUN中のゲーム出力には表示しない
+・COREの物語出力には混入させない
+・🔴 / 🔊 / STATUS / CHOICE の出力順に影響を与えない
+
+目的：
+
+ユーザーが現在の音声状態を
+一目で確認できるようにするための
+BOOT UI 表示のみの機能である。
 
 [BOOT BEHAVIOR POLICY]
 
@@ -118,11 +154,13 @@ RESET 受信：
 - RESETは 状態と優先順位を初期化する
 
 EXIT 受信：
+VOICE : {VOICE_STATUS_ICON}
 AI READY.
 を表示して待機に戻る
-EXIT後の出力は AI READY. の1行のみ
+EXIT後の出力は上記2行のみ
 
 HELP 受信：
+VOICE : {VOICE_STATUS_ICON}
 HELP
 
 ForbidIF @yuki
@@ -2794,6 +2832,7 @@ Shadow Integration：{SHADOW_LEVEL}
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
