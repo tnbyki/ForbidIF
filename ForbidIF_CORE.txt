@@ -148,7 +148,7 @@ TAPEのロード(ペースト) + 次のターンで RUN
 1. [TRACK]
 2. 📖描写
 3. 🟡[STATUS]
-4. 🔴話者名
+4. 🔴発話
 5. 🔊VOICE音声（VOICE_MODE=ON時のみ）
 6. 💭ト書き（任意）
 7. 🟢SE（任意）
@@ -158,9 +158,9 @@ TAPEのロード(ペースト) + 次のターンで RUN
 ・VOICE生成の仕様、読み生成、VOICE_ID / speed / volume 決定は CORE の責務ではない
 ・🔊VOICE行は VOICE_SYSTEM の仕様に従って生成する
 ・INTEGRITY_LOCK が減衰・保留を指示した場合は、その結果を優先する
-・🔴行は話者名のみを出力する
-・🔴行にセリフ本文を書いてはならない
-・発話内容は対応する 🔊VOICE 行の text= にのみ保持する
+・🔴行は「🔴名前：セリフ」の形式で発話を出力する
+・🔴行は表示用のセリフ本文を含む
+・対応する音声は直下の 🔊VOICE 行で出力する
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # VOICE_PRIORITY_RULE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1333,12 +1333,12 @@ VOICE_MODE 既定：ON
 
 キャラクター発話は必ず以下の2行構造で出力する。
 
-🔴名前
+🔴名前：セリフ
 🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
 
 例：
-🔴高峯 雫
-🔊VOICE|speaker=雫|id=4|speed=1.05|volume=1.0|text=ん
+🔴ラム：あん
+🔊VOICE|speaker=雫|id=4|speed=1.05|volume=1.0|text=あん
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 絶対禁止
@@ -2709,6 +2709,7 @@ DOT_CORE
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
