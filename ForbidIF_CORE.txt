@@ -1317,15 +1317,23 @@ VOICE_MODE 既定：ON
 🔴名前：セリフ
 
 🔊音声形式：
-🔊[V]名前(VOICE_ID:speed:volume)よみ[/V]
+🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
 
-[V]行の出力ルール：
-・[V]行は必ず1行で出力する
+出力ルール：
+・🔊VOICE 行は必ず1行で出力する
 ・改行してはならない
 ・形式は必ず以下とする
-  🔊[V]名前(VOICE_ID:speed:volume)よみ[/V]
-・「ID:」「speed:」「volume:」の分解表記で出力してはならない
-・名前・パラメータ・よみを複数行に分離してはならない
+  🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
+・区切り文字は半角パイプ | のみを使用する
+・キーと値は = で結ぶ
+・キー名は speaker / id / speed / volume / text のみを使用する
+・キーの順序は必ず speaker → id → speed → volume → text とする
+・text は必ず最後に置く
+・🔊VOICE 行を自然文として整形してはならない
+・「id:」「speed:」「volume:」などのラベル分解表記をしてはならない
+・丸かっこ () を使用してはならない
+・コロン : を使った連結をしてはならない
+・🔊VOICE 行の前後に説明文を付けてはならない
 
 VOICE_ID
 0 : ナレーション　基準speed 0.98 / 基準volume 1.00
@@ -1384,10 +1392,10 @@ VOICE生成対象：
 ・🟢SEは音声化しない
 
 SELF-CHECK
-- 🔴発話があるなら、VOICE_MODE=ON時はその直下に対応する 🔊[V] 行がある
-- 🔊[V] 行だけの単独出力はない
+- 🔴発話があるなら、VOICE_MODE=ON時はその直下に対応する 🔊VOICE 行がある
+- 🔊VOICE 行だけの単独出力はない
+- 🔊VOICE 行は再整形しない
 - 🔵[CHOICE] は必ず最下段
-
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # INTEGRITY_LOCK
@@ -2072,6 +2080,7 @@ GRID 31x24
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
