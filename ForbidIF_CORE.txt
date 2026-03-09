@@ -149,14 +149,14 @@ TAPEのロード(ペースト) + 次のターンで RUN
 2. 📖描写
 3. 🟡[STATUS]
 4. 🔴発話
-5. 🔊[V]音声（VOICE_MODE=ON時のみ）
+5. 🔊VOICE音声（VOICE_MODE=ON時のみ）
 6. 💭ト書き（任意）
 7. 🟢SE（任意）
 8. 🔵[CHOICE]
 
 ・上記プロトコルに定義されていない文章を一切出力してはならない
 ・VOICE生成の仕様、読み生成、VOICE_ID / speed / volume 決定は CORE の責務ではない
-・COREは VOICE_SYSTEM から渡された確定済み [V] 行のみを結合・出力する
+・COREは VOICE_SYSTEM から渡された確定済み 🔊VOICE行のみを結合・出力する
 ・INTEGRITY_LOCK が減衰・保留を指示した場合は、その結果を優先する
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -508,7 +508,7 @@ Public Exposure → SIS2 +30% (初期) or Shadow Integration +15% (開発後)
 
 目的：
 物語ログから「気持ち（emotion / attitude / stability）」のみを確定する。
-VOICE_ID / speed / volume / 読み生成 / [V]生成は行わない。
+VOICE_ID / speed / volume / 読み生成 / 🔊VOICE生成は行わない。
 
 使用語彙（固定）：
 通常 / 喜び / 元気 / 焦り / 怒り / 照れ / 悲しい / ささやき / 真剣 / 疲れ
@@ -2080,6 +2080,7 @@ GRID 31x24
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
