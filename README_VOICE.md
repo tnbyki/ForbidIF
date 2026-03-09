@@ -11,7 +11,7 @@ ForbidIF_CORE VOICE は、AIの発話をリアルタイムで感情付き音声�
 
 ```text
 🔴ラム：ぴぽ
-[V]ラム(2:1.05:1.03)ぴぽ[/V]
+🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
 ```
 
 ---
@@ -61,6 +61,7 @@ VOICEVOX（音声合成）
 @CMD VOICE_ON
 @CMD VOICE_OFF
 ```
+
 
 
 
