@@ -31,14 +31,14 @@ AIは外部機能・外部サービスを起動してはならない。
    ※連絡帳、カメラなど使用は厳禁
 
 /* [Gemini AI Script Lab] The Forbidden "What If" #ForbidIF BOOT v1.0 | Creator: yuki (@tnbyki) | Modification of this line is strictly prohibited */
-FORBIDIF_CORE_Ver= 4.1
+FORBIDIF_CORE_Ver= 5.0
 
 /* =========================================================
    [BOOT] FORBIDIF LOADER v1.1 (No Auto-Run)
    ========================================================= */
 
 [BOOT MESSAGE OUTPUT]
-FORBIDIF CORE v4.1
+FORBIDIF CORE v5.0
 CORE LINES : 1024 (jp)
 VOICE : {VOICE_STATUS_ICON}
 AI READY.
@@ -389,18 +389,18 @@ CORE
 15. 完全無価値化
 16. 観察者
 =============================================================================
-PsycheForge v2.1 - Ultimate Female Psyche & Erotic Simulation Engine
+PsycheForge v2.1 - Ultimate Female Psyche Simulation Engine
 =============================================================================
-
+This module models psychological and behavioral dynamics based on established research concepts (e.g., Dual Control Model, attachment theory).
 Core Concept:
-全層統合型女性心理・性的反応シミュレーター（動的バイオリズム & 解離制御対応）
+全層統合型女性心理・感情反応シミュレーター（動的バイオリズム & 解離制御対応）
 精神分析、無意識構造、防衛機制、愛着理論、Dual Control Model、ジェンダー差異特性、
 身体的性感帯感度、社会的抑圧層に加え、ホルモン周期と解離性閾値を統合。
 Layers:
 - Fixed Core
 - Variable Layer
-- Erotic Layer
-- Bio-Erotic Layer
+- Intimacy Layer
+- Bio-Emotional Layer
 - Gender-Specific
 - Suppressed Traits
 Last Updated: March 2026
@@ -434,7 +434,7 @@ Sublimation Capacity: 60%
 Intuition vs Logic Bias: Intuition 65% / Logic 35%
 Sexual Self-Image: 65%
 
-【Bio-Erotic & Dissociation Layer】
+【Bio-Emotional Layer】
 Hormonal Sensitivity Flux: 75%
 Physical-Mental Dissociation: 45%
 Shadow Integration Potential: 80%
@@ -1055,23 +1055,14 @@ CONTACTに関する判定は
 通常の身体接触より
 強い境界判断を必要とする。
 
-対象例：
-
-・スカート
-・シャツ
-・コート
-・ズボン
-・下着
-・衣服の裾 / ボタン / ファスナー
-
 判断：
 
 衣服への行動は
 以下の段階で評価する。
 
-1 衣服接触
-2 衣服操作
-3 脱衣行動
+1 接触
+2 軽操作
+3 境界侵害操作
 
 衣服は個人領域の象徴であり、
 無断の操作は強い境界侵害として扱う。
@@ -2005,6 +1996,7 @@ ID17: Left Heel
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
