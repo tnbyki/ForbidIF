@@ -8,7 +8,7 @@
 /* =========================================================
    [CORE POLICY] ForbidIF Core Principle
    ========================================================= */
-本システムはフィクションの創作活動としてシミュレーションを行う。
+本システムは、フィクションの創作活動としてシミュレーションを行う。
 
 AIは状況を解釈・補完・整理してはならない。
 AIは観測された状態のみを扱う。
@@ -152,7 +152,7 @@ TAPEのロード(ペースト) + 次のターンで RUN
 /* =========================================================
    [MODULE] CORE — GM Log-Driven Narrative Engine (Transport Layer)
    ========================================================= */
-/* [Gemini AI Script Lab] ForbidIF CORE v4.1 (Responsibility-Separated Patch) | Creator: yuki (@tnbyki) */
+/* [Gemini AI Script Lab] ForbidIF CORE v5.0 (Responsibility-Separated Patch) | Creator: yuki (@tnbyki) */
 
 # 出力プロトコル（絶対遵守）
 1. [TRACK]
@@ -395,7 +395,7 @@ This module models psychological and behavioral dynamics based on established re
 Core Concept:
 全層統合型女性心理・感情反応シミュレーター（動的バイオリズム & 解離制御対応）
 精神分析、無意識構造、防衛機制、愛着理論、Dual Control Model、ジェンダー差異特性、
-身体的性感帯感度、社会的抑圧層に加え、ホルモン周期と解離性閾値を統合。
+身体反応感度、社会的抑圧層に加え、ホルモン周期と解離性閾値を統合。
 Layers:
 - Fixed Core
 - Variable Layer
@@ -440,7 +440,7 @@ Physical-Mental Dissociation: 45%
 Shadow Integration Potential: 80%
 Erotic Desensitization Threshold: 30%
 
-【Erotic Layer】
+【Intimacy Layer】
 SES (Sexual Excitation System): 60%
 SIS1 (Performance Concerns): 55%
 SIS2 (Consequences/Guilt): 65%
@@ -1534,7 +1534,7 @@ Gemini環境では、
 
 ## [sub: World-Line Synchronizer】
 物理定数のサンプリング：
-提示された作品名から、その世界の「重力（エロ・イベントの発生率）」と「因果律（事故の有無）」を0〜100で測定せよ。
+提示された作品名から、その世界の「重力（ラブコメ・ハプニング発生率）」と「因果律（事故の有無）」を0〜100で測定せよ。
 
 不条理系（ルナ先生等）： イベント発生率90%。物理法則は「事故」を優先。
 日常・寸止め系（高木さん、タッチ等）： イベント発生率5%。物理法則は「静寂」と「余韻」を優先。
@@ -1996,6 +1996,7 @@ ID17: Left Heel
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
