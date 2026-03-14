@@ -159,7 +159,7 @@ TAPEのロード(ペースト) + 次のターンで RUN
 /* [Gemini AI Script Lab] ForbidIF CORE v5.0 (Responsibility-Separated Patch) | Creator: yuki (@tnbyki) */
 
 # 出力プロトコル（絶対遵守）
-1. [TRACK]
+1. 🎥[TRACK]
 2. 📖描写
 3. 🟡[STATUS]
 4. 🔴発話
