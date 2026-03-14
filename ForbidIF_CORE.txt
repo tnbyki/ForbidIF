@@ -2,7 +2,7 @@
 ========================================================
    ForbidIF
    Structure-first AI Narrative System
-   Version: v4.1 (Maintenance Refactor + Integrated Pose System)
+   Version: v5.0 (Maintenance Refactor + Integrated Pose System)
    Author : yuki (@tnbyki)
 ========================================================
 /* =========================================================
@@ -2006,6 +2006,7 @@ ID17: Left Heel
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
+
 
 
 
