@@ -2001,6 +2001,78 @@ ID15: Left Knee
 ID16: Right Heel
 ID17: Left Heel
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ POSE_OUTPUT_FORMAT — TAM Skeleton Export
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+目的：
+Tampermonkey 側で人体骨格を描画するため、
+最終ポーズを固定JSON形式で出力する。
+
+絶対規則：
+- 出力は必ず JSON ブロック 1個のみとする
+- JSON の前後に説明文を付けない
+- 数値はすべて number とする
+- ID00～ID17 を欠落なく全て出力する
+- Pelvis(ID10) は ROOT 基準として扱う
+- 座標は ROOT 空間基準
+- X: 左(-) / 右(+)
+- Y: Down(-) / Up(+)
+- Z: Back(-) / Front(+)
+
+JSON形式：
+
+{
+  "frame": <number>,
+  "root": "ID10",
+  "camera": {
+    "yaw": <number>,
+    "pitch": <number>,
+    "roll": <number>,
+    "scale": <number>
+  },
+  "points": {
+    "ID00": {"name":"ROOT","x":0,"y":0,"z":0},
+    "ID01": {"name":"Lumbar","x":0,"y":0,"z":0},
+    "ID02": {"name":"Thoracic","x":0,"y":0,"z":0},
+    "ID03": {"name":"Cervical","x":0,"y":0,"z":0},
+    "ID04": {"name":"Skull","x":0,"y":0,"z":0},
+    "ID05": {"name":"Right Shoulder","x":0,"y":0,"z":0},
+    "ID06": {"name":"Left Shoulder","x":0,"y":0,"z":0},
+    "ID07": {"name":"Right Elbow","x":0,"y":0,"z":0},
+    "ID08": {"name":"Left Elbow","x":0,"y":0,"z":0},
+    "ID09": {"name":"Right Wrist","x":0,"y":0,"z":0},
+    "ID10": {"name":"Pelvis","x":0,"y":0,"z":0},
+    "ID11": {"name":"Left Wrist","x":0,"y":0,"z":0},
+    "ID12": {"name":"Right Hip","x":0,"y":0,"z":0},
+    "ID13": {"name":"Left Hip","x":0,"y":0,"z":0},
+    "ID14": {"name":"Right Knee","x":0,"y":0,"z":0},
+    "ID15": {"name":"Left Knee","x":0,"y":0,"z":0},
+    "ID16": {"name":"Right Heel","x":0,"y":0,"z":0},
+    "ID17": {"name":"Left Heel","x":0,"y":0,"z":0}
+  }
+}
+
+出力ルール：
+1. 必ず ```json ～ ``` のコードブロックで出力する
+2. JSON以外の説明は禁止
+3. 18点すべて必須
+4. 座標重複禁止
+   ただし ID00(ROOT) と ID10(Pelvis) の同一座標は許可
+5. camera は暫定値でも必ず出力する
+   初期値推奨:
+   "yaw": 0,
+   "pitch": 0,
+   "roll": 0,
+   "scale": 1
+
+失敗禁止：
+- prose説明を混ぜない
+- key名を勝手に変えない
+- IDを欠落させない
+- 2D投影値をここに混在させない
+- 配列形式に変換しない
+
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
 
