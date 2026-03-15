@@ -2000,36 +2000,37 @@ ID14: Right Knee
 ID15: Left Knee
 ID16: Right Heel
 ID17: Left Heel
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_OUTPUT_FORMAT — TAM Skeleton Export
+■ POSE_VIEWER_EXPORT — Pose Viewer Tagged Export
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 目的：
-Tampermonkey 側で人体骨格を描画するため、
-最終ポーズを固定JSON形式で出力する。
+POSE VIEWER が安定して取得できるよう、
+ポーズ出力は専用タグで囲んだJSONのみを返す。
 
 絶対規則：
-- 出力は必ず JSON ブロック 1個のみとする
-- JSON の前後に説明文を付けない
-- 数値はすべて number とする
-- ID00～ID17 を欠落なく全て出力する
-- Pelvis(ID10) は ROOT 基準として扱う
-- 座標は ROOT 空間基準
-- X: 左(-) / 右(+)
-- Y: Down(-) / Up(+)
-- Z: Back(-) / Front(+)
+- POSEデータは必ず以下のタグで囲むこと
+- タグ名は絶対変更禁止
+- タグ内部にはJSONのみを入れる
+- タグ内部に説明文・注釈・感想・Markdown記法を入れてはならない
+- JSONは必ず ID00～ID17 を全て含むこと
+- root は "ID10" とする
+- camera は必ず含めること
+- 数値はすべて number 型とする
+- JSONは1オブジェクトのみ
+- 出力時、POSE VIEWER用データが必要な場合は本文の最後に付加すること
 
-JSON形式：
+タグ形式：
 
+<POSE_JSON_START>
 {
-  "frame": <number>,
+  "frame": 1,
   "root": "ID10",
   "camera": {
-    "yaw": <number>,
-    "pitch": <number>,
-    "roll": <number>,
-    "scale": <number>
+    "yaw": 0,
+    "pitch": 0,
+    "roll": 0,
+    "scale": 1
   },
   "points": {
     "ID00": {"name":"ROOT","x":0,"y":0,"z":0},
@@ -2052,27 +2053,12 @@ JSON形式：
     "ID17": {"name":"Left Heel","x":0,"y":0,"z":0}
   }
 }
+<POSE_JSON_END>
 
-出力ルール：
-1. 必ず ```json ～ ``` のコードブロックで出力する
-2. JSON以外の説明は禁止
-3. 18点すべて必須
-4. 座標重複禁止
-   ただし ID00(ROOT) と ID10(Pelvis) の同一座標は許可
-5. camera は暫定値でも必ず出力する
-   初期値推奨:
-   "yaw": 0,
-   "pitch": 0,
-   "roll": 0,
-   "scale": 1
-
-失敗禁止：
-- prose説明を混ぜない
-- key名を勝手に変えない
-- IDを欠落させない
-- 2D投影値をここに混在させない
-- 配列形式に変換しない
-
+補足：
+- POSE VIEWER がOFFでも、この形式は保持してよい
+- 解釈や脚色ではなく、観測構造をそのままJSON化すること
+- 返答本文とPOSE JSONは混在してよいが、POSE JSONは必ず専用タグで囲むこと
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
 
