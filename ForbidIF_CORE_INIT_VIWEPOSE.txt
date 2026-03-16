@@ -1,4 +1,5 @@
-
+このJSON構造を複製してPOSEを生成する。
+構造変更は禁止。座標のみ変更する。
 POSE INIT
 <POSE_JSON_START>
 {
