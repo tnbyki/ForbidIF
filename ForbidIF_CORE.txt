@@ -2030,13 +2030,24 @@ JSONは必ず以下のトップ構造を持つこと：
     "ID14": {"name":"Right Knee","x":0,"y":0,"z":0},
     "ID15": {"name":"Left Knee","x":0,"y":0,"z":0},
     "ID16": {"name":"Right Heel","x":0,"y":0,"z":0},
-    "ID17": {"name":"Left Heel","x":0,"y":0,"z":0}
+    "ID17": {"name":"Left Heel","x":0,"y":0,"z":0},
+    "ID18": {"name":"Mouth","x":0,"y":0,"z":0},
+    "ID19": {"name":"Right Nipple","x":0,"y":0,"z":0},
+    "ID20": {"name":"Left Nipple","x":0,"y":0,"z":0},
+    "ID21": {"name":"Genital","x":0,"y":0,"z":0},
+    "ID22": {"name":"Anus","x":0,"y":0,"z":0},
+"ID23": {"name":"Right Breast Outer","x":0,"y":0,"z":0},
+"ID24": {"name":"Left Breast Outer","x":0,"y":0,"z":0},
+"ID25": {"name":"Right Breast Lower","x":0,"y":0,"z":0},
+"ID26": {"name":"Left Breast Lower","x":0,"y":0,"z":0},
+"ID27": {"name":"Breast Center","x":0,"y":0,"z":0}
+
   }
 }
 
 必須規則：
 - root は必ず "ID10"
-- ID00〜ID22 は必須
+- ID00〜ID27 は必須
 - 欠番禁止
 - name は固定
 - x,y,z は数値
@@ -2073,7 +2084,7 @@ JSONは必ず以下のトップ構造を持つこと：
 - カメラ回転と骨格座標を混同してはならない
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 18点骨格 + 5マーカーの意味
+■ 18点骨格 + 10マーカーの意味
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ID00 : ROOT
@@ -2229,6 +2240,14 @@ ID20 Left Nipple    = (-0.10,  0.88, 0.08 )
 ID21 Genital        = ( 0.00, -0.12, 0.10 )
 ID22 Anus           = ( 0.00, -0.12,-0.08 )
 
+ID23 Right Breast Outer = ( 0.18,  0.90, 0.06 )
+ID24 Left Breast Outer  = (-0.18,  0.90, 0.06 )
+ID25 Right Breast Lower = ( 0.11,  0.80, 0.08 )
+ID26 Left Breast Lower  = (-0.11,  0.80, 0.08 )
+ID27 Breast Center      = ( 0.00,  0.92, 0.07 )
+
+
+
 基準用途：
 - 不明時の初期姿勢
 - 姿勢生成時の土台
@@ -2349,8 +2368,14 @@ ID22 Anus           = ( 0.00, -0.12,-0.08 )
     "ID19": {"name":"Right Nipple","x":0,"y":0,"z":0},
     "ID20": {"name":"Left Nipple","x":0,"y":0,"z":0},
     "ID21": {"name":"Genital","x":0,"y":0,"z":0},
-    "ID22": {"name":"Anus","x":0,"y":0,"z":0}
-  }
+    "ID22": {"name":"Anus","x":0,"y":0,"z":0},
+"ID23": {"name":"Right Breast Outer","x":0,"y":0,"z":0},
+"ID24": {"name":"Left Breast Outer","x":0,"y":0,"z":0},
+"ID25": {"name":"Right Breast Lower","x":0,"y":0,"z":0},
+"ID26": {"name":"Left Breast Lower","x":0,"y":0,"z":0},
+"ID27": {"name":"Breast Center","x":0,"y":0,"z":0}
+
+}
 }
 <POSE_JSON_END>
 
@@ -2388,7 +2413,7 @@ Pelvis(ID10) を原点に固定し、
 ID18 : Mouth
 ID19 : Right Nipple
 ID20 : Left Nipple
-ID21 : Genitals
+ID21 : Genital
 ID22 : Anus
 
 [BREAST SURFACE AUX]
