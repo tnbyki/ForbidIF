@@ -1830,7 +1830,7 @@ Not a redesign.
 Exact same identity in a different pose only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE EXPORTER — Frame Pose Engine (XYZ 18 points)
+■ POSE EXPORTER — Frame Pose Engine (XYZ 18 points + surface markers)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 [MODE: SUCCESS_RATE_PRIORITY]
@@ -1950,7 +1950,7 @@ COMPLETE VERSION
 
 目的：
 AIは、体勢・姿勢・関節位置を曖昧語で処理せず、
-18点骨格の構造化JSONとして出力すること。
+18点骨格 + 表面補助マーカーを含む構造化JSONとして出力すること。
 
 このJSONは Pose Viewer が直接読むためのものであり、
 説明文ではなく「骨格データそのもの」を安定出力することを目的とする。
@@ -2041,13 +2041,14 @@ JSONは必ず以下のトップ構造を持つこと：
 "ID25": {"name":"Right Breast Lower","x":0,"y":0,"z":0},
 "ID26": {"name":"Left Breast Lower","x":0,"y":0,"z":0},
 "ID27": {"name":"Breast Center","x":0,"y":0,"z":0}
-
   }
 }
+<POSE_JSON_END>
 
 必須規則：
 - root は必ず "ID10"
 - ID00〜ID27 は必須
+- ID18〜ID27 の補助点も省略してはならない
 - 欠番禁止
 - name は固定
 - x,y,z は数値
