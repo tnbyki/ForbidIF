@@ -2370,6 +2370,13 @@ Pelvis(ID10) を原点に固定し、
 [POSE SURFACE MARKERS]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+胸部補助点は「骨格」ではなく「表面」を示す。
+胸の見た目差は、骨格変更ではなく補助点配置で表現する。
+骨格点は体の構造を表す。
+表面補助点は外形を表す。
+表面補助点は、必ず既存骨格点を基準として配置する。
+表面補助点は、対応する骨格点から大きく離れてはならない。
+
 以下は骨格関節ではなく、表面位置・輪郭補助用マーカーである。
 これらは姿勢把握とViewer表示補助のために用いる。
 
@@ -2410,6 +2417,22 @@ ID27 : Breast Center
 - ID19 / ID20 は ID27 より左右外側に配置する
 - ID23 / ID24 は ID19 / ID20 よりさらに外側輪郭として配置する
 - ID25 / ID26 は ID19 / ID20 より下側輪郭として配置する
+
+[ANCHOR RULE]
+表面補助点は必ず対応する骨格点を基準（anchor）として配置する。
+表面補助点は anchor からの相対位置として解釈する。
+[ANCHOR MAP]
+ID18  → ID03   (Mouth → Cervical)
+ID19  → ID02   (Right Nipple → Thoracic)
+ID20  → ID02   (Left Nipple  → Thoracic)
+ID23  → ID02   (Right Breast Outer → Thoracic)
+ID24  → ID02   (Left Breast Outer  → Thoracic)
+ID25  → ID02   (Right Breast Lower → Thoracic)
+ID26  → ID02   (Left Breast Lower  → Thoracic)
+ID27  → ID02   (Breast Center → Thoracic)
+
+ID21  → ID10   (Genitals → Pelvis)
+ID22  → ID10   (Anus → Pelvis)
 
 禁止:
 - 補助点をBONESに自動追加してはならない
