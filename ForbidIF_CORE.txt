@@ -2152,10 +2152,10 @@ ID03 : Cervical
 - Thoracicの上
 
 ID04 : Skull
-- 頭蓋アンカー
+- 頭頂寄りアンカー
 - Cervicalの上
 - 頭部外形生成の基準点
-- 頭頂点・顔中心点とは一致しない
+- 頭中心点とは一致しない
 
 ID05 : Right Shoulder
 - 右腕の付け根関節
