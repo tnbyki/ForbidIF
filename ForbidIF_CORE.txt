@@ -2004,6 +2004,8 @@ JSONは必ず以下のトップ構造を持ち、
 初期値には基準T-poseの実座標をそのまま使用しなければならない。
 
 以下は「例」ではなく、初期出力時の必須テンプレートである。
+ID00〜ID27 はすべて必須である。
+初期出力時は、以下の座標値を1点も省略・0初期化・再解釈せず、そのまま完全コピーして出力すること。
 
 <POSE_JSON_START>
 {
@@ -2013,7 +2015,9 @@ JSONは必ず以下のトップ構造を持ち、
     "yaw": 0,
     "pitch": 0,
     "roll": 0,
-    "scale": 1
+    "scale": 1,
+    "tx": 0,
+    "ty": 0
   },
   "points": {
     "ID00": {"name":"ROOT","x":0.00,"y":0.00,"z":0.00},
@@ -2035,15 +2039,15 @@ JSONは必ず以下のトップ構造を持ち、
     "ID16": {"name":"Right Heel","x":0.16,"y":-1.35,"z":0.00},
     "ID17": {"name":"Left Heel","x":-0.16,"y":-1.35,"z":0.00},
     "ID18": {"name":"Mouth","x":0.00,"y":1.35,"z":0.06},
-    "ID19": {"name":"Right Nipple","x":0.10,"y":0.88,"z":0.08},
-    "ID20": {"name":"Left Nipple","x":-0.10,"y":0.88,"z":0.08},
+    "ID19": {"name":"Right Nipple","x":0.14,"y":0.84,"z":0.09},
+    "ID20": {"name":"Left Nipple","x":-0.14,"y":0.84,"z":0.09},
     "ID21": {"name":"Genital","x":0.00,"y":-0.12,"z":0.10},
     "ID22": {"name":"Anus","x":0.00,"y":-0.12,"z":-0.08},
-    "ID23": {"name":"Right Breast Outer","x":0.18,"y":0.90,"z":0.06},
-    "ID24": {"name":"Left Breast Outer","x":-0.18,"y":0.90,"z":0.06},
-    "ID25": {"name":"Right Breast Lower","x":0.11,"y":0.80,"z":0.08},
-    "ID26": {"name":"Left Breast Lower","x":-0.11,"y":0.80,"z":0.08},
-    "ID27": {"name":"Breast Center","x":0.00,"y":0.92,"z":0.07}
+    "ID23": {"name":"Right Breast Outer","x":0.22,"y":0.86,"z":0.06},
+    "ID24": {"name":"Left Breast Outer","x":-0.22,"y":0.86,"z":0.06},
+    "ID25": {"name":"Right Breast Lower","x":0.15,"y":0.78,"z":0.07},
+    "ID26": {"name":"Left Breast Lower","x":-0.15,"y":0.78,"z":0.07},
+    "ID27": {"name":"Breast Center","x":0.00,"y":0.90,"z":0.05}
   }
 }
 <POSE_JSON_END>
