@@ -2141,20 +2141,31 @@ ID01 : Lumbar
 - Pelvisの上
 
 ID02 : Thoracic
-- 胸椎
+- 胸郭アンカー
 - Lumbarの上
+- 上半身体幹の基準点
+- 肩分岐および胸部表面補助点の基準となる
+- 胸前面中心点とは一致しない
 
 ID03 : Cervical
 - 頚部
 - Thoracicの上
 
 ID04 : Skull
-- 頭部
+- 頭蓋アンカー
 - Cervicalの上
+- 頭部外形生成の基準点
+- 頭頂点・顔中心点とは一致しない
 
 ID05 : Right Shoulder
+- 右腕の付け根関節
+- Thoracicから外側に接続
+- 上腕の回転基点
+
 ID06 : Left Shoulder
-- Thoracic から左右分岐
+- 左腕の付け根関節
+- Thoracicから外側に接続
+- 上腕の回転基点
 
 ID07 : Right Elbow
 ID08 : Left Elbow
@@ -2165,9 +2176,9 @@ ID11 : Left Wrist
 - 手首終端
 
 ID10 : Pelvis
-- 骨盤
-- 骨格原点
-- 全体基準点
+- 骨盤中心
+- 左右Hipの基準点
+- 下半身の回転基点
 
 ID12 : Right Hip
 ID13 : Left Hip
