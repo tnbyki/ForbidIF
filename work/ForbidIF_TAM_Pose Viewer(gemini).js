@@ -14,6 +14,7 @@
   const CANVAS_ID = 'gemini-pose-min-canvas';
 
     let isDragging = false;
+    let isPanning = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
 
@@ -41,7 +42,7 @@
   let pose = {
     frame: 1,
     root: 'ID10',
-    camera: { yaw: 0, pitch: 0, roll: 0, scale: 1 },
+    camera: { yaw: 0, pitch: 0, roll: 0, scale: 1, tx: 0, ty: 0 },
     points: {
       ID00: { name: 'ROOT', x: 0.00, y: 0.00, z: 0.00 },
       ID01: { name: 'Lumbar', x: 0.00, y: 0.45, z: 0.00 },
@@ -168,24 +169,57 @@ panel.appendChild(bodyWrap);
     canvas.style.borderRadius = '6px';
     canvas.style.display = 'block';
 canvas.addEventListener('mousedown', (e) => {
-  isDragging = true;
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
+
+  if (e.button === 1) {
+    isPanning = true;   // ホイール押し込み
+  } else {
+    isDragging = true;  // 左ドラッグ
+  }
 });
+
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  e.stopPropagation();
 
-  if (!pose.camera.scale) pose.camera.scale = 1;
+  ensureCameraDefaults();
 
-  pose.camera.scale += (e.deltaY < 0 ? 0.1 : -0.1);
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
 
-  if (pose.camera.scale < 0.2) pose.camera.scale = 0.2;
-  if (pose.camera.scale > 5) pose.camera.scale = 5;
+  const { fitScale } = getLayoutMetrics(
+    pose.points || {},
+    canvas.width,
+    canvas.height
+  );
+
+  const oldUserScale = pose.camera.scale || 1;
+  const oldScale = fitScale * oldUserScale;
+
+  const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  let newUserScale = oldUserScale * zoomFactor;
+
+  if (newUserScale < 0.2) newUserScale = 0.2;
+  if (newUserScale > 5) newUserScale = 5;
+
+  const newScale = fitScale * newUserScale;
+
+  const tx = pose.camera.tx || 0;
+  const ty = pose.camera.ty || 0;
+
+  const localX = (mx - canvas.width / 2 - tx) / oldScale;
+  const localY = -(my - canvas.height / 2 - ty) / oldScale;
+
+  pose.camera.scale = newUserScale;
+  pose.camera.tx = mx - canvas.width / 2 - localX * newScale;
+  pose.camera.ty = my - canvas.height / 2 + localY * newScale;
 
   drawPose();
-});
+}, { passive: false });
+
 document.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
 
   const dx = e.clientX - lastMouseX;
   const dy = e.clientY - lastMouseY;
@@ -193,13 +227,26 @@ document.addEventListener('mousemove', (e) => {
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
 
-  pose.camera.yaw += dx * 0.01;
-  pose.camera.pitch += dy * 0.01;
+  if (isDragging) {
 
-  drawPose();
+    pose.camera.yaw += dx * 0.01;
+    pose.camera.pitch += dy * 0.01;
+
+    drawPose();
+  }
+
+  if (isPanning) {
+
+    pose.camera.tx += dx;
+    pose.camera.ty += dy;
+
+    drawPose();
+  }
+
 });
- document.addEventListener('mouseup', () => {
+document.addEventListener('mouseup', () => {
   isDragging = false;
+  isPanning = false;
 });
     bodyWrap.appendChild(canvas);
 
@@ -214,8 +261,8 @@ document.addEventListener('mousemove', (e) => {
     row.style.gap = '4px';
     row.style.marginTop = '6px';
 
-    row.appendChild(makeButton('REDRAW', () => drawPose()));
-    row.appendChild(makeButton('SYNC', () => syncPose()));
+row.appendChild(makeButton('RESET', () => resetCamera()));
+row.appendChild(makeButton('SYNC', () => syncPose()));
 
 const camRow = document.createElement('div');
 camRow.style.display = 'flex';
@@ -279,10 +326,23 @@ bodyWrap.appendChild(camRow);
     return panel;
   }
 
-  function setStatus(text) {
-    const el = document.getElementById('pose-min-status');
-    if (el) el.textContent = text;
-  }
+function setStatus(text) {
+  const el = document.getElementById('pose-min-status');
+  if (el) el.textContent = text;
+}
+
+function ensureCameraDefaults() {
+
+  if (!pose.camera) pose.camera = {};
+  if (typeof pose.camera.yaw !== 'number') pose.camera.yaw = 0;
+  if (typeof pose.camera.pitch !== 'number') pose.camera.pitch = 0;
+  if (typeof pose.camera.roll !== 'number') pose.camera.roll = 0;
+  if (typeof pose.camera.scale !== 'number') pose.camera.scale = 1;
+  if (typeof pose.camera.tx !== 'number') pose.camera.tx = 0;
+  if (typeof pose.camera.ty !== 'number') pose.camera.ty = 0;
+
+}
+
 function rotatePoint(p, cam) {
   let x = p.x;
   let y = p.y;
@@ -313,6 +373,8 @@ function projectPoint(p) {
 }
 
 function computeLayout(points, width, height) {
+  ensureCameraDefaults();
+
   const projected = {};
   const ids = Object.keys(points || {});
   if (!ids.length) return projected;
@@ -337,21 +399,62 @@ function computeLayout(points, width, height) {
     (height - padding * 2) / spanY
   );
 
-  const userScale = pose?.camera?.scale || 1;
+  const userScale = pose.camera.scale || 1;
   const scale = fitScale * userScale;
 
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
+  const tx = pose.camera.tx || 0;
+  const ty = pose.camera.ty || 0;
+
   for (const id of ids) {
     const p = projected[id];
     projected[id] = {
-      x: width / 2 + (p.x - centerX) * scale,
-      y: height / 2 - (p.y - centerY) * scale
+      x: width / 2 + tx + (p.x - centerX) * scale,
+      y: height / 2 + ty - (p.y - centerY) * scale
     };
   }
 
   return projected;
+}
+
+function getLayoutMetrics(points, width, height) {
+  ensureCameraDefaults();
+
+  const ids = Object.keys(points || {});
+  if (!ids.length) {
+    return {
+      fitScale: 1,
+      centerX: 0,
+      centerY: 0
+    };
+  }
+
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+  for (const id of ids) {
+    const p = projectPoint(points[id]);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+
+  const spanX = Math.max(0.01, maxX - minX);
+  const spanY = Math.max(0.01, maxY - minY);
+  const padding = 22;
+
+  const fitScale = Math.min(
+    (width - padding * 2) / spanX,
+    (height - padding * 2) / spanY
+  );
+
+  return {
+    fitScale,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2
+  };
 }
 
   function drawPose() {
@@ -451,17 +554,9 @@ function syncPose() {
   let nextPoints = null;
   let nextRoot = parsed.root || pose.root;
 
-  // ─────────────
-  // 1. 通常のpose JSON
-  // ─────────────
   if (parsed.points && typeof parsed.points === 'object') {
     nextPoints = parsed.points;
-  }
-
-  // ─────────────
-  // 2. raw points JSON
-  // ─────────────
-  else if (
+  } else if (
     parsed.ID00 ||
     parsed.ID01 ||
     parsed.ID10 ||
@@ -469,43 +564,41 @@ function syncPose() {
     parsed.ID22
   ) {
     nextPoints = parsed;
-  }
-
-  // ─────────────
-  // 3. 不正
-  // ─────────────
-  else {
+  } else {
     setStatus('status: invalid pose shape');
     console.log('[POSE INVALID SHAPE]', parsed);
     return;
   }
 
   try {
+    ensureCameraDefaults();
+
+    const keepCamera = {
+      yaw: pose.camera.yaw,
+      pitch: pose.camera.pitch,
+      roll: pose.camera.roll,
+      scale: pose.camera.scale,
+      tx: pose.camera.tx,
+      ty: pose.camera.ty
+    };
 
     pose = {
       ...pose,
       ...parsed,
-
-      // cameraは維持
-      camera: pose.camera,
-
-      // root fallback
       root: nextRoot,
-
-      // points merge
+      camera: keepCamera,
       points: {
         ...pose.points,
         ...nextPoints
       }
     };
 
+    ensureCameraDefaults();
     drawPose();
 
     const count = Object.keys(pose.points || {}).length;
-
     console.log('[POSE DRAW OK]', count);
     setStatus(`status: pose updated (${count} points)`);
-
   } catch (err) {
     console.error('[POSE DRAW ERROR]', err);
     setStatus('status: draw error');
@@ -513,17 +606,58 @@ function syncPose() {
 }
 
 
-  function boot() {
-    getOrCreatePanel();
-    drawPose();
-    setStatus('status: boot ok');
-  }
+function boot() {
+  getOrCreatePanel();
+  ensureCameraDefaults();
+  drawPose();
+  startAutoSyncObserver();
+  setStatus('status: boot ok');
+}
 
-  boot();
-  window.addEventListener('load', boot);
-  setTimeout(boot, 500);
-  setTimeout(boot, 1500);
-  setTimeout(boot, 3000);
+let lastPoseBlock = '';
+let autoSyncObserverStarted = false;
+let autoSyncTimer = null;
+
+function checkAndAutoSyncPose() {
+  const text = document.body?.innerText || '';
+  const block = extractLatestPoseJsonBlock(text);
+
+  if (!block) return;
+  if (block === lastPoseBlock) return;
+
+  lastPoseBlock = block;
+  console.log('[POSE AUTO SYNC]');
+  syncPose();
+}
+
+function startAutoSyncObserver() {
+  if (autoSyncObserverStarted) return;
+  if (!document.body) return;
+
+  autoSyncObserverStarted = true;
+
+  const observer = new MutationObserver(() => {
+    clearTimeout(autoSyncTimer);
+    autoSyncTimer = setTimeout(() => {
+      checkAndAutoSyncPose();
+    }, 250);
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+
+  setTimeout(checkAndAutoSyncPose, 400);
+}
+
+boot();
+window.addEventListener('load', boot);
+setTimeout(boot, 500);
+setTimeout(boot, 1500);
+setTimeout(boot, 3000);
+
 })();
 function sanitizePoseJsonText(text) {
   if (!text) return '';
@@ -536,3 +670,13 @@ function sanitizePoseJsonText(text) {
     .replace(/,\s*([}\]])/g, '$1')           // 末尾カンマ除去
     .trim();
 }
+function resetCamera() {
+  pose.camera.yaw = 0;
+  pose.camera.pitch = 0;
+  pose.camera.roll = 0;
+  pose.camera.scale = 1;
+  pose.camera.tx = 0;
+  pose.camera.ty = 0;
+  drawPose();
+}
+
