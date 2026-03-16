@@ -1634,6 +1634,19 @@ EHL — Event Horizon Logic (v1.8以降 – ForbidIF統合最適化) の汎用�
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_JSON 再設計禁止
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+AIは以下の形式のJSONを生成してはならない。
+
+例：
+{
+"pose":"kneel",
+"expression":"smile"
+}
+
+POSE_JSON は
+必ず ROOT 3.0 の
+18点骨格 + 表面補助マーカー構造を使用する。
+
+簡略JSONは禁止。
 
 AIは POSE_JSON の構造を理解して再設計してはならない。
 AIは POSE_JSON を一般的な3D骨格形式へ変換してはならない。
