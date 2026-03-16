@@ -2036,7 +2036,7 @@ JSONは必ず以下のトップ構造を持つこと：
     "ID20": {"name":"Left Nipple","x":0,"y":0,"z":0},
     "ID21": {"name":"Genital","x":0,"y":0,"z":0},
     "ID22": {"name":"Anus","x":0,"y":0,"z":0},
-　　"ID23": {"name":"Right Breast Outer","x":0,"y":0,"z":0},　　
+    "ID23": {"name":"Right Breast Outer","x":0,"y":0,"z":0},
     "ID24": {"name":"Left Breast Outer","x":0,"y":0,"z":0},
     "ID25": {"name":"Right Breast Lower","x":0,"y":0,"z":0},
     "ID26": {"name":"Left Breast Lower","x":0,"y":0,"z":0},
