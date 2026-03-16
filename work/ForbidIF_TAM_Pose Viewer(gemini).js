@@ -13,6 +13,12 @@
   const PANEL_ID = 'gemini-pose-min-panel';
   const CANVAS_ID = 'gemini-pose-min-canvas';
 
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+
+
   const BONES = [
     ['ID04', 'ID03'],
     ['ID03', 'ID02'],
@@ -110,12 +116,48 @@ function extractLatestPoseJsonBlock(text) {
     panel.style.fontSize = '11px';
     panel.style.fontFamily = 'sans-serif';
 
-    const title = document.createElement('div');
-    title.textContent = 'POSE VIEWER';
-    title.style.fontWeight = '700';
-    title.style.marginBottom = '6px';
-    title.style.color = '#fff';
-    panel.appendChild(title);
+const headerRow = document.createElement('div');
+headerRow.style.display = 'flex';
+headerRow.style.justifyContent = 'space-between';
+headerRow.style.alignItems = 'center';
+headerRow.style.marginBottom = '6px';
+
+const title = document.createElement('div');
+title.textContent = 'POSE VIEWER';
+title.style.fontWeight = '700';
+title.style.color = '#fff';
+
+const toggleBtn = document.createElement('button');
+toggleBtn.textContent = 'CLOSE';
+toggleBtn.style.height = '24px';
+toggleBtn.style.border = '1px solid #444';
+toggleBtn.style.borderRadius = '6px';
+toggleBtn.style.background = '#111';
+toggleBtn.style.color = '#fff';
+toggleBtn.style.cursor = 'pointer';
+toggleBtn.style.fontSize = '11px';
+
+let isOpen = true;
+
+toggleBtn.addEventListener('click', () => {
+  const body = document.getElementById('pose-min-body');
+  if (!body) return;
+
+  isOpen = !isOpen;
+  body.style.display = isOpen ? 'block' : 'none';
+  toggleBtn.textContent = isOpen ? 'CLOSE' : 'OPEN';
+});
+
+
+headerRow.appendChild(title);
+headerRow.appendChild(toggleBtn);
+panel.appendChild(headerRow);
+
+const bodyWrap = document.createElement('div');
+bodyWrap.id = 'pose-min-body';
+panel.appendChild(bodyWrap);
+
+
 
     const canvas = document.createElement('canvas');
     canvas.id = CANVAS_ID;
@@ -125,13 +167,47 @@ function extractLatestPoseJsonBlock(text) {
     canvas.style.border = '1px solid #333';
     canvas.style.borderRadius = '6px';
     canvas.style.display = 'block';
-    panel.appendChild(canvas);
+canvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+});
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+
+  if (!pose.camera.scale) pose.camera.scale = 1;
+
+  pose.camera.scale += (e.deltaY < 0 ? 0.1 : -0.1);
+
+  if (pose.camera.scale < 0.2) pose.camera.scale = 0.2;
+  if (pose.camera.scale > 5) pose.camera.scale = 5;
+
+  drawPose();
+});
+document.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+
+  const dx = e.clientX - lastMouseX;
+  const dy = e.clientY - lastMouseY;
+
+  lastMouseX = e.clientX;
+  lastMouseY = e.clientY;
+
+  pose.camera.yaw += dx * 0.01;
+  pose.camera.pitch += dy * 0.01;
+
+  drawPose();
+});
+ document.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+    bodyWrap.appendChild(canvas);
 
     const meta = document.createElement('div');
     meta.id = 'pose-min-meta';
     meta.style.marginTop = '6px';
     meta.style.lineHeight = '1.3';
-    panel.appendChild(meta);
+    bodyWrap.appendChild(meta);
 
     const row = document.createElement('div');
     row.style.display = 'flex';
@@ -188,16 +264,16 @@ camRow.appendChild(makeButton('↓', () => {
   drawPose();
 }));
 
-panel.appendChild(camRow);
+bodyWrap.appendChild(camRow);
 
-    panel.appendChild(row);
+    bodyWrap.appendChild(row);
 
     const status = document.createElement('div');
     status.id = 'pose-min-status';
     status.style.marginTop = '6px';
     status.style.color = '#999';
     status.textContent = 'status: ready';
-    panel.appendChild(status);
+    bodyWrap.appendChild(status);
 
     document.body.appendChild(panel);
     return panel;
@@ -236,44 +312,47 @@ function projectPoint(p) {
   return { x: r.x, y: r.y };
 }
 
-  function computeLayout(points, width, height) {
-    const projected = {};
-    const ids = Object.keys(points || {});
-    if (!ids.length) return projected;
+function computeLayout(points, width, height) {
+  const projected = {};
+  const ids = Object.keys(points || {});
+  if (!ids.length) return projected;
 
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
 
-    for (const id of ids) {
-      const p = projectPoint(points[id]);
-      projected[id] = p;
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x);
-      minY = Math.min(minY, p.y);
-      maxY = Math.max(maxY, p.y);
-    }
-
-    const spanX = Math.max(0.01, maxX - minX);
-    const spanY = Math.max(0.01, maxY - minY);
-    const padding = 22;
-
-    const scale = Math.min(
-      (width - padding * 2) / spanX,
-      (height - padding * 2) / spanY
-    );
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-
-    for (const id of ids) {
-      const p = projected[id];
-      projected[id] = {
-        x: width / 2 + (p.x - centerX) * scale,
-        y: height / 2 - (p.y - centerY) * scale
-      };
-    }
-
-    return projected;
+  for (const id of ids) {
+    const p = projectPoint(points[id]);
+    projected[id] = p;
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
   }
+
+  const spanX = Math.max(0.01, maxX - minX);
+  const spanY = Math.max(0.01, maxY - minY);
+  const padding = 22;
+
+  const fitScale = Math.min(
+    (width - padding * 2) / spanX,
+    (height - padding * 2) / spanY
+  );
+
+  const userScale = pose?.camera?.scale || 1;
+  const scale = fitScale * userScale;
+
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  for (const id of ids) {
+    const p = projected[id];
+    projected[id] = {
+      x: width / 2 + (p.x - centerX) * scale,
+      y: height / 2 - (p.y - centerY) * scale
+    };
+  }
+
+  return projected;
+}
 
   function drawPose() {
     const panel = getOrCreatePanel();
@@ -343,7 +422,7 @@ if (meta) {
 }
   }
 
- function syncPose() {
+function syncPose() {
   const text = document.body?.innerText || '';
   const jsonText = extractLatestPoseJsonBlock(text);
 
@@ -369,16 +448,64 @@ if (meta) {
     return;
   }
 
-  if (!parsed.points || !parsed.root) {
+  let nextPoints = null;
+  let nextRoot = parsed.root || pose.root;
+
+  // ─────────────
+  // 1. 通常のpose JSON
+  // ─────────────
+  if (parsed.points && typeof parsed.points === 'object') {
+    nextPoints = parsed.points;
+  }
+
+  // ─────────────
+  // 2. raw points JSON
+  // ─────────────
+  else if (
+    parsed.ID00 ||
+    parsed.ID01 ||
+    parsed.ID10 ||
+    parsed.ID18 ||
+    parsed.ID22
+  ) {
+    nextPoints = parsed;
+  }
+
+  // ─────────────
+  // 3. 不正
+  // ─────────────
+  else {
     setStatus('status: invalid pose shape');
+    console.log('[POSE INVALID SHAPE]', parsed);
     return;
   }
 
   try {
-    pose = parsed;
+
+    pose = {
+      ...pose,
+      ...parsed,
+
+      // cameraは維持
+      camera: pose.camera,
+
+      // root fallback
+      root: nextRoot,
+
+      // points merge
+      points: {
+        ...pose.points,
+        ...nextPoints
+      }
+    };
+
     drawPose();
-    console.log('[POSE DRAW OK]');
-    setStatus('status: pose updated');
+
+    const count = Object.keys(pose.points || {}).length;
+
+    console.log('[POSE DRAW OK]', count);
+    setStatus(`status: pose updated (${count} points)`);
+
   } catch (err) {
     console.error('[POSE DRAW ERROR]', err);
     setStatus('status: draw error');
