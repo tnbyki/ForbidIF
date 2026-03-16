@@ -2135,6 +2135,7 @@ ROOT
 - Poseの基準点
 - 通常はPelvis(ID10)を使用
 - 全身姿勢の回転中心となる
+- Pose座標系の原点として扱う
 - 世界座標原点とは一致しない
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2192,6 +2193,7 @@ ID08 : Left Elbow
 - 腕の屈曲方向を決定する基準点
 
 ID09 : Right Wrist
+- 手首終端
 
 ID11 : Left Wrist
 - 手首終端
@@ -2526,6 +2528,9 @@ ID24  → ID02   (Left Breast Outer  → Thoracic)
 ID25  → ID02   (Right Breast Lower → Thoracic)
 ID26  → ID02   (Left Breast Lower  → Thoracic)
 ID27  → ID02   (Breast Center → Thoracic)
+
+胸補助点は骨格ではない。
+胸形状の変化は補助点のみで表現し、Thoracic・Shoulder・Spine 等の骨格点を変更してはならない。
 
 ID21  → ID10   (Genitals → Pelvis)
 ID22  → ID10   (Anus → Pelvis)
