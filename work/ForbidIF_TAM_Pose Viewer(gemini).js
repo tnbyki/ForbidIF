@@ -579,7 +579,9 @@ function drawLegBlock() {
     bodyColor
   );
 
-  drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, bodyColor);
+const pantsColor = 'rgba(140, 190, 240,  0.5 )'; // 薄い水色＋透明
+
+drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
   drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
 
   // === 腰楕円 ===
