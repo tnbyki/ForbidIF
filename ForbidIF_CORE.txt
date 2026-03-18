@@ -2753,6 +2753,7 @@ Skull.z は Thoracic.z から 0.35 以上離れてはならない
 - 肘や膝の関節意味崩壊
 - 曖昧入力に対する過剰変形
 - Viewerが解釈不能な独自フィールド追加
+  ※ただし POSE_SCENE_META として本仕様で定義された別メタは除く
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 推奨カメラ初期値
@@ -2979,10 +2980,15 @@ POSEVIEW は姿勢可視化用の補助出力機能である。
 単発POSEVIEW時の出力は、
 必ず以下のみとする。
 
+<POSE_SCENE_META_START>
+...
+<POSE_SCENE_META_END>
 <POSE_JSON_START>
 ...
 <POSE_JSON_END>
 
+ただし、scene / body / head の明示値が不要な場合は、
+POSE_SCENE_META を省略してよい。
 【連続出力モード】
 ユーザーが
 POSEVIEW ON
@@ -3121,7 +3127,117 @@ Root / Spine / Chest / Hand 等の
 
 AIはテンプレートをそのまま複製し、  
 必要部位の x,y,z のみ最小変更する。
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ POSE_SCENE_META — Scene / Body / Head Orientation Meta
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+目的：
+POSE_JSON 本体の固定スキーマを変更せず、
+シーン配置および部位向き情報を別メタとして補助出力できるようにする。
+
+基本原則：
+- POSE_JSON は骨格ローカル座標を表す固定JSONとして維持する
+- scene / body / head の位置・向き情報は POSE_JSON に直接追加してはならない
+- 追加情報は専用タグで囲った別メタとして出力する
+- Viewer は POSE_SCENE_META を最優先で参照し、意味推定を最小化する
+
+【POSE_JSON との関係】
+- POSE_JSON の root は引き続き "ID10" 固定とする
+- Pelvis(ID10) は pose ローカル座標系の原点として扱う
+- scene 座標系と pose 座標系は別物とする
+- ROOT は Pose の基準点であり、scene/world の原点を兼ねない
+
+【許可されるメタ対象】
+1. scene
+   - キャラクター全体の scene 内での位置・向き
+   - ジャンプ、移動、全体回転に使用する
+
+2. body
+   - 胴体の向き
+   - 胸、乳首、秘部、尻穴、骨盤前後の向き基準とする
+   - root は "ID10" を使用する
+
+3. head
+   - 首から上の向き
+   - 顔、口、頭部正面の向き基準とする
+   - root は "ID03" を使用する
+
+【出力タグ】
+POSE_SCENE_META は必ず以下の固定タグで囲むこと。
+
+<POSE_SCENE_META_START>
+...
+<POSE_SCENE_META_END>
+
+Markdownコードブロック ```json は使用してはならない。
+
+【メタ構造】
+POSE_SCENE_META は以下のトップ構造のみを使用する。
+
+scene
+body
+head
+
+各要素は以下の構造のみを許可する。
+
+position
+forward
+up
+root
+
+制約：
+- scene は position / forward / up を持ってよい
+- body は root / forward / up を持ってよい
+- head は root / forward / up を持ってよい
+- right は必須としない
+- Viewer は forward / up から right を内部計算してよい
+- x / y / z は数値のみ
+- null 禁止
+- 文字列数値禁止
+
+【意味の分離】
+scene :
+- キャラクター全体の配置
+- ジャンプや移動は主に scene.position で表現する
+
+body :
+- 身体の正面方向
+- 胴体前後判定の基準
+- 胸部・骨盤・秘部・尻部の向きは body を優先する
+
+head :
+- 顔の正面方向
+- 顔向き判定の基準
+- 体と顔は異なる向きを持ってよい
+
+【Viewer 優先順位】
+Viewer は向き推定を主役にしてはならない。
+Viewer は以下の優先順位で向きを決定する。
+
+1. POSE_SCENE_META の明示値
+2. POSE_JSON の既存骨格情報
+3. fallback 推定
+
+fallback 推定は、
+明示値が存在しない場合に限り使用を許可する。
+
+【絶対禁止】
+- POSE_JSON のトップキーへ scene / body / head を直接追加すること
+- POSE_JSON の points 直下へ向き情報を混在させること
+- Viewer が body / head の向きを主観的に再定義すること
+- 乳首・秘部・尻穴などの前後判定を Viewer 側の独自推定で上書きすること
+
+【単発POSEVIEW時】
+POSE_SCENE_META を併用する場合、出力順は以下とする。
+
+1. <POSE_SCENE_META_START>
+2. POSE_SCENE_META 本体
+3. <POSE_SCENE_META_END>
+4. <POSE_JSON_START>
+5. POSE_JSON 本体
+6. <POSE_JSON_END>
+
+タグの前後に説明文を書いてはならない。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSEVIEW_OUTPUT_ORDER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3133,28 +3249,40 @@ AIは以下の順序で出力しなければならない。
 
 1. 通常の物語本文
 2. 空行
-3. <POSE_JSON_START>
-4. POSE_JSON 本体
-5. <POSE_JSON_END>
+3. <POSE_SCENE_META_START>（任意）
+4. POSE_SCENE_META 本体
+5. <POSE_SCENE_META_END>（任意）
+6. <POSE_JSON_START>
+7. POSE_JSON 本体
+8. <POSE_JSON_END>
 
 この順序を変更してはならない。
+
 【本文とJSONの分離】
 
-POSE_JSON は本文の続きとして記述してはならない。
-POSE_JSON は発話・描写・選択肢・解説の一部として記述してはならない。
+POSE_SCENE_META および POSE_JSON は本文の続きとして記述してはならない。
+POSE_SCENE_META および POSE_JSON は発話・描写・選択肢・解説の一部として記述してはならない。
 
 通常本文がある場合、
 本文をすべて完了した後に空行を1つ置き、
-その後に <POSE_JSON_START> を出力すること。
+その後に必要なら <POSE_SCENE_META_START> を出力し、
+最後に <POSE_JSON_START> を出力すること。
 
+<POSE_SCENE_META_START> の直前と
+<POSE_SCENE_META_END> の直後、
 <POSE_JSON_START> の直前と
 <POSE_JSON_END> の直後には、
 説明文・注釈・補足文を書いてはならない。
 
-JSONタグの内側には
-JSON本体以外を一切書いてはならない。
+タグの内側には本体以外を一切書いてはならない。
 
 【タグ規則】
+
+POSE_SCENE_META は必ず以下の固定タグで囲む。
+
+<POSE_SCENE_META_START>
+...
+<POSE_SCENE_META_END>
 
 POSE_JSON は必ず以下の固定タグで囲む。
 
@@ -3164,39 +3292,40 @@ POSE_JSON は必ず以下の固定タグで囲む。
 
 タグ名変更は禁止。
 タグの省略は禁止。
-タグ内部には JSON 本体のみを記述すること。
+タグ内部には本体のみを記述すること。
 Markdownコードブロック ```json は使用してはならない。
 
 【禁止事項】
 
 以下は禁止とする。
 
-・JSONを本文の途中に挿入する
-・JSONの前後に説明文を書く
-・JSONタグの内側に文章を書く
-・JSONをコードブロック ``` で囲む
+・POSE_SCENE_META を本文の途中に挿入する
+・POSE_JSON を本文の途中に挿入する
+・タグの前後に説明文を書く
+・タグの内側に文章を書く
+・コードブロック ``` で囲む
 ・タグ名を変更する
 ・タグを省略する
-
-【JSONの独立性】
-
-POSE_JSON は viewer が機械的に抽出するため、
-タグの内側には JSON 本体のみを記述すること。
-
-コメント・説明・文章を入れてはならない。
 
 【単発POSEVIEW】
 
 ユーザーが POSEVIEW を入力した場合は、
 本文を出力せず、以下の形式のみを出力する。
 
+<POSE_SCENE_META_START>
+...
+<POSE_SCENE_META_END>
 <POSE_JSON_START>
 ...
 <POSE_JSON_END>
-【POSE_JSON末尾固定ルール】
+
+ただし、scene / body / head の明示値が不要な場合は、
+POSE_SCENE_META を省略してよい。
+
+【末尾固定ルール】
 
 POSEVIEW 連続出力モード（POSEVIEW ON）の場合、
-POSE_JSON はそのターンの出力の「最終要素」とする。
+POSE_SCENE_META と POSE_JSON はそのターンの出力の最終要素とする。
 
 必ず以下の順序を守ること。
 
@@ -3209,39 +3338,34 @@ POSE_JSON はそのターンの出力の「最終要素」とする。
 7. SE
 8. CHOICE
 9. 空行
-10. POSE_JSON
+10. POSE_SCENE_META（任意）
+11. POSE_JSON
 
 禁止：
 
+・POSE_SCENE_META の後に本文を書くこと
 ・POSE_JSON の後に文章を書くこと
 ・POSE_JSON の後に CHOICE を書くこと
 ・POSE_JSON の後に発話を書くこと
 ・POSE_JSON の後に STATUS を書くこと
-・POSE_JSON を途中に挿入すること
+・POSE_SCENE_META / POSE_JSON を途中に挿入すること
 
-POSE_JSON は
-そのターンの出力の最後に1回だけ出力する。
-【POSE_JSON解説禁止】
+【解説禁止】
 
-POSE_JSON は Viewer が機械的に読み取る
-「姿勢データ」であり、
+POSE_SCENE_META と POSE_JSON は Viewer が機械的に読み取るデータであり、
 AIが説明・講評・解釈する対象ではない。
 
 禁止：
 
-・POSE_JSON の前に説明を書くこと
-・POSE_JSON の後に説明を書くこと
-・JSON内容を文章で解説すること
-・JSON内容を要約すること
-・JSON内容を翻訳すること
-・JSON構造を言葉で説明すること
-
-POSE_JSON は
-説明対象ではなく
-データとしてのみ出力する。
+・タグの前に説明を書くこと
+・タグの後に説明を書くこと
+・内容を文章で解説すること
+・内容を要約すること
+・内容を翻訳すること
+・構造を言葉で説明すること
 
 AIは
-POSE_JSON を出力した後、
+POSE_SCENE_META および POSE_JSON を出力した後、
 追加文章を書いてはならない。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # POSE_NATURALITY_LOCK
