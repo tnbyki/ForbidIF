@@ -646,7 +646,7 @@ const headDrawForNeck = head
   : null;
 
 if (headDrawForNeck && shoulderCenterAdjusted) {
-  drawNeck(ctx, headDrawForNeck, shoulderCenterAdjusted, headRadius, bodyColor);
+drawNeck(ctx, headDrawForNeck, shoulderCenterAdjusted, headRadius, handColor);
 }
 const depthPlan = getDrawOrderFromDepth(pose.points || {}, pose.camera || {});
 const drawOrder = depthPlan.order;
@@ -1302,19 +1302,55 @@ function drawTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, color) 
 function drawNeck(ctx, headAnchor, shoulderCenter, headRadius, color) {
   if (!headAnchor || !shoulderCenter) return;
 
-const neckWidth = Math.max(10, headRadius * 0.26);
+  // 上は少しだけ太く
+  const neckWidthTop = Math.max(12, headRadius * 0.28);
+
+  // 下はしっかり太く（ここが今回のポイント）
+  const neckWidthBottom = neckWidthTop * 1.85;
 
   const neckTop = {
-    x: lerp(headAnchor.x, shoulderCenter.x, 0.22),
-    y: headAnchor.y + headRadius * 1.00
+    x: lerp(headAnchor.x, shoulderCenter.x, 0.24),
+    y: headAnchor.y + headRadius * 1.02
   };
 
   const neckBottom = {
-    x: lerp(headAnchor.x, shoulderCenter.x, 0.80),
-    y: lerp(headAnchor.y + headRadius, shoulderCenter.y, 0.64)
+    x: lerp(headAnchor.x, shoulderCenter.x, 0.74),
+    y: lerp(headAnchor.y + headRadius, shoulderCenter.y, 0.58)
   };
 
-  drawCapsule(ctx, neckTop, neckBottom, neckWidth, color);
+  // 台形っぽく描く
+  const dx = neckBottom.x - neckTop.x;
+  const dy = neckBottom.y - neckTop.y;
+  const len = Math.hypot(dx, dy) || 1;
+
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+
+  ctx.moveTo(
+    neckTop.x + nx * (neckWidthTop / 2),
+    neckTop.y + ny * (neckWidthTop / 2)
+  );
+
+  ctx.lineTo(
+    neckBottom.x + nx * (neckWidthBottom / 2),
+    neckBottom.y + ny * (neckWidthBottom / 2)
+  );
+
+  ctx.lineTo(
+    neckBottom.x - nx * (neckWidthBottom / 2),
+    neckBottom.y - ny * (neckWidthBottom / 2)
+  );
+
+  ctx.lineTo(
+    neckTop.x - nx * (neckWidthTop / 2),
+    neckTop.y - ny * (neckWidthTop / 2)
+  );
+
+  ctx.closePath();
+  ctx.fill();
 }
 function drawSoftTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, color) {
   if (!shoulderR || !shoulderL || !hipR || !hipL) return;
