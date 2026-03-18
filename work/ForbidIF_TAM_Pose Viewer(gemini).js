@@ -565,19 +565,21 @@ function drawLegBlock() {
   const rHeelDraw = spreadSidePoint(rHeel,  1, legWidth * 1.60, view);
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
-  drawCircle(
-    ctx,
-    { x: rHip.x - hipInset - hipBackShift, y: rHip.y },
-    hipRadius,
-    bodyColor
-  );
 
-  drawCircle(
-    ctx,
-    { x: lHip.x + hipInset - hipBackShift, y: lHip.y },
-    hipRadius,
-    bodyColor
-  );
+  //股関節の丸
+drawCircle(
+  ctx,
+  { x: rHip.x - hipInset * 1.6 - hipBackShift * 1.6, y: rHip.y },
+  hipRadius * 0.95,
+  footColor
+);
+
+drawCircle(
+  ctx,
+  { x: lHip.x + hipInset * 1.6 - hipBackShift * 1.6, y: lHip.y },
+  hipRadius * 0.95,
+  footColor
+);
 
 const pantsColor = 'rgba(140, 190, 240,  0.5 )'; // 薄い水色＋透明
 
@@ -585,27 +587,27 @@ drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
   drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
 
   // === 腰楕円 ===
-  if (rHip && lHip) {
-    const center = midpoint(rHip, lHip);
+  //if (rHip && lHip) {
+  //  const center = midpoint(rHip, lHip);
 
-    const dx = lHip.x - rHip.x;
-    const dy = lHip.y - rHip.y;
+//    const dx = lHip.x - rHip.x;
+  //  const dy = lHip.y - rHip.y;
 
-    const dist = Math.hypot(dx, dy);
-    const angle = Math.atan2(dy, dx);
+    //const dist = Math.hypot(dx, dy);
+    //const angle = Math.atan2(dy, dx);
 
-    const width = dist * 0.66;
-    const height = width * 0.6;
+    //const width = dist * 0.66;
+    //const height = width * 0.6;
 
-    drawRotatedEllipse(
-      ctx,
-      center,
-      width * 0.5,
-      height * 0.5,
-      angle,
-      bodyColor
-    );
-  }
+  //  drawRotatedEllipse(
+   //   ctx,
+    //  center,
+   //   width * 0.5,
+   //   height * 0.5,
+    //  angle,
+   //   bodyColor
+   // );
+  //}
 
   drawCapsule(ctx, rHip, rKneeDraw, thighWidthDraw, footColor);
   drawCapsule(ctx, rKneeDraw, rHeelDraw, legWidthDraw * 0.95, footColor);
@@ -2076,62 +2078,75 @@ function drawCrotchFill(ctx, pelvis, hipR, hipL, upperLegWidth, color) {
   const midHip = midpoint(hipR, hipL);
   if (!midHip) return;
 
+  // 上辺を広げる
+  const topY = pelvis.y - upperLegWidth * 0.34;
+  const topHalfWidth = upperLegWidth * 0.92;
+
+  const topLeft = {
+    x: midHip.x - topHalfWidth,
+    y: topY
+  };
+
+  const topRight = {
+    x: midHip.x + topHalfWidth,
+    y: topY
+  };
+
+  // 左右の下り始め
   const innerRightTop = {
-    x: hipR.x - upperLegWidth * 0.22,
-    y: hipR.y + upperLegWidth * 0.36
+    x: hipR.x - upperLegWidth * 0.46,
+    y: hipR.y + upperLegWidth * 0.02
   };
 
   const innerLeftTop = {
-    x: hipL.x + upperLegWidth * 0.22,
-    y: hipL.y + upperLegWidth * 0.36
+    x: hipL.x + upperLegWidth * 0.46,
+    y: hipL.y + upperLegWidth * 0.02
   };
 
-  const crotchTop = {
-    x: pelvis.x,
-    y: pelvis.y + upperLegWidth * 0.04
+  // 下は閉じる
+  const crotchBottom = {
+    x: midHip.x,
+    y: Math.max(innerRightTop.y, innerLeftTop.y) + upperLegWidth * 0.18
   };
 
-  const split = upperLegWidth * 0.22;
-
-  const crotchBottomR = {
-    x: midHip.x + split,
-    y: Math.max(innerRightTop.y, innerLeftTop.y) + upperLegWidth * 0.12
-  };
-
-  const crotchBottomL = {
-    x: midHip.x - split,
-    y: Math.max(innerRightTop.y, innerLeftTop.y) + upperLegWidth * 0.12
+  // 上辺を少し丸める
+  const topCtrl = {
+    x: midHip.x,
+    y: topY - upperLegWidth * 0.10
   };
 
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.moveTo(crotchTop.x, crotchTop.y);
 
+  ctx.moveTo(topLeft.x, topLeft.y);
+
+  // 上辺
+  ctx.quadraticCurveTo(
+    topCtrl.x,
+    topCtrl.y,
+    topRight.x,
+    topRight.y
+  );
+
+  // 右側
   ctx.quadraticCurveTo(
     innerRightTop.x,
     innerRightTop.y,
-    crotchBottomR.x,
-    crotchBottomR.y
+    crotchBottom.x,
+    crotchBottom.y
   );
 
-  ctx.quadraticCurveTo(
-    midHip.x,
-    crotchBottomR.y + upperLegWidth * 0.06,
-    crotchBottomL.x,
-    crotchBottomL.y
-  );
-
+  // 左側
   ctx.quadraticCurveTo(
     innerLeftTop.x,
     innerLeftTop.y,
-    crotchTop.x,
-    crotchTop.y
+    topLeft.x,
+    topLeft.y
   );
 
   ctx.closePath();
   ctx.fill();
 }
-
 function drawPelvisDiamond(ctx, pHipR, genital, pHipL, anus, color) {
   if (!pHipR || !genital || !pHipL || !anus) return;
 
