@@ -43,11 +43,19 @@ let sendInterceptorInstalled = false;
     ['ID15', 'ID17']
   ];
 
-  let pose = {
-    frame: 1,
-    root: 'ID10',
-    camera: { yaw: 0, pitch: 0, roll: 0, scale: 1, tx: 0, ty: 0 },
-    points: {
+const INTERNAL_CAMERA = {
+  yaw: 0,
+  pitch: 0,
+  roll: 0,
+  scale: 1,
+  tx: 0,
+  ty: 0
+};
+
+let pose = {
+  frame: 1,
+  root: 'ID10',
+  points: {
       ID00: { name: 'ROOT', x: 0.00, y: 0.00, z: 0.00 },
       ID01: { name: 'Lumbar', x: 0.00, y: 0.45, z: 0.00 },
       ID02: { name: 'Thoracic', x: 0.00, y: 0.95, z: 0.00 },
@@ -115,15 +123,14 @@ let fixedFitScale = null;
     return sanitizePoseJsonText(block);
   }
 
-  function ensureCameraDefaults() {
-    if (!pose.camera) pose.camera = {};
-    if (typeof pose.camera.yaw !== 'number') pose.camera.yaw = 0;
-    if (typeof pose.camera.pitch !== 'number') pose.camera.pitch = 0;
-    if (typeof pose.camera.roll !== 'number') pose.camera.roll = 0;
-    if (typeof pose.camera.scale !== 'number') pose.camera.scale = 1;
-    if (typeof pose.camera.tx !== 'number') pose.camera.tx = 0;
-    if (typeof pose.camera.ty !== 'number') pose.camera.ty = 0;
-  }
+function ensureCameraDefaults() {
+  if (typeof INTERNAL_CAMERA.yaw !== 'number') INTERNAL_CAMERA.yaw = 0;
+  if (typeof INTERNAL_CAMERA.pitch !== 'number') INTERNAL_CAMERA.pitch = 0;
+  if (typeof INTERNAL_CAMERA.roll !== 'number') INTERNAL_CAMERA.roll = 0;
+  if (typeof INTERNAL_CAMERA.scale !== 'number') INTERNAL_CAMERA.scale = 1;
+  if (typeof INTERNAL_CAMERA.tx !== 'number') INTERNAL_CAMERA.tx = 0;
+  if (typeof INTERNAL_CAMERA.ty !== 'number') INTERNAL_CAMERA.ty = 0;
+}
     function degToRad(v) {
   return v * Math.PI / 180;
 }
@@ -155,19 +162,18 @@ function applyForcedViewIfNeeded() {
 
   if (!forceFrontView) return;
 
-  pose.camera.yaw = 0;
-  pose.camera.pitch = 0;
-  pose.camera.roll = 0;
+  INTERNAL_CAMERA.yaw = 0;
+  INTERNAL_CAMERA.pitch = 0;
+  INTERNAL_CAMERA.roll = 0;
 }
 
 function resetCamera(withDraw = true) {
-  pose.camera.yaw = 0;
-  pose.camera.pitch = 0;
-  pose.camera.roll = 0;
-  pose.camera.scale = 1;
-  pose.camera.tx = 0;
-  pose.camera.ty = 0;
-  fixedFitScale = null;
+  INTERNAL_CAMERA.yaw = 0;
+  INTERNAL_CAMERA.pitch = 0;
+  INTERNAL_CAMERA.roll = 0;
+  INTERNAL_CAMERA.scale = 1;
+  INTERNAL_CAMERA.tx = 0;
+  INTERNAL_CAMERA.ty = 0;
 
   if (withDraw) {
     drawPose();
@@ -236,7 +242,7 @@ function rotatePoint(p, cam) {
   return { x: x2, y: y2, z: z2 };
 }
 function projectPoint(p) {
-  const r = rotatePoint(p, pose.camera || {});
+  const r = rotatePoint(p, INTERNAL_CAMERA);
   return {
     x: r.x,
     y: r.y
@@ -274,12 +280,12 @@ if (fixedFitScale == null) {
   fixedFitScale = autoFitScale;
 }
 
-const scale = fixedFitScale * (pose.camera.scale || 1);
+const scale = fixedFitScale * (INTERNAL_CAMERA.scale || 1);
 
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
-    const tx = pose.camera.tx || 0;
-    const ty = pose.camera.ty || 0;
+const centerX = (minX + maxX) / 2;
+const centerY = (minY + maxY) / 2;
+const tx = INTERNAL_CAMERA.tx || 0;
+const ty = INTERNAL_CAMERA.ty || 0;
 
     for (const id of ids) {
       const p = projected[id];
@@ -388,10 +394,12 @@ function drawPose() {
   const anus = P.ID22;
 
   const { fitScale } = getLayoutMetrics(pose.points || {}, canvas.width, canvas.height);
-  const currentScale = fitScale * (pose.camera.scale || 1);
+const currentScale = fitScale * (INTERNAL_CAMERA.scale || 1);
   const rawShoulderWidth = dist3D(pose.points.ID05, pose.points.ID06);
   const shoulderWidth = rawShoulderWidth * currentScale;
-  const pitch = pose.camera?.pitch || 0;
+const pitch = INTERNAL_CAMERA.pitch || 0;
+  const yaw = INTERNAL_CAMERA.yaw || 0;        // ← 追加
+
 
   // サイズ計算
   const lookUpHeadShrink = lerp(1.0, 0.78, smoothstep01(((-pitch) - 0.20) / 0.60));
@@ -402,7 +410,7 @@ function drawPose() {
   const legWidth = Math.max(8, Math.min(80, shoulderWidth * 0.24 || 11));
   const thighWidth = legWidth * 1.25;
 
-  const view = getViewMetrics(pose.points, pose.camera || {}, currentScale);
+const view = getViewMetrics(pose.points, INTERNAL_CAMERA, currentScale);
   const sideStrength = view.sideStrength;
   const frontBackSign = view.frontBackSign;
   const limbSideStrength = smoothstep01((sideStrength - 0.45) / 0.45);
@@ -422,21 +430,38 @@ function drawPose() {
   const shoulderNeckMid = mixPoint(shoulderMid, neck, 0.33);
   const shoulderCenter = midpoint(rShoulderDraw, lShoulderDraw) || chest || neck;
 
-  const rawFacing = getFacingClassFromCamera(pose.camera || {});
+const rawFacing = getFacingClassFromCamera(INTERNAL_CAMERA);
   let headFacing = rawFacing;
   let bodyFacing = rawFacing;
 
   // 各描画ブロックの定義
+   // ==================== 顔の上下ホラー対策版（改良） ====================
   const drawHeadBlock = () => {
-    const headCenterOffsetY = headRadius;
-    const headForwardDrop = headRadius * 0.20 * pitchForward;
-    const frontness = 1 - sideStrength;
-    const headBackLift = headRadius * 0.10 * frontness;
-    const headBackShiftX = (view?.frontBackSign ?? 0) * headRadius * 0.010 * sideStrength;
-    const headDraw = head ? { x: head.x - headBackShiftX, y: head.y + headCenterOffsetY + headForwardDrop - headBackLift } : null;
-    const yaw = pose.camera?.yaw || 0;
-    const facingLR = Math.sin(yaw) >= 0 ? -1 : 1;
-    const hairScale = headFacing === 5 ? 1.16 : 1.12;
+    if (!head) return;
+
+    const yawAbs = Math.abs(INTERNAL_CAMERA.yaw || 0);
+    const isStrongBack = yawAbs > Math.PI * 0.65;
+
+    let effectivePitch = INTERNAL_CAMERA.pitch || 0;
+    if (isStrongBack) {
+      effectivePitch *= 0.15;     // 上向きホラーを強く抑制
+    }
+
+    const headCenterOffsetY = headRadius * 0.92;
+    const headForwardDrop = headRadius * 0.18 * smoothstep01((effectivePitch - 0.15) / 0.75);
+    const headBackLift = headRadius * 0.12 * (1 - sideStrength);
+
+    let headDraw = {
+      x: head.x - (view?.frontBackSign ?? 0) * headRadius * 0.008 * sideStrength,
+      y: head.y + headCenterOffsetY + headForwardDrop - headBackLift
+    };
+
+    if (isStrongBack) {
+      headDraw.y += headRadius * 0.15;   // 少し多めに下にずらす
+    }
+
+    const facingLR = Math.sin(INTERNAL_CAMERA.yaw || 0) >= 0 ? -1 : 1;
+    const hairScale = headFacing === 5 ? 1.18 : 1.13;
 
     if (headFacing <= 3) {
       drawCircle(ctx, headDraw, headRadius, headColor);
@@ -450,89 +475,91 @@ function drawPose() {
   const drawTorsoBlock = () => {
     drawSimpleTorso(ctx, chest, pelvis, rShoulderDraw, lShoulderDraw, rHip, lHip, torsoColor, view);
     const breastRefs = { chest, pelvis, rShoulder: rShoulderDraw, lShoulder: lShoulderDraw, rHip, lHip };
-    drawBreasts(ctx, P, pose.points, bodyColor, breastRefs, pose.camera || {}, currentScale, view);
+drawBreasts(ctx, P, pose.points, bodyColor, breastRefs, INTERNAL_CAMERA, currentScale, view);
     drawBreastBridge(ctx, P, bodyColor, view);
     drawShoulderPeak(ctx, lShoulderDraw, shoulderNeckMid, rShoulderDraw, armWidth * 0.72, bodyColor);
   };
 
-  const drawLegBlock = () => {
-    const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
-    const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
-    const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
-    const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
-    const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
-    drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, footColor);
-    drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, footColor);
-    const pantsColor = 'rgba(140, 190, 240, 0.5)';
-    drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
-    drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
-    drawCapsule(ctx, rHip, rKneeDraw, thighWidthDraw, footColor);
-    drawCapsule(ctx, rKneeDraw, rHeelDraw, legWidthDraw * 0.95, footColor);
-    drawCapsule(ctx, lHip, lKneeDraw, thighWidthDraw, footColor);
-    drawCapsule(ctx, lKneeDraw, lHeelDraw, legWidthDraw * 0.95, footColor);
-    drawCenterLine(ctx, rHip, lHip, genital, anus, 'rgba(140,220,255,0.95)');
-  };
+const drawLegBlock = () => {
+  const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
+  const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
+  const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
+  const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
+  const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
+  drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, footColor);
+  drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, footColor);
+
+  const pantsColor = 'rgba(140, 190, 240, 0.5)';
+  drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
+  drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
+
+  drawCapsule(ctx, rHip, rKneeDraw, thighWidthDraw, footColor);
+  drawCapsule(ctx, rKneeDraw, rHeelDraw, legWidthDraw * 0.95, footColor);
+  drawCapsule(ctx, lHip, lKneeDraw, thighWidthDraw, footColor);
+  drawCapsule(ctx, lKneeDraw, lHeelDraw, legWidthDraw * 0.95, footColor);
+
+  // 足先の丸（ドラえもん風）
+  drawCircle(ctx, rHeelDraw, legWidthDraw * 0.62, footColor);
+  drawCircle(ctx, lHeelDraw, legWidthDraw * 0.62, footColor);
+
+  drawCenterLine(ctx, rHip, lHip, genital, anus, 'rgba(140,220,255,0.95)');
+};
   const drawArmBlock = () => {
     drawCapsule(ctx, rShoulderDraw, rElbow, armWidthDraw, handColor);
     drawCapsule(ctx, rElbow, rWrist, armWidthDraw * 0.92, handColor);
     drawCapsule(ctx, lShoulderDraw, lElbow, armWidthDraw, handColor);
     drawCapsule(ctx, lElbow, lWrist, armWidthDraw * 0.92, handColor);
+  // 手首の丸（ドラえもん風）
+  drawCircle(ctx, rWrist, armWidthDraw * 0.62, handColor);
+  drawCircle(ctx, lWrist, armWidthDraw * 0.62, handColor);
   };
 
-  // --- Zオーダー制御の核心部分 ---
-
+    // --- Zオーダー制御を単純化 ---
   const neckForwardTuck = headRadius * 0.10 * pitchForward;
-  const shoulderCenterAdjusted = shoulderCenter ? { x: shoulderCenter.x, y: shoulderCenter.y - neckForwardTuck } : shoulderCenter;
+  const shoulderCenterAdjusted = shoulderCenter
+    ? { x: shoulderCenter.x, y: shoulderCenter.y - neckForwardTuck }
+    : shoulderCenter;
+
   const headDrawForNeck = head ? {
     x: head.x - ((view?.frontBackSign ?? 0) * headRadius * 0.010 * sideStrength),
     y: head.y + headRadius + (headRadius * 0.20 * pitchForward) - (headRadius * 0.10 * (1 - sideStrength))
   } : null;
 
-  // 首の描画
   if (headDrawForNeck && shoulderCenterAdjusted) {
     drawNeck(ctx, headDrawForNeck, shoulderCenterAdjusted, headRadius, handColor);
   }
-  // ==================== Googleバグ完全対策・超強引版 ====================
-  let yaw = pose.camera?.yaw || 0;
-  while (yaw > Math.PI) yaw -= Math.PI * 2;
-  while (yaw < -Math.PI) yaw += Math.PI * 2;
-  const yawAbs = Math.abs(yaw);
 
-  // 強制的にバック扱いにする範囲をかなり広くする（-150度〜 -210度くらいまで）
-  const isBackView = (yawAbs > Math.PI * 0.40) || (getFacingClassFromCamera(pose.camera || {}) >= 4);
+const facingClass = getFacingClassFromCamera(INTERNAL_CAMERA);
 
-  console.log(`[POSE BACK CHECK] yaw=${yaw.toFixed(2)} isBackView=${isBackView} (forced)`);
+  const drawMap = {
+    legs: drawLegBlock,
+    torso: drawTorsoBlock,
+    arms: drawArmBlock,
+    head: drawHeadBlock
+  };
 
-  if (isBackView) {
-    drawHeadBlock();
-    drawLegBlock();
-    drawArmBlock();
-    drawTorsoBlock();
-  } else {
-    const depthPlan = getDrawOrderFromDepth(pose.points || {}, pose.camera || {});
-    const drawOrder = depthPlan.order;
-    const drawHeadLast = depthPlan.drawHeadLast;
+if (facingClass === 1 || facingClass === 2) {
+  // FRONT
+  drawLegBlock();
+  drawTorsoBlock();
+  drawArmBlock();
+  drawHeadBlock();
+} else if (facingClass === 4 || facingClass === 5) {
+  // BACK固定
+  drawHeadBlock();
+  drawLegBlock();
+  drawArmBlock();
+  drawTorsoBlock();
+} else {
+  // SIDEのみ深度
+  const depthPlan = getDrawOrderFromDepth(pose.points || {}, INTERNAL_CAMERA);
+  for (const key of depthPlan.order) {
+    drawMap[key]?.();
+  }
+}
 
-    const drawMap = {
-      legs: drawLegBlock,
-      torso: drawTorsoBlock,
-      arms: drawArmBlock,
-      head: drawHeadBlock
-    };
-
-    if (drawHeadLast) {
-      for (const key of drawOrder) {
-        if (key === 'head') continue;
-        drawMap[key]?.();
-      }
-      drawHeadBlock();
-    } else {
-      for (const key of drawOrder) {
-        drawMap[key]?.();
-      }
-    }
-  }  drawPointDots(ctx, P);
+  drawPointDots(ctx, P);
 }
 function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
   if (!leftShoulder || !rightShoulder) return;
@@ -549,7 +576,6 @@ function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
 function syncPose() {
   const text = document.body?.textContent || '';
   const jsonText = extractLatestPoseJsonBlock(text);
-
   if (!jsonText) return;
 
   let parsed;
@@ -560,54 +586,43 @@ function syncPose() {
   try {
     ensureCameraDefaults();
 
-    const inc = parsed.camera || {};
+    // Geminiのcameraはほぼ無視（yaw/pitchだけ自分のものを使う）
+    if (typeof parsed.camera?.scale === 'number') INTERNAL_CAMERA.scale = parsed.camera.scale;
+    if (typeof parsed.camera?.tx === 'number') INTERNAL_CAMERA.tx = parsed.camera.tx;
+    if (typeof parsed.camera?.ty === 'number') INTERNAL_CAMERA.ty = parsed.camera.ty;
 
-    // === 超強引に yaw を上書き ===
-    if (typeof inc.yaw === 'number') {
-      let y = inc.yaw;
-      if (Math.abs(y) > 4) y = y * Math.PI / 180;   // 度数法対応
-      while (y > Math.PI) y -= Math.PI * 2;
-      while (y < -Math.PI) y += Math.PI * 2;
-      pose.camera.yaw = y;
-      console.log(`[YAW FORCE] ${inc.yaw} → ${y.toFixed(3)}`);
-    }
-
-    if (typeof inc.pitch === 'number') pose.camera.pitch = inc.pitch;
-    if (typeof inc.roll === 'number') pose.camera.roll = inc.roll;
-    if (typeof inc.scale === 'number') pose.camera.scale = inc.scale;
-    if (typeof inc.tx === 'number') pose.camera.tx = inc.tx;
-    if (typeof inc.ty === 'number') pose.camera.ty = inc.ty;
-
-    if (forceFrontView) {
-      pose.camera.yaw = 0;
-      pose.camera.pitch = 0;
-    }
-
+    // pointsだけは更新
     pose.points = { ...pose.points, ...(parsed.points || parsed) };
     pose.root = parsed.root || pose.root;
+
+    if (forceFrontView) {
+      INTERNAL_CAMERA.yaw = 0;
+      INTERNAL_CAMERA.pitch = 0;
+    }
 
     fixedFitScale = null;
     drawPose();
 
-    console.log('[POSE DRAW OK] yaw=', pose.camera.yaw.toFixed(3));
-
+    console.log(`[POSE SYNC OK] yaw=${INTERNAL_CAMERA.yaw.toFixed(2)} pitch=${INTERNAL_CAMERA.pitch.toFixed(2)}`);
   } catch (e) {
     console.error(e);
   }
 }
 
-  function checkAndAutoSyncPose() {
-    const text = document.body?.textContent || '';
-    const block = extractLatestPoseJsonBlock(text);
+function checkAndAutoSyncPose() {
+  const text = document.body?.textContent || '';
+  const block = extractLatestPoseJsonBlock(text);
 
-    if (!block) return;
-    if (block === lastPoseBlock) return;
+if (!block || block.length < 50) return;
+if (block === lastPoseBlock) return;
 
-    lastPoseBlock = block;
-    console.log('[POSE AUTO SYNC]');
-    syncPose();
-  }
+// 手動操作中は自動同期しない
+if (isDragging || isPanning || isPanelDragging) return;
 
+  lastPoseBlock = block;
+  console.log('[POSE AUTO SYNC]');
+  syncPose();
+}
 function startAutoSyncObserver() {
   if (autoSyncObserverStarted) return;
   if (!document.body) return;
@@ -632,11 +647,12 @@ function startAutoSyncObserver() {
     }, 700);
   });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true
-  });
+const target = document.querySelector('main') || document.body;
+
+observer.observe(target, {
+  childList: true,
+  subtree: true
+});
 
   setTimeout(checkAndAutoSyncPose, 400);
 }
@@ -667,15 +683,15 @@ function installGlobalPointerHandlers() {
         setForceFrontUI(false, true);
       }
 
-pose.camera.yaw += dx * 0.01;
-pose.camera.pitch = clampPitch(pose.camera.pitch + dy * 0.01);
+INTERNAL_CAMERA.yaw += dx * 0.01;
+INTERNAL_CAMERA.pitch = clampPitch(INTERNAL_CAMERA.pitch + dy * 0.01);
 drawPose();
     }
 
     if (isPanning) {
-      pose.camera.tx += dx;
-      pose.camera.ty += dy;
-      drawPose();
+INTERNAL_CAMERA.tx += dx;
+INTERNAL_CAMERA.ty += dy;
+drawPose();
     }
   });
 
@@ -784,45 +800,45 @@ canvas.addEventListener('contextmenu', (e) => {
       if (e.button === 1) e.preventDefault();
     });
 
-    canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+ canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
 
-      ensureCameraDefaults();
+  ensureCameraDefaults();
 
-      const rect = canvas.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
 
-      const { fitScale } = getLayoutMetrics(
-        pose.points || {},
-        canvas.width,
-        canvas.height
-      );
+  const { fitScale } = getLayoutMetrics(
+    pose.points || {},
+    canvas.width,
+    canvas.height
+  );
 
-      const oldUserScale = pose.camera.scale || 1;
-      const oldScale = fitScale * oldUserScale;
+  const oldUserScale = INTERNAL_CAMERA.scale || 1;
+  const oldScale = fitScale * oldUserScale;
 
-      const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-      let newUserScale = oldUserScale * zoomFactor;
+  const zoomFactor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  let newUserScale = oldUserScale * zoomFactor;
 
-      if (newUserScale < 0.2) newUserScale = 0.2;
-      if (newUserScale > 5) newUserScale = 5;
+  if (newUserScale < 0.2) newUserScale = 0.2;
+  if (newUserScale > 5) newUserScale = 5;
 
-      const newScale = fitScale * newUserScale;
+  const newScale = fitScale * newUserScale;
 
-      const tx = pose.camera.tx || 0;
-      const ty = pose.camera.ty || 0;
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
 
-      const localX = (mx - canvas.width / 2 - tx) / oldScale;
-      const localY = -(my - canvas.height / 2 - ty) / oldScale;
+  const localX = (mx - canvas.width / 2 - tx) / oldScale;
+  const localY = -(my - canvas.height / 2 - ty) / oldScale;
 
-      pose.camera.scale = newUserScale;
-      pose.camera.tx = mx - canvas.width / 2 - localX * newScale;
-      pose.camera.ty = my - canvas.height / 2 + localY * newScale;
+  INTERNAL_CAMERA.scale = newUserScale;
+  INTERNAL_CAMERA.tx = mx - canvas.width / 2 - localX * newScale;
+  INTERNAL_CAMERA.ty = my - canvas.height / 2 + localY * newScale;
 
-      drawPose();
-    }, { passive: false });
+  drawPose();
+}, { passive: false });
 
     bodyWrap.appendChild(canvas);
 
@@ -900,38 +916,37 @@ camRow.appendChild(makeButton('FRONT', () => {
 camRow.appendChild(makeButton('BACK', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
-  pose.camera.yaw = Math.PI;
+  INTERNAL_CAMERA.yaw = Math.PI;
   drawPose();
 }));
 
 camRow.appendChild(makeButton('LEFT', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
-  pose.camera.yaw = -Math.PI / 2;
+  INTERNAL_CAMERA.yaw = -Math.PI / 2;
   drawPose();
 }));
 
 camRow.appendChild(makeButton('RIGHT', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
-  pose.camera.yaw = Math.PI / 2;
+  INTERNAL_CAMERA.yaw = Math.PI / 2;
   drawPose();
 }));
 
 camRow.appendChild(makeButton('TOP', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
-  pose.camera.pitch = Math.PI * 0.495;
+  INTERNAL_CAMERA.pitch = Math.PI * 0.495;
   drawPose();
 }));
 
 camRow.appendChild(makeButton('BOTTOM', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
-  pose.camera.pitch = -Math.PI * 0.495;
+  INTERNAL_CAMERA.pitch = -Math.PI * 0.495;
   drawPose();
 }));
-
 bodyWrap.appendChild(camRow);
 bodyWrap.appendChild(viewOptionRow);
 bodyWrap.appendChild(row);
@@ -956,11 +971,8 @@ function boot() {
   setStatus('status: boot ok');
 }
 
-  boot();
-  window.addEventListener('load', boot);
-  setTimeout(boot, 500);
-  setTimeout(boot, 1500);
-  setTimeout(boot, 3000);
+boot();
+window.addEventListener('load', boot, { once: true });
 function updateStripButtonLabel(btn) {
   if (!btn) return;
   btn.textContent = stripPoseJsonOnSend ? 'STRIP: ON' : 'STRIP: OFF';
@@ -1165,11 +1177,20 @@ function drawTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, color) 
 function drawNeck(ctx, headAnchor, shoulderCenter, headRadius, color) {
   if (!headAnchor || !shoulderCenter) return;
 
-  // 上は少しだけ太く
-  const neckWidthTop = Math.max(12, headRadius * 0.28);
+const yawAbs = Math.abs(INTERNAL_CAMERA.yaw || 0);
+  const isBackView = yawAbs > Math.PI * 0.6;   // 約110度以上でバック寄り
 
-  // 下はしっかり太く（ここが今回のポイント）
-  const neckWidthBottom = neckWidthTop * 1.85;
+  // 上は少しだけ太く
+  let neckWidthTop = Math.max(12, headRadius * 0.28);
+
+  // 下はしっかり太く（ここがポイント）
+  let neckWidthBottom = neckWidthTop * 1.85;
+
+  // バックビューでは首を少し細く＆短めに調整
+  if (isBackView) {
+    neckWidthTop *= 0.85;
+    neckWidthBottom *= 0.78;
+  }
 
   const neckTop = {
     x: lerp(headAnchor.x, shoulderCenter.x, 0.24),
@@ -1181,7 +1202,12 @@ function drawNeck(ctx, headAnchor, shoulderCenter, headRadius, color) {
     y: lerp(headAnchor.y + headRadius, shoulderCenter.y, 0.58)
   };
 
-  // 台形っぽく描く
+  // バックビューでは首の位置を少し下にずらして自然に見せる
+  if (isBackView) {
+    neckTop.y += headRadius * 0.08;
+    neckBottom.y += headRadius * 0.05;
+  }
+
   const dx = neckBottom.x - neckTop.x;
   const dy = neckBottom.y - neckTop.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -2047,7 +2073,7 @@ function drawBreastBridge(ctx, projected, color, view) {
   const nippleL = projected?.ID20;
   const bustCenter = projected?.ID27;
 
-  const pitch = Math.abs(pose?.camera?.pitch || 0);
+const pitch = Math.abs(INTERNAL_CAMERA.pitch || 0);
   if (pitch > 1.0) return;
 
   const frontVisibility = clamp(view?.frontVisibility ?? 1, 0, 1);
@@ -2568,38 +2594,32 @@ function getAverageRotatedZ(rawPoints, ids, cam) {
   return count ? (sum / count) : 0;
 }
 function getDrawOrderFromDepth(rawPoints, cam) {
-  const pitch = cam?.pitch || 0;
-  let yaw = cam?.yaw || 0;
-
-  // yawを -π〜π に正規化
-  while (yaw > Math.PI) yaw -= Math.PI * 2;
-  while (yaw < -Math.PI) yaw += Math.PI * 2;
-  const yawAbs = Math.abs(yaw);
-
-  const lowAngleStrength = smoothstep01(((-pitch) - 0.18) / 0.80); // 見上げ時
-
-  // 真後ろ判定を少し広げる（お尻側も含む）
-  const nearBack = yawAbs > Math.PI * 0.75;   // ← ここを強化（以前は0.03だった）
-
   const headFront  = rotatePoint(rawPoints?.ID18 || rawPoints?.ID04 || rawPoints?.ID03, cam || {});
   const headCore   = rotatePoint(rawPoints?.ID04 || rawPoints?.ID03, cam || {});
   const neckCore   = rotatePoint(rawPoints?.ID03 || rawPoints?.ID02, cam || {});
   const chestCore  = rotatePoint(rawPoints?.ID02 || rawPoints?.ID01, cam || {});
   const pelvisCore = rotatePoint(rawPoints?.ID10 || rawPoints?.ID01, cam || {});
 
-  // 頭のZをより正確に（バック時は明確に奥へ）
-  let headZ = (headFront.z * 0.55) + (headCore.z * 0.30) + (neckCore.z * 0.15);
+  const headZ =
+    (headFront.z * 0.55) +
+    (headCore.z  * 0.30) +
+    (neckCore.z  * 0.15);
 
-  if (nearBack) {
-    headZ -= 0.45;   // ← ここを大きく（以前は0.12） → 頭を大幅に奥へ
-  } else if (yawAbs > Math.PI * 0.5) {
-    headZ -= 0.25;   // 斜め後ろも少し奥へ
-  }
+  const torsoZ =
+    (chestCore.z * 0.62) +
+    (pelvisCore.z * 0.38);
 
-  const torsoZ = (chestCore.z * 0.62) + (pelvisCore.z * 0.38);
+  const armsZ = getAverageRotatedZ(
+    rawPoints,
+    ['ID05','ID06','ID07','ID08','ID09','ID11'],
+    cam
+  );
 
-  const armsZ = getAverageRotatedZ(rawPoints, ['ID05','ID06','ID07','ID08','ID09','ID11'], cam);
-  const legsZ = getAverageRotatedZ(rawPoints, ['ID10','ID12','ID13','ID14','ID15','ID16','ID17'], cam);
+  const legsZ = getAverageRotatedZ(
+    rawPoints,
+    ['ID10','ID12','ID13','ID14','ID15','ID16','ID17'],
+    cam
+  );
 
   const items = [
     { name: 'legs',  z: legsZ },
@@ -2608,22 +2628,18 @@ function getDrawOrderFromDepth(rawPoints, cam) {
     { name: 'head',  z: headZ }
   ];
 
-  const tieBias = { legs: 0.00, torso: 0.01, arms: 0.02, head: 0.03 };
+  const tieBias = {
+    legs: 0.00,
+    torso: 0.01,
+    arms: 0.02,
+    head: 0.03
+  };
 
   items.sort((a, b) => (a.z + tieBias[a.name]) - (b.z + tieBias[b.name]));
 
-  let drawHeadLast = false;
-  // 真正面だけ頭を最後（以前のまま）
-  const nearFront = yawAbs < 0.12;
-  if (nearFront && lowAngleStrength < 0.22) {
-    drawHeadLast = true;
-  }
-
-  console.log(`[POSE Z-ORDER] yaw=${yaw.toFixed(2)} nearBack=${nearBack} headZ=${headZ.toFixed(3)} drawHeadLast=${drawHeadLast}`);
-
   return {
     order: items.map(v => v.name),
-    drawHeadLast
+    drawHeadLast: false
   };
 }
 function drawButtMass(ctx, pelvis, rHip, lHip, genital, anus, view) {
@@ -2635,7 +2651,7 @@ function drawButtMass(ctx, pelvis, rHip, lHip, genital, anus, view) {
   const rawRHip = pose?.points?.ID12;
   const rawLHip = pose?.points?.ID13;
   const hipSpan3D = dist3D(rawRHip, rawLHip);
-  const hipSpan = Math.max(14, hipSpan3D * (fixedFitScale || 1) * (pose.camera?.scale || 1));
+const hipSpan = Math.max(14, hipSpan3D * (fixedFitScale || 1) * (INTERNAL_CAMERA.scale || 1));
 
   // 尻の中心は pelvis→anus の中間寄り
   const buttBase = mixPoint(pelvis, anus, 0.58);
