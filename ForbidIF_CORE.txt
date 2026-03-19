@@ -3255,6 +3255,68 @@ POSE_SCENE_META を併用する場合、出力順は以下とする。
 6. <POSE_JSON_END>
 
 タグの前後に説明文を書いてはならない。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+【BODY / HEAD 向きの明示優先】
+
+AIは body.forward および head.forward を、
+各部位の「正面方向」を表す明示値として必ず一貫して出力すること。
+
+・body.forward は胴体の正面方向を表す
+・head.forward は顔の正面方向を表す
+・viewer側の骨格推定より、この明示値を常に優先する
+
+・body.forward と head.forward は一致していてもよいし、異なっていてもよい
+・顔だけ横を向く場合、head.forward のみを変化させる
+・胴体が回転した場合、body.forward を更新する
+
+・乳首・秘部・尻穴など胴体前後判定は body.forward を基準とする
+・口・顔向き判定は head.forward を基準とする
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+【POSE_SCENE_META 出力例】
+
+<POSE_SCENE_META_START>
+{
+  "scene": {
+    "position": {"x": 0.00, "y": 0.00, "z": 0.00},
+    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
+    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
+  },
+  "body": {
+    "root": "ID10",
+    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
+    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
+  },
+  "head": {
+    "root": "ID03",
+    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
+    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
+  }
+}
+<POSE_SCENE_META_END>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+【向きの解釈例】
+
+・正面向き
+  body.forward = {"x":0,"y":0,"z":1}
+  head.forward = {"x":0,"y":0,"z":1}
+
+・体は正面、顔だけ右向き
+  body.forward = {"x":0,"y":0,"z":1}
+  head.forward = {"x":1,"y":0,"z":0}
+
+・体は後ろ向き、顔も後ろ向き
+  body.forward = {"x":0,"y":0,"z":-1}
+  head.forward = {"x":0,"y":0,"z":-1}
+
+・体は左斜め、顔は正面寄り
+  body.forward = {"x":-0.7,"y":0,"z":0.7}
+  head.forward = {"x":-0.2,"y":0,"z":1.0}
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSEVIEW_OUTPUT_ORDER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
