@@ -742,6 +742,8 @@ function drawPose() {
   const neck = P.ID03;
   const chest = P.ID02;
   const pelvis = P.ID10;
+const hipR = P.ID12; // 右股関節
+const hipL = P.ID13; // 左股関節
 
   const rShoulder = P.ID05;
   const lShoulder = P.ID06;
@@ -836,52 +838,125 @@ const poseBasis = getMetaBasis(
 
   const shoulderMid = midpoint(rShoulderDraw, lShoulderDraw);
   const shoulderNeckMid = mixPoint(shoulderMid, neck, 0.33);
-  const shoulderCenter = midpoint(rShoulderDraw, lShoulderDraw) || chest || neck;
+   const skullTop3D = scenePoints['ID04'];
+  const neck3D = scenePoints['ID03'];
 
-  const neckForwardTuck = headRadius * 0.10 * pitchForward;
-  const shoulderCenterAdjusted = shoulderCenter
-    ? { x: shoulderCenter.x, y: shoulderCenter.y - neckForwardTuck }
+  const headCenter3D = (skullTop3D && neck3D) ? {
+    x: (skullTop3D.x + neck3D.x) * 0.5,
+    y: (skullTop3D.y + neck3D.y) * 0.5,
+    z: (skullTop3D.z + neck3D.z) * 0.5
+  } : null;
+
+  const neckProjected = headCenter3D
+    ? computeLayout(
+        {
+          ...scenePoints,
+          __HEAD_CENTER__: headCenter3D,
+          __NECK_POINT__: neck3D
+        },
+        canvas.width,
+        canvas.height
+      )
     : null;
 
-  const headDraw = {
-    x: head.x,
-    y: head.y + headRadius * 0.92 + headRadius * 0.18 * smoothstep01((pitch - 0.15) / 0.75) - headRadius * 0.12 * (1 - sideStrength)
+  const neckTop3D = headCenter3D && neck3D
+    ? {
+        x: headCenter3D.x + (neck3D.x - headCenter3D.x) * 0.65,
+        y: headCenter3D.y + (neck3D.y - headCenter3D.y) * 0.65,
+        z: headCenter3D.z + (neck3D.z - headCenter3D.z) * 0.65
+      }
+    : null;
+
+  const neckProjected2 = neckTop3D
+    ? computeLayout(
+        {
+          ...scenePoints,
+          __NECK_TOP__: neckTop3D,
+          __NECK_POINT__: neck3D
+        },
+        canvas.width,
+        canvas.height
+      )
+    : null;
+
+  const neckTop2D = neckProjected2?.__NECK_TOP__;
+  const neckBottom2D = neckProjected2?.__NECK_POINT__;
+  const neckWidth = Math.max(12, headRadius * 0.22);
+
+function drawHeadBlock() {
+  const skullTop = scenePoints['ID04'];
+  const neck = scenePoints['ID03'];
+  if (!skullTop || !neck) return;
+
+  const metaHead = poseSceneMeta?.head;
+  let f = metaHead?.forward || { x: 0, y: 0, z: 1 };
+
+  const normalize = (v) => {
+    const l = Math.hypot(v.x, v.y, v.z) || 1;
+    return { x: v.x / l, y: v.y / l, z: v.z / l };
   };
 
-  const headDrawForNeck = {
-    x: head.x,
-    y: head.y + headRadius + (headRadius * 0.20 * pitchForward) - (headRadius * 0.10 * (1 - sideStrength))
+  f = normalize(f);
+
+  // 頭の中心 = 頭頂(ID04) と 首(ID03) の中点
+  const headCenter = {
+    x: (skullTop.x + neck.x) * 0.5,
+    y: (skullTop.y + neck.y) * 0.5,
+    z: (skullTop.z + neck.z) * 0.5
   };
 
-  function drawHeadBlock() {
-    if (!head) return;
+  // 首方向ベクトル = 頭中心 → 首
+  let neckDir = {
+    x: neck.x - headCenter.x,
+    y: neck.y - headCenter.y,
+    z: neck.z - headCenter.z
+  };
+  neckDir = normalize(neckDir);
 
-    const isStrongBack = headFacing >= 4;
-    const headForwardView = rotatePoint(headBasis.forward, getViewCamera(INTERNAL_CAMERA));
-    const facingLR = headForwardView.x >= 0 ? 1 : -1;
-    const hairScale = headFacing === 5 ? 1.18 : 1.13;
+  // 口点 = 頭中心 + 前方向に少し + 首方向に少し
+  const mouthForwardOffset = 0.10;
+  const mouthNeckOffset = 0.093;
 
-    if (headFacing <= 3) {
-      drawCircle(ctx, headDraw, headRadius, headColor);
-      drawBobHair(ctx, headDraw, headRadius * hairScale, headFacing, facingLR);
-    } else {
-      drawCircle(ctx, headDraw, headRadius, bodyColor);
-      drawBobHair(ctx, headDraw, headRadius * hairScale, headFacing, facingLR);
-    }
+  const mouthPoint = {
+    x: headCenter.x + f.x * mouthForwardOffset + neckDir.x * mouthNeckOffset,
+    y: headCenter.y + f.y * mouthForwardOffset + neckDir.y * mouthNeckOffset,
+    z: headCenter.z + f.z * mouthForwardOffset + neckDir.z * mouthNeckOffset
+  };
+
+  const projected = computeLayout(
+    {
+      ...scenePoints,
+      __HEAD_CENTER__: headCenter,
+      __MOUTH_POINT__: mouthPoint
+    },
+    canvas.width,
+    canvas.height
+  );
+
+  const head2D = projected.__HEAD_CENTER__;
+  const mouth2D = projected.__MOUTH_POINT__;
+  if (!head2D || !mouth2D) return;
+
+  const cam = getViewCamera(INTERNAL_CAMERA);
+  const headR = rotatePoint(headCenter, cam);
+  const mouthR = rotatePoint(mouthPoint, cam);
+
+const headRad = headRadius * 1.15;
+const faceRad = headRad * 0.75;
+
+  const mouthFront = mouthR.z > headR.z;
+
+  if (mouthFront) {
+    drawCircle(ctx, head2D, headRad, '#8b5a2b');
+    drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+  } else {
+    drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+    drawCircle(ctx, head2D, headRad, '#8b5a2b');
   }
+}
 
-  function drawTorsoBlock() {
-    drawSimpleTorso(
-      ctx,
-      chest,
-      pelvis,
-      rShoulderDraw,
-      lShoulderDraw,
-      rHip,
-      lHip,
-      torsoColor,
-      view
-    );
+function drawTorsoBlock() {
+  drawBodySurface(ctx, P, scenePoints);
 
     const breastRefs = {
       chest,
@@ -1044,8 +1119,8 @@ const poseBasis = getMetaBasis(
     name: 'head',
     depth: headDepth,
     draw: () => {
-      if (headDrawForNeck && shoulderCenterAdjusted) {
-        drawNeck(ctx, headDrawForNeck, shoulderCenterAdjusted, headRadius, handColor, headFacing >= 4);
+      if (neckTop2D && neckBottom2D) {
+        drawNeckSimple(ctx, neckTop2D, neckBottom2D, neckWidth, handColor);
       }
       drawHeadBlock();
     }
@@ -1065,9 +1140,146 @@ const poseBasis = getMetaBasis(
   }
 
 
-  drawPointDots(ctx, P, scenePoints);
+drawPointDots(ctx, P, scenePoints);
+drawPointLabels(ctx, P, scenePoints);
 
   setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
+}
+
+function drawBodySurface(ctx, P, rawPoints) {
+  if (!P || !rawPoints) return;
+
+  const shoulderR = P.ID05;
+  const shoulderL = P.ID06;
+  const spine     = P.ID01;
+  const pelvis    = P.ID10;
+  const hipR      = P.ID12;
+  const hipL      = P.ID13;
+
+  if (!shoulderR || !shoulderL || !spine || !pelvis || !hipR || !hipL) return;
+
+  const rawHipR = rawPoints.ID12;
+  const rawHipL = rawPoints.ID13;
+
+  const pelvisWidth3D = (rawHipR && rawHipL)
+    ? dist3D(rawHipR, rawHipL)
+    : 0.32;
+
+  const panel = document.getElementById(PANEL_ID);
+  const canvas = panel?.querySelector('#' + CANVAS_ID);
+  const cw = canvas?.width || 500;
+  const ch = canvas?.height || 500;
+
+  const { fitScale } = getLayoutMetrics(rawPoints, cw, ch);
+  const currentScale = fitScale * (INTERNAL_CAMERA.scale || 1);
+
+  //⭐腰の幅
+const pelvisExpand = 1.0;
+  const minWidthPx = 10;
+
+  const width = Math.max(
+    minWidthPx,
+    pelvisWidth3D * pelvisExpand * currentScale
+  );
+
+  const dirLRaw = {
+    x: hipL.x - spine.x,
+    y: hipL.y - spine.y
+  };
+
+  const dirRRaw = {
+    x: hipR.x - spine.x,
+    y: hipR.y - spine.y
+  };
+
+  const dirLLen = Math.hypot(dirLRaw.x, dirLRaw.y) || 1;
+  const dirRLen = Math.hypot(dirRRaw.x, dirRRaw.y) || 1;
+
+  const dirL = {
+    x: dirLRaw.x / dirLLen,
+    y: dirLRaw.y / dirLLen
+  };
+
+  const dirR = {
+    x: dirRRaw.x / dirRLen,
+    y: dirRRaw.y / dirRLen
+  };
+
+const spineL = {
+  x: spine.x + dirL.x * width,
+  y: spine.y
+};
+
+const spineR = {
+  x: spine.x + dirR.x * width,
+  y: spine.y
+};
+//⭐下辺の広がり
+const bodyHipWidthScale = 1.5;
+
+  const bodyHipR = {
+    x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
+    y: hipR.y
+  };
+
+  const bodyHipL = {
+    x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
+    y: hipL.y
+  };
+
+  const ctrlShoulderL = {
+    x: shoulderL.x + (spineL.x - shoulderL.x) * 0.5,
+    y: shoulderL.y + (spineL.y - shoulderL.y) * 0.5
+  };
+//⭐カーブ
+  const hipCurveOut = 1.35;
+
+  const ctrlHipL = {
+    x: spineL.x + (bodyHipL.x - spineL.x) * hipCurveOut,
+    y: spineL.y + (bodyHipL.y - spineL.y) * 0.5
+  };
+
+  const ctrlHipR = {
+    x: spineR.x + (bodyHipR.x - spineR.x) * hipCurveOut,
+    y: spineR.y + (bodyHipR.y - spineR.y) * 0.5
+  };
+
+  const ctrlShoulderR = {
+    x: shoulderR.x + (spineR.x - shoulderR.x) * 0.5,
+    y: shoulderR.y + (spineR.y - shoulderR.y) * 0.5
+  };
+
+  ctx.beginPath();
+
+  ctx.moveTo(shoulderR.x, shoulderR.y);
+  ctx.lineTo(shoulderL.x, shoulderL.y);
+
+  ctx.quadraticCurveTo(
+    ctrlShoulderL.x, ctrlShoulderL.y,
+    spineL.x, spineL.y
+  );
+
+  ctx.quadraticCurveTo(
+    ctrlHipL.x, ctrlHipL.y,
+    bodyHipL.x, bodyHipL.y
+  );
+
+  ctx.lineTo(bodyHipR.x, bodyHipR.y);
+
+  ctx.quadraticCurveTo(
+    ctrlHipR.x, ctrlHipR.y,
+    spineR.x, spineR.y
+  );
+
+  ctx.quadraticCurveTo(
+    ctrlShoulderR.x, ctrlShoulderR.y,
+    shoulderR.x, shoulderR.y
+  );
+
+  ctx.closePath();
+
+  ctx.fillStyle = '#888';
+  ctx.fill();
 }
 function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
   if (!leftShoulder || !rightShoulder) return;
@@ -1771,64 +1983,9 @@ function drawTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, color) 
   const torsoWidth = Math.max(16, Math.min(40, Math.max(shoulderWidth * 0.55, hipWidth * 1.2)));
   drawCapsule(ctx, chest, pelvis, torsoWidth, color);
 }
-function drawNeck(ctx, headAnchor, shoulderCenter, headRadius, color, isBackView = false) {
-  if (!headAnchor || !shoulderCenter) return;
-
-  let neckWidthTop = Math.max(12, headRadius * 0.28);
-  let neckWidthBottom = neckWidthTop * 1.85;
-
-  if (isBackView) {
-    neckWidthTop *= 0.85;
-    neckWidthBottom *= 0.78;
-  }
-
-  const neckTop = {
-    x: lerp(headAnchor.x, shoulderCenter.x, 0.24),
-    y: headAnchor.y + headRadius * 1.02
-  };
-
-  const neckBottom = {
-    x: lerp(headAnchor.x, shoulderCenter.x, 0.74),
-    y: lerp(headAnchor.y + headRadius, shoulderCenter.y, 0.58)
-  };
-
-  if (isBackView) {
-    neckTop.y += headRadius * 0.08;
-    neckBottom.y += headRadius * 0.05;
-  }
-
-  const dx = neckBottom.x - neckTop.x;
-  const dy = neckBottom.y - neckTop.y;
-  const len = Math.hypot(dx, dy) || 1;
-
-  const nx = -dy / len;
-  const ny = dx / len;
-
-  ctx.fillStyle = color;
-  ctx.beginPath();
-
-  ctx.moveTo(
-    neckTop.x + nx * (neckWidthTop / 2),
-    neckTop.y + ny * (neckWidthTop / 2)
-  );
-
-  ctx.lineTo(
-    neckBottom.x + nx * (neckWidthBottom / 2),
-    neckBottom.y + ny * (neckWidthBottom / 2)
-  );
-
-  ctx.lineTo(
-    neckBottom.x - nx * (neckWidthBottom / 2),
-    neckBottom.y - ny * (neckWidthBottom / 2)
-  );
-
-  ctx.lineTo(
-    neckTop.x - nx * (neckWidthTop / 2),
-    neckTop.y - ny * (neckWidthTop / 2)
-  );
-
-  ctx.closePath();
-  ctx.fill();
+function drawNeckSimple(ctx, topPoint, bottomPoint, neckWidth, color) {
+  if (!topPoint || !bottomPoint) return;
+  drawCapsule(ctx, topPoint, bottomPoint, neckWidth, color);
 }
 function drawSoftTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, color) {
   if (!shoulderR || !shoulderL || !hipR || !hipL) return;
@@ -2454,145 +2611,74 @@ function drawSideTorso(ctx, P, rawPoints, color, cam, refs, view) {
   const shape = getSideTorsoShape(P, rawPoints, cam, refs, view);
   drawTorsoShape(ctx, shape, color);
 }
+
+
 function drawBreasts(ctx, projected, rawPoints, color, refs, cam, currentScale, view, bodyBasis, bodyFacing) {
   if (!projected || !rawPoints) return;
 
-  const chest = projected.ID02;
   const nippleR = projected.ID19;
   const nippleL = projected.ID20;
 
-  const rawChest = rawPoints.ID02;
   const rawNippleR = rawPoints.ID19;
   const rawNippleL = rawPoints.ID20;
   const rawOuterR = rawPoints.ID23;
   const rawOuterL = rawPoints.ID24;
   const rawLowerR = rawPoints.ID25;
   const rawLowerL = rawPoints.ID26;
+  const rawChest   = rawPoints.ID02;
   const rawRShoulder = rawPoints.ID05;
   const rawLShoulder = rawPoints.ID06;
 
-  if (!chest || !nippleR || !nippleL || !rawChest || !rawRShoulder || !rawLShoulder) return;
+  if (!nippleR || !nippleL || !rawChest || !rawRShoulder || !rawLShoulder) return;
 
-  // 背面では描かない。判定は root由来の bodyFacing だけを使う
-  if (bodyFacing >= 4) return;
-
-  const shoulderWidth3D = dist3D(rawRShoulder, rawLShoulder);
-
-  const rawSpineUpper = rawPoints.ID02; // Thoracic
-  const rawSpineLower = rawPoints.ID01; // Lumbar
-
-  // 前方向の出っ張り
+  // --- サイズ決定（シンプル合成） ---
   const forwardDepth = Math.max(
-    rawNippleR ? dist3D(rawSpineUpper, rawNippleR) : 0,
-    rawNippleL ? dist3D(rawSpineUpper, rawNippleL) : 0
+    rawNippleR ? dist3D(rawChest, rawNippleR) : 0,
+    rawNippleL ? dist3D(rawChest, rawNippleL) : 0
   );
 
-  // 横方向の広がり
   const lateralWidth = (
     rawOuterR && rawOuterL
       ? dist3D(rawOuterR, rawOuterL)
       : 0
   );
 
-  // 下方向のボリューム
   const lowerDrop = Math.max(
-    rawLowerR ? dist3D(rawSpineUpper, rawLowerR) : 0,
-    rawLowerL ? dist3D(rawSpineUpper, rawLowerL) : 0
+    rawLowerR ? dist3D(rawChest, rawLowerR) : 0,
+    rawLowerL ? dist3D(rawChest, rawLowerL) : 0
   );
 
-  // 胸の中心～乳首の基本距離も少しだけ混ぜる
-  const nippleDepth = Math.max(
-    rawNippleR ? dist3D(rawChest, rawNippleR) : 0,
-    rawNippleL ? dist3D(rawChest, rawNippleL) : 0
-  );
-
-  // リアル寄り合成
   const breastSize3D =
-    forwardDepth * 0.42 +
-    lateralWidth * 0.28 +
-    lowerDrop * 0.30 +
-    nippleDepth * 0.18;
+    forwardDepth * 0.5 +
+    lateralWidth * 0.3 +
+    lowerDrop   * 0.2;
 
-  // 最終半径
-  const radiusBase = clamp(
-    breastSize3D * currentScale * 0.42,
+  const radius = clamp(
+    breastSize3D * currentScale * 0.45,
     8,
     42
   );
 
-  // 背面へ行くほど縮小
-const radius = radiusBase;
-
-  const nippleDrop = radius * 0.18;
-
-  const nR = {
-    x: nippleR.x,
-    y: nippleR.y + nippleDrop
-  };
-
-  const nL = {
-    x: nippleL.x,
-    y: nippleL.y + nippleDrop
-  };
-
-  const sideStrength = view?.sideStrength || 0;
-const frontness = 1 - sideStrength;
-
-  // pitch は abs にしない
-  const pitchValue = cam?.pitch || 0;
-
-  // 見上げ（あおり）と見下ろしを分ける
-  const lookUpStrength = smoothstep01((-pitchValue - 0.35) / 0.75);
-  const lookDownStrength = smoothstep01(( pitchValue - 0.35) / 0.75);
-
-  // 俯瞰のときだけ潰す
-  const topFade = 1 - smoothstep01((lookDownStrength - 0.15) / 0.85);
-
-  // 乳首TOP基準
-  const forward = radius * lerp(0.45, 0.30, lookUpStrength);
-
-  // ベースの左右広がり
-  const spreadXBase = clamp(
-    shoulderWidth3D * currentScale * 0.03,
-    0,
-    radius * 0.22
-  ) * frontness;
-
-  // あおりでは左右に開きすぎない
-  const spreadX = spreadXBase * lerp(1.0, 0.22, lookUpStrength);
-
-  // 真横寄りでは胸本体を少し後ろへ逃がす
-const backShift = 0;
-
-  const inward = radius * 0.18;
-  const lookUpInward = radius * 0.16 * lookUpStrength;
-  const lift = radius * lerp(0.32, 0.18, lookUpStrength);
-
-  // あおり時は少し下側ボリュームを残す
-  const sag = radius * lerp(
-    lerp(0.18, 0.35, frontness),
-    0.28,
-    lookUpStrength
-  );
+  // --- 中心位置（乳首ベースで単純） ---
+  const drop = radius * 0.2;
 
   const centerR = {
-    x: nR.x + spreadX - backShift - inward - lookUpInward,
-    y: nR.y + radius - forward - lift + sag
+    x: nippleR.x,
+    y: nippleR.y + drop
   };
 
   const centerL = {
-    x: nL.x - spreadX - backShift + inward + lookUpInward,
-    y: nL.y + radius - forward - lift + sag
+    x: nippleL.x,
+    y: nippleL.y + drop
   };
 
-  const lookUpScale = lerp(1.0, 1.18, lookUpStrength);
+  // --- 形状（最小） ---
+  const sideStrength = view?.sideStrength || 0;
 
-  const baseRx = radius * lerp(1.0, 0.72, sideStrength) * lookUpScale;
-  const baseRy = radius * lerp(1.0, 0.92, sideStrength) * lookUpScale;
+  const rx = radius * (1 - sideStrength * 0.3);
+  const ry = radius;
 
-const rx = baseRx * lerp(0.72, 1.0, topFade);
-const ry = baseRy * lerp(0.58, 1.0, topFade);
-
+  // --- 描画（Z順は外で管理される前提） ---
   drawEllipse(ctx, centerR, rx, ry, color);
   drawEllipse(ctx, centerL, rx, ry, color);
 }
@@ -3803,6 +3889,35 @@ function getBodyForwardForDepth() {
   const basis = buildRootBasis(getPosePointsWithSceneOffset(pose.points || {}));
   return basis?.forward || { x: 0, y: 0, z: 1 };
 }
+function drawPointLabels(ctx, projected, rawPoints) {
+  if (!projected) return;
+
+  ctx.save();
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#00ff88';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+
+  for (const id in projected) {
+    if (id.startsWith('__')) continue;
+
+    const p = projected[id];
+    if (!p) continue;
+
+    // 点
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+
+    // ラベル
+    ctx.fillStyle = '#00ff88';
+const name = rawPoints?.[id]?.name || '';
+ctx.fillText(id + ' ' + name, p.x + 3, p.y);
+  }
+
+  ctx.restore();
+}
+
+
 function buildFallbackOutput(rawPose, prevState) {
   return {
     out: {
