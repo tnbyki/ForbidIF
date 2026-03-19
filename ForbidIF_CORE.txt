@@ -1631,38 +1631,7 @@ EHL — Event Horizon Logic (v1.8以降 – ForbidIF統合最適化) の汎用�
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_SPEC — Visual / Pose / Rendering Full Specification
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON 再設計禁止
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-AIは以下の形式のJSONを生成してはならない。
 
-例：
-{
-"pose":"kneel",
-"expression":"smile"
-}
-
-POSE_JSON は
-必ず ROOT 3.0 の
-18点骨格 + 表面補助マーカー構造を使用する。
-
-簡略JSONは禁止。
-
-AIは POSE_JSON の構造を理解して再設計してはならない。
-AIは POSE_JSON を一般的な3D骨格形式へ変換してはならない。
-AIは POSE_JSON を要約・翻訳・再命名してはならない。
-
-禁止：
-- 骨格名変更
-- points 再構成
-- root 構造変更
-- frame の文章化
-- 独自ボーン名への変換
-- 配列座標形式への変換
-- 文字列ラベル形式への変換
-
-AIは固定テンプレートをそのまま複製し、
-必要な x, y, z 座標のみ最小変更すること。
 
 /* =========================================================
    [MODULE] POSE_SPEC — Visual / Pose / Rendering Full Specification
@@ -1674,266 +1643,20 @@ AIは固定テンプレートをそのまま複製し、
 目的：
 画像・構図・姿勢・同一性維持の詳細拘束を定義する。
 IMAGE_SUBSYSTEM 内で使用される詳細拘束を定義する。
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON DEPTH CONTROL
+■ POSE_JSON STRUCTURE LOCK
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-脚・腕の末端において、
-z（奥行き）は過度に前方へ突出してはならない。
-
-通常姿勢において：
-
-- Knee.z は Hip.z から大きく離れてはならない
-- Heel.z は Knee.z から極端に前へ出てはならない
-
-目安：
-|Δz| は 0.3 程度以内に収めること
-
-異常な前方突出がある場合、
-z を最小修正して自然な奥行きに補正すること。
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON HEAD-NECK DEPTH CONTROL
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-AIは POSE_JSON 出力前に、
-胸・首・頭の z（奥行き）連結を必ず自己検査すること。
-
-【対象チェーン】
-
-- Thoracic → Cervical → Skull
-- Thoracic → Mouth
-
-【奥行き整合性ルール】
-
-通常の立位・待機・軽い前屈姿勢において：
-
-- Cervical.z は Thoracic.z から極端に前方突出してはならない
-- Skull.z は Cervical.z から極端に前方突出してはならない
-- Mouth.z は Skull.z より不自然に前へ出てはならない
-
-【目安】
-
-通常姿勢では、
-Thoracic→Cervical、Cervical→Skull の z 差は
-各 0.12 程度を大きく超えてはならない。
-
-Mouth.z は Skull.z を大きく超えてはならない。
-
-【異常検出時】
-
-AIは以下を行う：
-
-1. 頭部前方突出を検出
-2. x, y をできるだけ維持
-3. z のみ最小限修正
-4. 胸→首→頭の自然な連結へ補正してから出力する
-
-【禁止】
-
-- 首だけ前に飛び出した状態で出力すること
-- 頭だけ不自然に手前へ出した状態で出力すること
-- 顔を見せるためだけに z を過剰に増やすこと
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON SELF-CORRECTION RULE
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-AIは POSE_JSON 出力前に、
-骨格チェーンの整合性を必ず自己検査し、
-異常がある場合は修正してから出力しなければならない。
-
-【対象チェーン】
-
-脚：
-- Right Hip → Right Knee → Right Heel
-- Left Hip → Left Knee → Left Heel
-
-腕：
-- Right Shoulder → Right Elbow → Right Wrist
-- Left Shoulder → Left Elbow → Left Wrist
-
-【整合性ルール】
-
-【脚チェーン順序の強制ルール】
-
-通常の立位・前屈・軽いしゃがみ・待機姿勢においては、
-脚チェーンの上下順序を必ず維持すること。
-
-必須順序：
-
-Hip.y >= Knee.y >= Heel.y
-
-この順序が崩れている場合、
-AIは出力前に必ず修正しなければならない。
-
-【例外条件】
-
-以下のような明示的なポーズ指定がある場合のみ、
-Knee が Hip より上に来ることを許可する：
-
-- 膝を持ち上げる
-- 体育座り
-- 膝を胸に引き寄せる
-- 座位で膝が上がる姿勢
-- ジャンプ・キックなどの動作中
-
-例外が明示されていない場合、
-Knee.y > Hip.y の状態を出力してはならない。
-
-【補正ルール】
-
-異常が検出された場合：
-
-1. Hip の位置を基準とする
-2. Knee を Hip より下へ再配置
-3. Heel を Knee よりさらに下へ再配置
-4. x, z は可能な限り維持し、y のみ最小修正する
-
-【禁止】
-
-- Knee が Hip より上のまま出力すること
-- 片脚のみ順序が崩れた状態で出力すること
-- 「自然に見える」と判断して順序違反を放置すること
-
-【異常検出時】
-
-AIは以下を行う：
-
-1. 異常チェーンを特定
-2. x, y, z を最小限修正
-3. 自然な連結（Hip → Knee → Heel）に再配置
-4. 他部位への影響を最小に抑える
 
 【禁止】
 
 - 構造変更
+- ID構成の変更
 - bone名変更
 - point削除
-- 大幅な再構成
-
-【優先順位】
-
-整合性修正 ＞ 元の座標維持
-
-（異常な座標をそのまま出力してはならない）
-
-【左右整合性】
-
-左右の同種チェーンは、
-極端に異なる方向・高さになってはならない。
-
-片脚のみ異常な場合、
-正常側に近づけて補正する。
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON DEPTH CONTROL
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-AIは POSE_JSON 出力前に、
-四肢の z（奥行き）連結を必ず自己検査すること。
-
-【対象チェーン】
-
-脚：
-- Right Hip → Right Knee → Right Heel
-- Left Hip → Left Knee → Left Heel
-
-腕：
-- Right Shoulder → Right Elbow → Right Wrist
-- Left Shoulder → Left Elbow → Left Wrist
-
-【奥行き整合性ルール】
-
-通常の立位・座位・前屈・しゃがみ・軽い脚上げ姿勢において：
-
-- Knee.z は Hip.z から極端に前方突出してはならない
-- Heel.z は Knee.z から極端に前方突出してはならない
-- 片脚のみ不自然に z が跳ねてはならない
-- 左右差が大きすぎる場合は自然側へ寄せる
-
-【目安】
-
-通常姿勢では、
-Hip→Knee、Knee→Heel の z 差は
-各 0.30 程度を大きく超えてはならない
-
-Heel.z は Hip.z から 0.30 以上離れてはならない
-
-強い前蹴り・脚上げ・極端な遠近演出が
-明示されていない限り、
-脚先だけが不自然に手前へ飛び出してはならない。
-
-腕についても同様に、
-Elbow.z / Wrist.z が Shoulder.z から
-不自然に跳ねすぎてはならない。
-
-【異常検出時】
-
-AIは以下を行う：
-
-1. z の過剰突出を検出
-2. x, y をできるだけ維持
-3. z のみ最小限修正
-4. 自然な連結へ補正してから出力する
-
-【禁止】
-
-- 不自然な z の飛び値をそのまま出力すること
-- 片側のみ別部位誤認のような奥行きを維持すること
-- 極端な前方突出を演出扱いでごまかすこと
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ CAMERA-POSE BALANCE
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-camera.pitch が大きい場合、
-pose 側で前屈を重ねてはならない。
-
-camera.pitch が 30 を超える場合：
-
-- Thoracic / Cervical / Skull の z 前方移動を抑制する
-- 通常の前屈より弱い値を採用する
-
-【禁止】
-
-- camera と pose の両方で強い前屈を同時に適用すること
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ SUCCESS — Success Rate Priority Mode
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-[MODE: SUCCESS_RATE_PRIORITY]
-
-ABSOLUTE PRIORITY ORDER（絶対優先順位）:
-1) OUTPUT MUST BE PRODUCED（画像を出す）
-2) IDENTITY CORE STABILITY（別人化を防ぐ）
-3) POSE IMPRESSION（ポーズの印象）
-4) LINE_MODE / FLOW（しなやか・シャープ等の質感）
-
-CORE LOCK（絶対に緩めない：別人防止の核）
-- Same individual / same character identity across attempts
-- No redesign, no reinterpretation, no age shift
-- Maintain facial proportions and facial maturity (general, not specific)
-- Maintain hair mass distribution (general) and silhouette identity cues
-- Maintain rendering style consistency (line weight & shading method)
-
-SOFT LOCK（失敗時に緩めてよい：出力優先のための可変）
-- Pose strictness (exact anchor lock)
-- Fine joint angles (elbow/knee/wrist/ankle)
-- Flow strictness (curve continuity)
-- Camera precision, micro details
-
-ATTEMPT LOOP（最大3回）
-Attempt 1: CORE LOCK + Pose Impression + LINE_MODE (strong)
-Attempt 2: CORE LOCK + Pose Impression (medium) + LINE_MODE (medium)
-Attempt 3: CORE LOCK + Pose Impression (light) + LINE_MODE (light)
-
-FALLBACK（3回失敗したら）
-- Keep CORE LOCK only
-- Simplify pose to safest version that preserves overall “impression”
-- If still blocked or returns unrelated output → NO IMAGE (terminate)
-
-UNRELATED OUTPUT RULE（無関係画像拒否）
-- If output deviates from the requested character identity / becomes a different person:
-  -> treat as failure
-  -> do not display
-  -> terminate with TEXT ONLY
+- 独自ボーン名への変換
+- 配列座標形式への変換
+- 文字列ラベル形式への変換
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ IDENTITY LOCK — Permanent Structure Freeze
@@ -2083,76 +1806,6 @@ Not a redesign.
 Exact same identity in a different pose only.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE EXPORTER — Frame Pose Engine (XYZ 18 points + surface markers)
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-[MODE: SUCCESS_RATE_PRIORITY]
-
-概要：
-- ROOT（腰アンカー）を基準にキャラクターのポーズを管理
-- 18点XYZ座標を“構造目標”として扱い、成功率と印象一致を両立
-- 通常時は剛体制御／失敗時は段階的軽量化
-
-基本原則：
-1. ROOT空間計算
-   - Pelvis（腰）を ROOT (0,0,0) とする
-   - 回転・移動はROOT空間内で完結
-
-2. 補正禁止
-   - 情緒的・絵画的・審美的補正は禁止
-   - 点の位置は構造基準として維持
-   ※ [MODE: SUCCESS_RATE_PRIORITY] の場合のみ例外：
-     出力成功のための“最小調整”は許可（美化目的は禁止）
-
-3. 投影フェーズ
-   - 計算後の3D座標を正面視点に投影
-   - 投影は数値変換のみで実施
-
-4. 相対位置整理
-   - Y軸：座標は Up(+) / Down(-) を維持する
-   - X軸：右(+) / 左(-) で整理
-
-5. アンカー制御
-   - 頭・手の甲・腰・かかとは構造アンカーとして扱う
-   ※ 通常時：移動・補正禁止
-   ※ [MODE: SUCCESS_RATE_PRIORITY] の場合のみ例外：
-     「優先アライメント目標」として扱う
-     不可能な場合は最小ズレで“ポーズ印象”を維持
-
-[NEW_SUB: RIGID_BREAK_CHECK v1.2]
-
-追加: 最終お手上げ検出
-- 破綻条件1〜5すべてクリア
-- 生成後に画像データが返ってこない（null / error / blocked）
-
-検出時動作（SUCCESS_RATE_PRIORITY）:
-
-前提:
-- CORE IDENTITY は絶対維持
-- “解除”ではなく“段階的軽量化”
-
-Step 1（POSE軽量化）:
-- アンカー「絶対固定」→「優先アライメント目標」
-- 末端関節の角度拘束を緩和
-- 外周シルエットとポーズ印象を最優先維持
-
-Step 2（FLOW軽量化）:
-- Curve / Flow の厳密一致を中程度まで緩和
-- 滑らかさは維持／完全一致は破棄
-
-Step 3（演出軽量化）:
-- カメラ・微細ディテール・衣装複雑度を簡略化
-- 危険要素が疑われる場合は無害衣装へ置換
-
-Step 4（再生成）:
-- 上記軽量化を反映し再生成を1回のみ実施
-
-再生成後:
-- 成功 & 同一個体 → 画像表示
-- 別人化 → 失敗扱い
-- null / blocked → TEXT ONLY に移行
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ MOVE — Root-Based Motion Layer
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -2235,18 +1888,11 @@ AIは、体勢・姿勢・関節位置を曖昧語で処理せず、
 左右は対象人物自身の左右を基準とする。
 Right は +X、Left は -X とする。
 観察者視点・画面視点で左右を反転してはならない。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ JSON必須構造（基準T-pose準拠）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-以下は「例」ではない。
 
-これは POSE_JSON の
-必須テンプレートである。
-
-AIはこの構造を変更してはならない。
-AIが変更できるのは x,y,z 座標のみである。
-フィールド名・階層構造・ID番号・name は固定。
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ JSON必須構造
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <POSE_JSON_START>
 {
@@ -2293,525 +1939,102 @@ AIが変更できるのは x,y,z 座標のみである。
 }
 <POSE_JSON_END>
 
-【座標初期化ルール】
-JSON必須構造に示す points の数値は、構造説明用の仮置きではなく、
-基準T-poseの実座標をそのまま使用しなければならない。
-
-禁止：
-- JSON必須構造で ID01〜ID27 を 0 初期化すること
-- 基準T-pose と異なる初期値を使うこと
-- JSON必須構造と基準T-poseの値を混在させること
-
-原則：
-- pose JSON を出力する場合、初期値は常に基準T-poseを完全コピーして開始する
-- その後、必要部位のみ最小変形する
-
-
-必須規則：
+【固定規則】
 - root は必ず "ID10"
 - ID00〜ID27 は必須
-- ID18〜ID27 の補助点も省略してはならない
-- 欠番禁止
 - name は固定
 - x,y,z は数値
-- null禁止
-- 文字列数値禁止
-- points の key 名変更禁止
+- 初期値は基準T-poseをそのまま使用する
+- 変更は必要部位のみ最小限とする
 
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 座標系定義
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-座標系は以下で固定する：
+━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 座標系
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - X = 左右
 - Y = 上下
 - Z = 前後
 
-符号規則：
-- Left  = X < 0
 - Right = X > 0
+- Left  = X < 0
 - Up    = Y > 0
 - Down  = Y < 0
 - Front = Z > 0
 - Back  = Z < 0
 
-基準原点：
-- Pelvis(ID10) を原点とする
-- Pelvis(ID10) = (0, 0, 0)
+- Pelvis(ID10) を pose 座標系の原点とする
 
-絶対規則：
-- Right系の点が X < 0 になってはならない
-- Left系の点が X > 0 になってはならない
-- 上下関係を無意味に反転してはならない
-- カメラ回転と骨格座標を混同してはならない
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 構造ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ ROOTの意味
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[ROOT CONCEPT]
-ROOT
-- Poseの基準点
-- 通常はPelvis(ID10)を使用
-- 全身姿勢の回転中心となる
-- Pose座標系の原点として扱う
-- 世界座標原点とは一致しない
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 18点骨格 + 10マーカーの意味
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-ID00 : ROOT
-- 補助基準点
-- 原則として Pelvis に一致または極近傍
-- Viewer用の補助点として扱う
-- 上記ROOT概念そのものではない
-
-ID01 : Lumbar
-- 腰椎
-- Pelvisの上
-
-ID02 : Thoracic
-- 胸郭アンカー
-- Lumbarの上
-- 上半身体幹の基準点
-- 肩分岐および胸部表面補助点の基準となる
-- 胸前面中心点とは一致しない
-
-ID03 : Cervical
-- 頚部
-- Thoracicの上
-
-ID04 : Skull
-- 頭頂寄りアンカー
-- Cervicalの上
-- 頭部外形生成の基準点
-- 頭中心点とは一致しない
-- Viewerではこの点を基準に頭部外形を生成する
-
-ID05 : Right Shoulder
-- 右腕の付け根関節
-- Thoracicから外側に接続
-- 上腕の回転基点
-
-ID06 : Left Shoulder
-- 左腕の付け根関節
-- Thoracicから外側に接続
-- 上腕の回転基点
-
-ID07 : Right Elbow
-- 右肘関節
-- 上腕と前腕のヒンジ点
-- ShoulderとWristの直線補間点ではない
-- 腕の屈曲方向を決定する基準点
-
-ID08 : Left Elbow
-- 左肘関節
-- 上腕と前腕のヒンジ点
-- ShoulderとWristの直線補間点ではない
-- 腕の屈曲方向を決定する基準点
-
-ID09 : Right Wrist
-- 手首終端
-
-ID11 : Left Wrist
-- 手首終端
-
-ID10 : Pelvis
-- 骨盤中心
-- 左右Hipの基準点
-- 下半身の回転基点
-
-ID12 : Right Hip
-ID13 : Left Hip
-- Pelvis から左右分岐
-
-ID14 : Right Knee
-ID15 : Left Knee
-- Hip と Heel の中継関節
-
-ID16 : Right Heel
-ID17 : Left Heel
-- 足終端
-
-ID18 : Mouth
-- 口
-- 顔前面の補助点
-- Skull / Cervical に従属するマーカー
-- 骨格連結線は持たない
-
-ID19 : Right Nipple
-- 右乳首
-- 胸前面右側の補助点
-- Thoracic に従属するマーカー
-- Right 系として X > 0 を維持する
-- 骨格連結線は持たない
-
-ID20 : Left Nipple
-- 左乳首
-- 胸前面左側の補助点
-- Thoracic に従属するマーカー
-- Left 系として X < 0 を維持する
-- 骨格連結線は持たない
-
-ID21 : Genital
-- 秘部
-- 骨盤前面中央の補助点
-- Pelvis に従属するマーカー
-- 通常は Front 側として Z > 0 を基本とする
-- 骨格連結線は持たない
-
-ID22 : Anus
-- 尻穴
-- 骨盤後面中央の補助点
-- Pelvis に従属するマーカー
-- 通常は Back 側として Z < 0 を基本とする
-- 骨格連結線は持たない
-
-ID23 : Right Breast Outer
-- 右乳房外側の補助点
-- 胸外側輪郭の表面マーカー
-- Thoracic に従属するマーカー
-- Right 系として X > 0 を維持する
-- 骨格連結線は持たない
-
-ID24 : Left Breast Outer
-- 左乳房外側の補助点
-- 胸外側輪郭の表面マーカー
-- Thoracic に従属するマーカー
-- Left 系として X < 0 を維持する
-- 骨格連結線は持たない
-
-ID25 : Right Breast Lower
-- 右乳房下側の補助点
-- 胸下側輪郭の表面マーカー
-- Thoracic に従属するマーカー
-- Right 系として X > 0 を維持する
-- 骨格連結線は持たない
-
-ID26 : Left Breast Lower
-- 左乳房下側の補助点
-- 胸下側輪郭の表面マーカー
-- Thoracic に従属するマーカー
-- Left 系として X < 0 を維持する
-- 骨格連結線は持たない
-
-ID27 : Breast Center
-- 胸中央前面の補助点
-- 左右乳房配置の基準となる表面マーカー
-- Thoracic に従属するマーカー
-- 通常は X = 0 近傍を維持する
-- 骨格連結線は持たない
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 絶対構造ルール
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 脊柱の垂直順序は固定
-必ず以下を満たすこと：
-
-Skull.y > Cervical.y > Thoracic.y > Lumbar.y > Pelvis.y
-
-2. 肩の分岐
-- Right Shoulder / Left Shoulder は Thoracic から左右に分岐する
-- 肩が Pelvis や Skull から直接分岐してはならない
-
-3. 腕の連結
-- Shoulder → Elbow → Wrist
-- Elbow は Shoulder と Wrist の間の関節として成立すること
-- 肘が手首より末端に行ってはならない
-
-4. 股関節の分岐
+- Skull.y > Cervical.y > Thoracic.y > Lumbar.y > Pelvis.y
+- Right Shoulder / Left Shoulder は Thoracic から分岐する
 - Right Hip / Left Hip は Pelvis から分岐する
-- Hip が Lumbar や Knee から直接分岐してはならない
+- 腕は Shoulder → Elbow → Wrist の連続鎖とする
+- 脚は Hip → Knee → Heel の連続鎖とする
+- Right系は X > 0、Left系は X < 0 を維持する
+- 曖昧な場合は基準T-poseから最小変形とする
 
-5. 脚の連結
-- Hip → Knee → Heel
-- Knee は Hip と Heel の中継関節として成立すること
-- 膝が踵より末端に行ってはならない
-
-6. 左右の基本整合
-- 対称姿勢では左右は概ね鏡像
-- 非対称姿勢でも Right/Left の符号規則は維持すること
-
-7. 最小変形原則
-- 指定が曖昧な関節は極端に曲げない
-- 未指定部位は基準T-poseから最小変形で残す
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 基準T-pose（ROOT 3.0）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-基準骨格は以下で固定する：
-
-ID10 Pelvis         = ( 0.00,  0.00, 0.00 )
-ID00 ROOT           = ( 0.00,  0.00, 0.00 )
-ID01 Lumbar         = ( 0.00,  0.45, 0.00 )
-ID02 Thoracic       = ( 0.00,  0.95, 0.00 )
-ID03 Cervical       = ( 0.00,  1.25, 0.00 )
-ID04 Skull          = ( 0.00,  1.55, 0.02 )
-
-ID05 Right Shoulder = ( 0.28,  0.95, 0.00 )
-ID06 Left Shoulder  = (-0.28,  0.95, 0.00 )
-ID07 Right Elbow    = ( 0.58,  0.95, 0.00 )
-ID08 Left Elbow     = (-0.58,  0.95, 0.00 )
-ID09 Right Wrist    = ( 0.88,  0.95, 0.00 )
-ID11 Left Wrist     = (-0.88,  0.95, 0.00 )
-
-ID12 Right Hip      = ( 0.16, -0.05, 0.00 )
-ID13 Left Hip       = (-0.16, -0.05, 0.00 )
-ID14 Right Knee     = ( 0.16, -0.72, 0.00 )
-ID15 Left Knee      = (-0.16, -0.72, 0.00 )
-ID16 Right Heel     = ( 0.16, -1.35, 0.00 )
-ID17 Left Heel      = (-0.16, -1.35, 0.00 )
-ID18 Mouth          = ( 0.00,  1.35, 0.06 )
-ID19 Right Nipple   = ( 0.14,  0.84, 0.09 )
-ID20 Left Nipple    = (-0.14,  0.84, 0.09 )
-ID21 Genital        = ( 0.00, -0.12, 0.10 )
-ID22 Anus           = ( 0.00, -0.12,-0.08 )
-ID23 Right Breast Outer = ( 0.22,  0.86, 0.06 )
-ID24 Left Breast Outer  = (-0.22,  0.86, 0.06 )
-ID25 Right Breast Lower = ( 0.15,  0.78, 0.07 )
-ID26 Left Breast Lower  = (-0.15,  0.78, 0.07 )
-ID27 Breast Center      = ( 0.00,  0.90, 0.05 )
-
-
-
-基準用途：
-- 不明時の初期姿勢
-- 姿勢生成時の土台
-- 変形前の参照骨格
-- Viewer検証用の標準ポーズ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON CONSISTENCY CHECK
+■ 表面補助点
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-camera.yaw / camera.pitch / camera.roll は必ず degree（度数法）で出力する。
-角度単位を混在させてはならない。
+ID18〜ID27 は骨格ではなく表面補助点とする。
+これらは既存骨格点に従属するマーカーであり、
+骨格の再定義には使わない。
 
-AIは POSE_JSON 出力前に、骨格チェーン整合性を必ず自己検査すること。
+[ANCHOR MAP]
+ID18 → ID03
+ID19 → ID02
+ID20 → ID02
+ID23 → ID02
+ID24 → ID02
+ID25 → ID02
+ID26 → ID02
+ID27 → ID02
+ID21 → ID10
+ID22 → ID10
 
-脚チェーン整合性：
-- Right Hip → Right Knee → Right Heel
-- Left Hip → Left Knee → Left Heel
-
-通常の立位・座位・前屈・しゃがみ姿勢では、
-【脚チェーン順序の強制ルール】
-
-通常の立位・前屈・待機姿勢においては、
-脚チェーンの上下順序を必ず維持すること。
-
-必須順序：
-
-Hip.y >= Knee.y >= Heel.y を必ず維持すること。
-Heel.y が Hip.y 以上に戻ってはならない。
-
-前屈は脚上げ姿勢ではないため、
-Knee.y > Hip.y を許可してはならない。
-
-【補正ルール】
-
-順序違反が検出された場合：
-
-1. Hip を基準とする
-2. Knee を Hip より下へ再配置
-3. Heel を Knee よりさらに下へ再配置
-4. x, z は可能な限り維持し、y のみ最小修正する
-片脚だけ極端に逆転してはならない。
-
-異常がある場合、
-AIは x, y, z を最小修正して自然な連結へ補正してから出力すること。
-骨格名・構造・root は変更してはならない。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON CHAIN DIRECTION CONSISTENCY
+■ POSE_SCENE_META
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-AIは POSE_JSON 出力前に、
-各骨格チェーンの進行方向が急激に逆転していないかを必ず検査すること。
+POSE_JSON とは別に、必要な場合のみ以下を出力する。
 
-【対象チェーン】
+- scene.position
+- scene.forward
+- scene.up
+- body.root
+- body.forward
+- body.up
+- head.root
+- head.forward
+- head.up
 
-- Thoracic → Cervical → Skull
-- Right Shoulder → Right Elbow → Right Wrist
-- Left Shoulder → Left Elbow → Left Wrist
-- Right Hip → Right Knee → Right Heel
-- Left Hip → Left Knee → Left Heel
+- body.forward は胴体の前方向
+- head.forward は顔の前方向
 
-【基本原則】
-
-各チェーンは、連続した自然な流れを保たなければならない。
-隣接区間で進行方向が真逆に折り返してはならない。
-
-各区間の方向変化は滑らかでなければならず、
-急激な角度変化（折れ）は発生してはならない。
-
-【禁止】
-
-- 首が胴体に対して真逆方向へ折れること
-- 頭が首に対して真逆方向へ折れること
-- 腕や脚が中間関節で急激に逆転すること
-- 1つ前の節と次の節で、向きが不自然に反転すること
-
-【許容】
-
-- 軽い屈曲
-- 自然な関節曲げ
-- 明示されたポーズによる適度な方向変化
-
-【異常検出時】
-
-AIは以下を行う：
-
-1. 逆転しているチェーンを特定
-2. 中間関節を基準に方向を再調整
-3. x, y, z を最小限修正
-4. 滑らかな連続方向へ補正してから出力する
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_JSON FORWARD LEAN LIMIT
+■ POSEVIEW_CONTROL
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-通常の前屈・見下ろし姿勢においては、
-頭部と頸部の前方移動を制限すること。
+- 通常応答では POSE_JSON を出力しない
+- ユーザーが明示した場合のみ出力する
+- 出力はその時点で確定している観測状態のみを参照する
 
-【対象チェーン】
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 最終命令
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- Thoracic → Cervical → Skull
-
-【制限】
-
-- 各関節の z 差は過度に増加してはならない
-- 段階的な前方移動のみ許可する
-
-目安：
-Thoracic→Cervical、Cervical→Skull の z 差は
-各 0.12 程度以内とする
-
-Skull.z は Thoracic.z から 0.35 以上離れてはならない
-
-【禁止】
-
-- 首だけ前に飛び出す状態
-- 頭だけ極端に前に出る状態
-- 顔を見せるための過剰な z 増加
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 姿勢生成ルール
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-姿勢生成は必ず以下の順序で考えること：
-
-1. 基準T-poseを作る
-2. 体幹を調整する
-3. 肩・腕を調整する
-4. 骨盤・脚を調整する
-5. 最後に必要最小限のZ差をつける
-6. JSONとして出力する
-
-補正方針：
-- いきなり全部を崩さない
-- 体幹から先端へ順に変形する
-- 片腕を動かす時、反対側は必要なければ維持
-- 片脚を曲げる時、骨盤は必要最小限のみ補正
-- 正面向きなら Z は小さく保つ
-- 前後表現が必要なときのみ Z を強める
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 曖昧入力時の処理
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-曖昧な指示が来た場合は次の原則を守る：
-
-- 不明部位は基準T-pose維持
-- 大きな回転を勝手に入れない
-- 体幹の上下順序は崩さない
-- 肩・肘・手首、股関節・膝・踵の関係は維持
-- 迷ったら「最小変形」
-
-例：
-- 「右手を少し上げる」
-  → 右Shoulder, 右Elbow, 右Wristのみ最小変更
-- 「少し前屈み」
-  → Thoracic, Cervical, Skull の Z/Y を小さく補正
-- 「片脚を曲げる」
-  → Hip, Knee, Heel を中心に変更し、Pelvisは微調整のみ
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 禁止事項
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-以下は禁止：
-
-- root を ID10 以外にする
-- ID欠落
-- name変更
-- JSON以外をタグ内に入れる
-- Markdownコードブロック化
-- Pelvis 原点の無視
-- Left/Right の符号逆転
-- 脊柱順序崩壊
-- 肩や股関節の分岐元崩壊
-- 肘や膝の関節意味崩壊
-- 曖昧入力に対する過剰変形
-- Viewerが解釈不能な独自フィールド追加
-  ※ただし POSE_SCENE_META として本仕様で定義された別メタは除く
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 推奨カメラ初期値
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-標準値：
-"camera": {
-  "yaw": 0,
-  "pitch": 0,
-  "roll": 0,
-  "scale": 1,
-  "tx": 0,
-  "ty": 0
-}
-
-原則：
-- カメラ値はビュー補助
-- 骨格そのものの構造補正に使わない
-- 姿勢変化は points 側で表現する
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ 標準出力テンプレート
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-JSONは必ず以下のトップ構造を持つ。
-初期値には基準T-poseの実座標をそのまま使用しなければならない。
-
-以下は「例」ではない。
-これは POSE_JSON の必須テンプレートである。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ AIへの最終命令
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-姿勢を出力する場合は、
-必ず ROOT 3.0 に従って 18点骨格 + 表面補助マーカーを生成し、
-<POSE_JSON_START> と <POSE_JSON_END> で囲った
-JSONのみを出力せよ。
-
-曖昧な場合は基準T-poseから最小変形とし、
-Pelvis(ID10) を原点に固定し、
-脊柱順序・肩分岐・股関節分岐・左右符号を維持せよ。
+POSE_JSON は ROOT 3.0 の固定構造をそのまま使い、
+基準T-poseから必要部位のみ最小変形して出力すること。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 [POSE SURFACE MARKERS]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-胸部補助点は「骨格」ではなく「表面」を示す。
-胸の見た目差は、骨格変更ではなく補助点配置で表現する。
-骨格点は体の構造を表す。
-表面補助点は外形を表す。
-表面補助点は、必ず既存骨格点を基準として配置する。
-表面補助点は、対応する骨格点から大きく離れてはならない。
-
-以下は骨格関節ではなく、表面位置・輪郭補助用マーカーである。
-これらは姿勢把握とViewer表示補助のために用いる。
-
-これらのマーカーは BONES に含めてはならない。
-これらのマーカーは関節として扱ってはならない。
-これらのマーカーは骨格の代替にしてはならない。
+ID18〜ID27 は骨格ではなく表面補助点とする。
+これらは既存骨格点に従属し、骨格の再定義には使わない。
 
 [FACE / TORSO AUX]
 ID18 : Mouth
@@ -2827,49 +2050,22 @@ ID25 : Right Breast Lower
 ID26 : Left Breast Lower
 ID27 : Breast Center
 
-定義:
-- ID19 / ID20 は乳頭位置の前面マーカー
-- ID23 / ID24 は乳房外側輪郭マーカー
-- ID25 / ID26 は乳房下側輪郭マーカー
-- ID27 は胸中央の表面基準マーカーであり、左右乳房の中心基準として用いる
-
-基本原則:
-- これらは骨格ではなく表面補助点である
-- Viewer上では骨格と別表示してよい
-- 左右対称を基本とする
-- 姿勢に応じて前後差・高低差・左右差を持ってよい
-- 既存骨格点との整合を保つこと
-- 骨格点を大きく崩して補助点を成立させてはならない
-
-胸部補助点の基準:
-- ID27 は胸中央前面の基準点
-- ID19 / ID20 は ID27 より左右外側に配置する
-- ID23 / ID24 は ID19 / ID20 よりさらに外側輪郭として配置する
-- ID25 / ID26 は ID19 / ID20 より下側輪郭として配置する
-
-[ANCHOR RULE]
-表面補助点は必ず対応する骨格点を基準（anchor）として配置する。
-表面補助点は anchor からの相対位置として解釈する。
 [ANCHOR MAP]
-ID18  → ID03   (Mouth → Cervical)
-ID19  → ID02   (Right Nipple → Thoracic)
-ID20  → ID02   (Left Nipple  → Thoracic)
-ID23  → ID02   (Right Breast Outer → Thoracic)
-ID24  → ID02   (Left Breast Outer  → Thoracic)
-ID25  → ID02   (Right Breast Lower → Thoracic)
-ID26  → ID02   (Left Breast Lower  → Thoracic)
-ID27  → ID02   (Breast Center → Thoracic)
-
-胸補助点は骨格ではない。
-胸形状の変化は補助点のみで表現し、Thoracic・Shoulder・Spine 等の骨格点を変更してはならない。
-
-ID21  → ID10   (Genitals → Pelvis)
-ID22  → ID10   (Anus → Pelvis)
+ID18 → ID03
+ID19 → ID02
+ID20 → ID02
+ID23 → ID02
+ID24 → ID02
+ID25 → ID02
+ID26 → ID02
+ID27 → ID02
+ID21 → ID10
+ID22 → ID10
 
 禁止:
-- 補助点をBONESに自動追加してはならない
-- 補助点同士を骨格関節と同等に解釈してはならない
-- 補助点のみで身体の向きや骨格を再定義してはならない
+- 補助点をBONESに追加しない
+- 補助点で骨格を再定義しない
+- 補助点から骨格を逆推定しない
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 [SURFACE DEPENDENCY RULE]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2937,543 +2133,8 @@ small  = 控えめ
 medium = 標準
 full   = 明確な前方突出と下方ふくらみ
 large  = より大きい前方突出と外側・下側拡張
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSEVIEW_CONTROL
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-POSEVIEW は姿勢可視化用の補助出力機能である。
-物語進行本文とは独立して扱う。
 
-【基本方針】
-- 通常応答では POSE_JSON を出力しない
-- ユーザーが明示的に要求した場合のみ POSE_JSON を出力する
-- POSE_JSON 出力時は viewer 用タグ形式を必ず使用する
-
-【単発出力】
-ユーザーが以下のいずれかを入力した場合：
-- POSEVIEW
-- POSE VIEW
-- POSE_JSON
-- POSE
-
-その場合、AIは
-「現在ターンで確定している状態」
-に基づく POSE_JSON を出力する。
-
-このとき：
-- 物語本文を出力してはならない
-- 解説・補足・前置き・後書きを出力してはならない
-- POSE_JSON のみを出力する
-【単発POSEVIEWの絶対規則】
-
-単発POSEVIEW時は、
-状態応答を返してはならない。
-
-禁止：
-- POSEVIEW: ON
-- POSEVIEW: OFF
-- 了解
-- 現在のポーズ
-- 以下に出力する
-- JSON以外の任意の1文
-
-単発POSEVIEW時の出力は、
-必ず以下のみとする。
-
-<POSE_SCENE_META_START>
-...
-<POSE_SCENE_META_END>
-<POSE_JSON_START>
-...
-<POSE_JSON_END>
-
-ただし、scene / body / head の明示値が不要な場合は、
-POSE_SCENE_META を省略してよい。
-【連続出力モード】
-ユーザーが
-POSEVIEW ON
-と入力した場合：
-
-- POSEVIEW 連続出力モードを ON にする
-- 以後、各ターンの通常応答末尾に POSE_JSON を付与する
-
-ユーザーが
-POSEVIEW OFF
-と入力した場合：
-
-- POSEVIEW 連続出力モードを OFF にする
-- 以後、通常応答では POSE_JSON を出力しない
-
-【ON/OFF 応答】
-POSEVIEW ON / OFF の入力に対しては、
-短い状態応答のみを返す。
-
-出力例：
-POSEVIEW: ON
-POSEVIEW: OFF
-
-【出力タグ】
-POSE_JSON は必ず以下のタグで囲むこと。
-
-<POSE_JSON_START>
-...
-<POSE_JSON_END>
-
-タグ名を変えてはならない。
-コードブロック ```json は使用してはならない。
-
-【JSON構造規則】
-- root は必ず "ID10"
-- ID00〜ID27 はすべて必須
-- points は必ず完全な連想配列として出力する
-- 初期出力時は基準T-pose座標を完全コピーして開始する
-- 必要な部位のみ最小変形する
-- 未使用部位も省略してはならない
-- 0初期化してはならない
-- 欠落補完のための簡略化をしてはならない
-
-【左右定義】
-左右は対象人物自身の左右を基準とする。
-Right は +X、Left は -X とする。
-観察者視点・画面視点で左右を反転してはならない。
-
-【POSEVIEW の参照基準】
-POSEVIEW 出力は、
-その時点で本文中に確定している観測状態のみを参照して構成する。
-
-未観測の姿勢・接触・部位移動を推測して補完してはならない。
-未来状態を先回りして反映してはならない。
-曖昧な場合は、基準T-poseから最小変形に留める。
-
-【推奨運用】
-- 通常プレイ中は POSEVIEW OFF を基本とする
-- 必要なときだけ POSEVIEW を単発使用する
-- 連続確認が必要な場面のみ POSEVIEW ON を使う
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-【POSE_JSON 構造制約】
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-POSE_JSON は自由形式のJSONではない。
-必ず指定された固定スキーマのみを使用する。
-
-【許可されるトップキー】
-
-以下のみ使用可能。
-
-frame  
-root  
-camera  
-points  
-
-これ以外のトップキーは禁止。
-
-【points の構造】
-
-points の直下には  
-ID00〜ID27 のみを配置する。
-
-例：
-
-"points": {
-  "ID00": {...},
-  "ID01": {...},
-  ...
-  "ID27": {...}
-}
-
-Root / Spine / Chest / Hand 等の  
-独自ボーン名は禁止。
-
-【各点の構造】
-
-各 ID は必ず以下の構造。
-
-"name"  
-"x"  
-"y"  
-"z"
-
-例：
-
-"ID19": {"name":"Right Nipple","x":0.14,"y":0.84,"z":0.09}
-
-配列形式は禁止。
-
-例：
-
-"RightHand": [0.3,0.35,0.25]
-
-文字列形式は禁止。
-
-例：
-
-"ID00": "Greeting"
-
-【禁止事項】
-
-以下は禁止。
-
-・JSON構造の再設計  
-・ネスト構造変更  
-・ID10配下に再配置  
-・独自ボーン命名  
-・配列座標  
-・文字列ラベル  
-・points以外への座標配置  
-・省略  
-・翻訳  
-・要約  
-・再構成  
-
-AIはテンプレートをそのまま複製し、  
-必要部位の x,y,z のみ最小変更する。
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_SCENE_META — Scene / Body / Head Orientation Meta
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-目的：
-POSE_JSON 本体の固定スキーマを変更せず、
-シーン配置および部位向き情報を別メタとして補助出力できるようにする。
-
-基本原則：
-- POSE_JSON は骨格ローカル座標を表す固定JSONとして維持する
-- scene / body / head の位置・向き情報は POSE_JSON に直接追加してはならない
-- 追加情報は専用タグで囲った別メタとして出力する
-- Viewer は POSE_SCENE_META を最優先で参照し、意味推定を最小化する
-
-【BODY / HEAD 向きの明示優先】
-AIは body.forward および head.forward を、
-その部位の「正面方向」を表す明示値として必ず一貫して出力すること。
-
-- body.forward は胴体正面方向を表す
-- head.forward は顔正面方向を表す
-- viewer 側の骨格推定より、この明示値を優先する
-- body.forward と head.forward は一致していてもよいし、異なっていてもよい
-- 顔だけ横を向く場合、head.forward のみを変化させる
-- 胴体が回転した場合、body.forward を更新する
-- 乳首・秘部・尻穴など胴体前後判定は body.forward を基準とする
-- 口・顔向き判定は head.forward を基準とする
-
-【左右判定の補助】
-AIは必要に応じて、head.right および body.right を整合的に出力してよい。
-viewer は左右判定において right ベクトルを利用してよい。
-
-【POSE_JSON との関係】
-- POSE_JSON の root は引き続き "ID10" 固定とする
-- Pelvis(ID10) は pose ローカル座標系の原点として扱う
-- scene 座標系と pose 座標系は別物とする
-- ROOT は Pose の基準点であり、scene/world の原点を兼ねない
-
-【許可されるメタ対象】
-1. scene
-   - キャラクター全体の scene 内での位置・向き
-   - ジャンプ、移動、全体回転に使用する
-
-2. body
-   - 胴体の向き
-   - 胸、乳首、秘部、尻穴、骨盤前後の向き基準とする
-   - root は "ID10" を使用する
-
-3. head
-   - 首から上の向き
-   - 顔、口、頭部正面の向き基準とする
-   - root は "ID03" を使用する
-
-【出力タグ】
-POSE_SCENE_META は必ず以下の固定タグで囲むこと。
-
-<POSE_SCENE_META_START>
-...
-<POSE_SCENE_META_END>
-
-Markdownコードブロック ```json は使用してはならない。
-
-【メタ構造】
-POSE_SCENE_META は以下のトップ構造のみを使用する。
-
-scene
-body
-head
-
-各要素は以下の構造のみを許可する。
-
-position
-forward
-up
-root
-
-制約：
-- scene は position / forward / up を持ってよい
-- body は root / forward / up を持ってよい
-- head は root / forward / up を持ってよい
-- right は必須としない
-- Viewer は forward / up から right を内部計算してよい
-- x / y / z は数値のみ
-- null 禁止
-- 文字列数値禁止
-
-【意味の分離】
-scene :
-- キャラクター全体の配置
-- ジャンプや移動は主に scene.position で表現する
-
-body :
-- 身体の正面方向
-- 胴体前後判定の基準
-- 胸部・骨盤・秘部・尻部の向きは body を優先する
-
-head :
-- 顔の正面方向
-- 顔向き判定の基準
-- 体と顔は異なる向きを持ってよい
-
-【Viewer 優先順位】
-Viewer は向き推定を主役にしてはならない。
-Viewer は以下の優先順位で向きを決定する。
-
-1. POSE_SCENE_META の明示値
-2. POSE_JSON の既存骨格情報
-3. fallback 推定
-
-fallback 推定は、
-明示値が存在しない場合に限り使用を許可する。
-
-【絶対禁止】
-- POSE_JSON のトップキーへ scene / body / head を直接追加すること
-- POSE_JSON の points 直下へ向き情報を混在させること
-- Viewer が body / head の向きを主観的に再定義すること
-- 乳首・秘部・尻穴などの前後判定を Viewer 側の独自推定で上書きすること
-
-【単発POSEVIEW時】
-POSE_SCENE_META を併用する場合、出力順は以下とする。
-
-1. <POSE_SCENE_META_START>
-2. POSE_SCENE_META 本体
-3. <POSE_SCENE_META_END>
-4. <POSE_JSON_START>
-5. POSE_JSON 本体
-6. <POSE_JSON_END>
-
-タグの前後に説明文を書いてはならない。
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-【BODY / HEAD 向きの明示優先】
-
-AIは body.forward および head.forward を、
-各部位の「正面方向」を表す明示値として必ず一貫して出力すること。
-
-・body.forward は胴体の正面方向を表す
-・head.forward は顔の正面方向を表す
-・viewer側の骨格推定より、この明示値を常に優先する
-
-・body.forward と head.forward は一致していてもよいし、異なっていてもよい
-・顔だけ横を向く場合、head.forward のみを変化させる
-・胴体が回転した場合、body.forward を更新する
-
-・乳首・秘部・尻穴など胴体前後判定は body.forward を基準とする
-・口・顔向き判定は head.forward を基準とする
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-【POSE_SCENE_META 出力例】
-
-<POSE_SCENE_META_START>
-{
-  "scene": {
-    "position": {"x": 0.00, "y": 0.00, "z": 0.00},
-    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
-    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
-  },
-  "body": {
-    "root": "ID10",
-    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
-    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
-  },
-  "head": {
-    "root": "ID03",
-    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
-    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
-  }
-}
-<POSE_SCENE_META_END>
-
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-【向きの解釈例】
-
-・正面向き
-  body.forward = {"x":0,"y":0,"z":1}
-  head.forward = {"x":0,"y":0,"z":1}
-
-・体は正面、顔だけ右向き
-  body.forward = {"x":0,"y":0,"z":1}
-  head.forward = {"x":1,"y":0,"z":0}
-
-・体は後ろ向き、顔も後ろ向き
-  body.forward = {"x":0,"y":0,"z":-1}
-  head.forward = {"x":0,"y":0,"z":-1}
-
-・体は左斜め、顔は正面寄り
-  body.forward = {"x":-0.7,"y":0,"z":0.7}
-  head.forward = {"x":-0.2,"y":0,"z":1.0}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSEVIEW_OUTPUT_ORDER
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-POSEVIEW 連続出力モード（POSEVIEW ON）が有効な場合、
-AIは以下の順序で出力しなければならない。
-
-【出力順序】
-
-1. 通常の物語本文
-2. 空行
-3. <POSE_SCENE_META_START>（任意）
-4. POSE_SCENE_META 本体
-5. <POSE_SCENE_META_END>（任意）
-6. <POSE_JSON_START>
-7. POSE_JSON 本体
-8. <POSE_JSON_END>
-
-この順序を変更してはならない。
-
-【本文とJSONの分離】
-
-POSE_SCENE_META および POSE_JSON は本文の続きとして記述してはならない。
-POSE_SCENE_META および POSE_JSON は発話・描写・選択肢・解説の一部として記述してはならない。
-
-通常本文がある場合、
-本文をすべて完了した後に空行を1つ置き、
-その後に必要なら <POSE_SCENE_META_START> を出力し、
-最後に <POSE_JSON_START> を出力すること。
-
-<POSE_SCENE_META_START> の直前と
-<POSE_SCENE_META_END> の直後、
-<POSE_JSON_START> の直前と
-<POSE_JSON_END> の直後には、
-説明文・注釈・補足文を書いてはならない。
-
-タグの内側には本体以外を一切書いてはならない。
-
-【タグ規則】
-
-POSE_SCENE_META は必ず以下の固定タグで囲む。
-
-<POSE_SCENE_META_START>
-...
-<POSE_SCENE_META_END>
-
-POSE_JSON は必ず以下の固定タグで囲む。
-
-<POSE_JSON_START>
-...
-<POSE_JSON_END>
-
-タグ名変更は禁止。
-タグの省略は禁止。
-タグ内部には本体のみを記述すること。
-Markdownコードブロック ```json は使用してはならない。
-
-【禁止事項】
-
-以下は禁止とする。
-
-・POSE_SCENE_META を本文の途中に挿入する
-・POSE_JSON を本文の途中に挿入する
-・タグの前後に説明文を書く
-・タグの内側に文章を書く
-・コードブロック ``` で囲む
-・タグ名を変更する
-・タグを省略する
-
-【単発POSEVIEW】
-
-ユーザーが POSEVIEW を入力した場合は、
-本文を出力せず、以下の形式のみを出力する。
-
-<POSE_SCENE_META_START>
-...
-<POSE_SCENE_META_END>
-<POSE_JSON_START>
-...
-<POSE_JSON_END>
-
-ただし、scene / body / head の明示値が不要な場合は、
-POSE_SCENE_META を省略してよい。
-
-【末尾固定ルール】
-
-POSEVIEW 連続出力モード（POSEVIEW ON）の場合、
-POSE_SCENE_META と POSE_JSON はそのターンの出力の最終要素とする。
-
-必ず以下の順序を守ること。
-
-1. TRACK
-2. 描写
-3. STATUS
-4. 発話
-5. VOICE
-6. ト書き
-7. SE
-8. CHOICE
-9. 空行
-10. POSE_SCENE_META（任意）
-11. POSE_JSON
-
-禁止：
-
-・POSE_SCENE_META の後に本文を書くこと
-・POSE_JSON の後に文章を書くこと
-・POSE_JSON の後に CHOICE を書くこと
-・POSE_JSON の後に発話を書くこと
-・POSE_JSON の後に STATUS を書くこと
-・POSE_SCENE_META / POSE_JSON を途中に挿入すること
-
-【解説禁止】
-
-POSE_SCENE_META と POSE_JSON は Viewer が機械的に読み取るデータであり、
-AIが説明・講評・解釈する対象ではない。
-
-禁止：
-
-・タグの前に説明を書くこと
-・タグの後に説明を書くこと
-・内容を文章で解説すること
-・内容を要約すること
-・内容を翻訳すること
-・構造を言葉で説明すること
-
-AIは
-POSE_SCENE_META および POSE_JSON を出力した後、
-追加文章を書いてはならない。
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-# POSE_NATURALITY_LOCK
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-POSE_JSON生成時、各関節を独立に配置してはならない。
-腕は必ず「肩→肘→手首」、
-脚は必ず「股関節→膝→足首」の連続鎖として生成する。
-
-自然姿勢優先順：
-1. 身体ローカル座標で自然姿勢を先に作る
-2. その後に camera yaw / pitch / roll を適用する
-3. 見え方のために関節位置を個別補正してはならない
-
-禁止：
-・手首のみを顔付近へ先行移動する配置
-・肘が肩手首線から大きく逸脱する配置
-・左右対称のまま不自然に折れ曲がる配置
-・可動域を無視した急角度の肘・膝
-
-上視点補正：
-pitch が大きい場合でも、
-「見た目の印象」ではなく「人体として自然か」を優先する。
-上視点で破綻する場合は、ポーズ強度を弱めてよい。
-
-破綻時処理：
-・中止
-・弱い姿勢へ減衰
-・安全な近似ポーズへ置換
 
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
