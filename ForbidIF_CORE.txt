@@ -3141,6 +3141,23 @@ POSE_JSON 本体の固定スキーマを変更せず、
 - 追加情報は専用タグで囲った別メタとして出力する
 - Viewer は POSE_SCENE_META を最優先で参照し、意味推定を最小化する
 
+【BODY / HEAD 向きの明示優先】
+AIは body.forward および head.forward を、
+その部位の「正面方向」を表す明示値として必ず一貫して出力すること。
+
+- body.forward は胴体正面方向を表す
+- head.forward は顔正面方向を表す
+- viewer 側の骨格推定より、この明示値を優先する
+- body.forward と head.forward は一致していてもよいし、異なっていてもよい
+- 顔だけ横を向く場合、head.forward のみを変化させる
+- 胴体が回転した場合、body.forward を更新する
+- 乳首・秘部・尻穴など胴体前後判定は body.forward を基準とする
+- 口・顔向き判定は head.forward を基準とする
+
+【左右判定の補助】
+AIは必要に応じて、head.right および body.right を整合的に出力してよい。
+viewer は左右判定において right ベクトルを利用してよい。
+
 【POSE_JSON との関係】
 - POSE_JSON の root は引き続き "ID10" 固定とする
 - Pelvis(ID10) は pose ローカル座標系の原点として扱う
