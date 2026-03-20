@@ -45,6 +45,8 @@ let lastMouseY = 0;
 let stripPoseJsonOnSend = true;   // true: 送信時に <POSE_JSON_START>～<POSE_JSON_END> を削除
 let globalPointerHandlersInstalled = false;
 let sendInterceptorInstalled = false;
+let poseExtra = null;
+let hoveredPointId = null;
 
   const BONES = [
     ['ID04', 'ID03'],
@@ -304,6 +306,22 @@ function updateActionButtonsUI() {
     function hasPoseSceneMetaBlock(text) {
   return text.includes('<POSE_SCENE_META_START>') &&
          text.includes('<POSE_SCENE_META_END>');
+}
+function extractLatestPoseExtraBlock(text) {
+  if (!text) return null;
+
+  const matches = [...text.matchAll(/<POSE_EXTRA>([\s\S]*?)<\/POSE_EXTRA>/g)];
+  if (!matches.length) return null;
+
+  let block = matches[matches.length - 1][1].trim();
+
+  const jsonStart = block.indexOf('{');
+  const jsonEnd = block.lastIndexOf('}');
+
+  if (jsonStart === -1 || jsonEnd === -1) return null;
+
+  block = block.slice(jsonStart, jsonEnd + 1);
+  return sanitizePoseJsonText(block);
 }
  function updateSyncButtonByMeta() {
   const btn = document.getElementById('pose-min-sync-btn');
@@ -905,14 +923,16 @@ function drawPose() {
   const headColor = '#f6d6cc';
   const handColor = '#ffd6de';
   const footColor = '#f2b8a8';
- const breastCColor = '#cfcfcf';
+ const breastCColor = '#4fb3b3';
  const breastColor = '#b8b8b8';
 
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#0b0b0b';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+const bgColor = poseExtra?.bgColor || '#0b0b0b';
 
+ctx.fillStyle = bgColor;
+ctx.fillRect(0, 0, canvas.width, canvas.height);
   const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
   const P = computeLayout(scenePoints, canvas.width, canvas.height);
 lastProjectedPoints = P;
@@ -1032,6 +1052,8 @@ function drawHeadBlock() {
   const neck = scenePoints['ID03'];
   if (!skullTop || !neck) return;
 
+  const hairColor = poseExtra?.hairColor || '#8b5a2b';
+
   const metaHead = poseSceneMeta?.head;
   let f = metaHead?.forward || { x: 0, y: 0, z: 1 };
 
@@ -1129,16 +1151,16 @@ function drawHeadBlock() {
 
 // 既存
 if (mouthFront) {
-  drawCircle(ctx, head2D, headRad, '#8b5a2b');
+  drawCircle(ctx, head2D, headRad, hairColor);
   drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
 } else {
   drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
-  drawCircle(ctx, head2D, headRad, '#8b5a2b');
+  drawCircle(ctx, head2D, headRad, hairColor);
 }
 
   // 耳横から胸へ向かう髪
-  drawCapsule(ctx, earL, hairEndL, 6, '#8b5a2b');
-  drawCapsule(ctx, earR, hairEndR, 6, '#8b5a2b');
+drawCapsule(ctx, earL, hairEndL, 6, hairColor);
+drawCapsule(ctx, earR, hairEndR, 6, hairColor);
 
 
 
@@ -1351,13 +1373,19 @@ function drawLegBlock() {
       }
       return count ? (sum / count) : 0;
     })();
-  drawFloorPad(ctx, scenePoints, canvas.width, canvas.height);
-  drawParts.push({
-    name: 'legs',
-    depth: legDepth,
-    draw: () => drawLegBlock()
-  });
+drawFloorPad(ctx, scenePoints, canvas.width, canvas.height);
 
+drawParts.push({
+  name: 'boxes',
+  depth: getExtraBoxesDepth(),
+  draw: () => drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height)
+});
+
+drawParts.push({
+  name: 'legs',
+  depth: legDepth,
+  draw: () => drawLegBlock()
+});
   drawParts.push({
     name: 'torso',
     depth: torsoDepth,
@@ -1381,6 +1409,8 @@ drawParts.push({
   name: 'head',
   depth: headDepth,
   draw: () => {
+    const hairColor = poseExtra?.hairColor || '#8b5a2b';
+
     // ★後ろ髪（位置は今のまま、順番だけ前へ）
     drawEllipse(
       ctx,
@@ -1390,7 +1420,7 @@ drawParts.push({
       },
       headRadius * 0.55,
       headRadius * 1.6,
-      '#8b5a2b'
+      hairColor
     );
 
     if (neckTop2D && neckBottom2D) {
@@ -1568,13 +1598,13 @@ const bodyHipL = {
     // === DEBUG: spineL / spineR ===
 ctx.fillStyle = 'red';
 
-ctx.beginPath();
-ctx.arc(spineL.x, spineL.y, 4, 0, Math.PI * 2);
-ctx.fill();
+//ctx.beginPath();
+//ctx.arc(spineL.x, spineL.y, 4, 0, Math.PI * 2);
+//ctx.fill();
 
-ctx.beginPath();
-ctx.arc(spineR.x, spineR.y, 4, 0, Math.PI * 2);
-ctx.fill();
+//ctx.beginPath();
+//ctx.arc(spineR.x, spineR.y, 4, 0, Math.PI * 2);
+//ctx.fill();
 
 // ラベル（任意）
 ctx.fillStyle = '#fff';
@@ -1785,19 +1815,48 @@ function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
 }
 async function syncPose() {
   setSyncButtonLoading(true);
-await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 300));
+
   const text = document.body?.textContent || '';
   const jsonText = extractLatestPoseJsonBlock(text);
   const metaText = extractLatestPoseSceneMetaBlock(text);
+  const extraText = extractLatestPoseExtraBlock(text);
+
+  let parsed = null;
+  let parsedMeta = null;
+
+  if (extraText) {
+    try {
+      poseExtra = JSON.parse(extraText);
+    } catch (e) {
+      console.warn('POSE_EXTRA parse error');
+    }
+  }
 
   if (!jsonText && !metaText) {
-//    setStatus('status: syncPose no block');
     setSyncButtonLoading(false);
     return;
   }
 
-  let parsed = null;
-  let parsedMeta = null;
+  if (jsonText) {
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      setStatus('status: json parse error');
+      setSyncButtonLoading(false);
+      return;
+    }
+  }
+
+  if (metaText) {
+    try {
+      parsedMeta = JSON.parse(metaText);
+    } catch (e) {
+      setStatus('status: meta parse error');
+      setSyncButtonLoading(false);
+      return;
+    }
+  }
 
   if (jsonText) {
     try {
@@ -1826,12 +1885,13 @@ await new Promise(r => setTimeout(r, 300));
       poseSceneMeta = parsedMeta;
     }
 
-if (parsed) {
-  if (forceFrontView) {
-    if (typeof parsed.camera?.scale === 'number') INTERNAL_CAMERA.scale = parsed.camera.scale;
-    if (typeof parsed.camera?.tx === 'number') INTERNAL_CAMERA.tx = parsed.camera.tx;
-    if (typeof parsed.camera?.ty === 'number') INTERNAL_CAMERA.ty = parsed.camera.ty;
-  }
+    if (parsed) {
+      if (forceFrontView) {
+        if (typeof parsed.camera?.scale === 'number') INTERNAL_CAMERA.scale = parsed.camera.scale;
+        if (typeof parsed.camera?.tx === 'number') INTERNAL_CAMERA.tx = parsed.camera.tx;
+        if (typeof parsed.camera?.ty === 'number') INTERNAL_CAMERA.ty = parsed.camera.ty;
+      }
+
       const rawPose = {
         frame: parsed.frame ?? pose.frame,
         root: parsed.root ?? pose.root,
@@ -1846,11 +1906,11 @@ if (parsed) {
       pose.root = normalized.root ?? pose.root;
       pose.points = normalized.points || pose.points;
 
-poseSceneMeta = {
-  scene: parsedMeta?.scene || normalized.scene || {},
-  body: parsedMeta?.body || normalized.body || {},
-  head: parsedMeta?.head || normalized.head || {}
-};
+      poseSceneMeta = {
+        scene: parsedMeta?.scene || normalized.scene || {},
+        body: parsedMeta?.body || normalized.body || {},
+        head: parsedMeta?.head || normalized.head || {}
+      };
     }
 
     const hasScene =
@@ -1860,9 +1920,8 @@ poseSceneMeta = {
     if (forceFrontView && hasScene) {
       INTERNAL_CAMERA.yaw = 0;
       INTERNAL_CAMERA.pitch = 0;
-            fixedFitScale = null;
+      fixedFitScale = null;
     }
-
 
     drawPose();
 
@@ -1916,7 +1975,8 @@ function startAutoSyncObserver() {
       const text = document.body?.textContent || '';
 if (
   !text.includes('<POSE_JSON_START>') &&
-  !text.includes('<POSE_SCENE_META_START>')
+  !text.includes('<POSE_SCENE_META_START>') &&
+  !text.includes('<POSE_EXTRA>')
 ) return;
 
       removePoseJsonBlocksFromDom(document.body);
@@ -1932,98 +1992,6 @@ observer.observe(target, {
 });
 
   setTimeout(checkAndAutoSyncPose, 400);
-}
-function installGlobalPointerHandlers() {
-  if (globalPointerHandlersInstalled) return;
-  globalPointerHandlersInstalled = true;
-
-  document.addEventListener('mousemove', (e) => {
-    const dx = e.clientX - lastMouseX;
-    const dy = e.clientY - lastMouseY;
-
-    const totalMove = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
-    if (totalMove > 4) {
-      didDragSinceMouseDown = true;
-    }
-
-    lastMouseX = e.clientX;
-    lastMouseY = e.clientY;
-
-    if (isPanelDragging) {
-      const panel = document.getElementById(PANEL_ID);
-      if (!panel) return;
-
-      const left = parseInt(panel.style.left || '0', 10);
-      const top = parseInt(panel.style.top || '0', 10);
-      panel.style.left = `${left + dx}px`;
-      panel.style.top = `${top + dy}px`;
-      return;
-    }
-
-    if (isDragging) {
-      if (forceFrontView) {
-        setForceFrontUI(false, true);
-      }
-
-      INTERNAL_CAMERA.yaw += dx * 0.01;
-      INTERNAL_CAMERA.pitch = clampPitch(INTERNAL_CAMERA.pitch + dy * 0.01);
-      drawPose();
-      return;
-    }
-
-    if (isPanning) {
-      INTERNAL_CAMERA.tx += dx;
-      INTERNAL_CAMERA.ty += dy;
-      drawPose();
-      return;
-    }
-  });
-
-  document.addEventListener('mouseup', () => {
-if (
-  mouseDownButton === 0 &&
-  !pendingSelectShift &&
-  !didDragSinceMouseDown
-) {
-if (pendingSelectPointId && pendingSelectPointId === selectedPointId) {
-  selectedPointId = null; // 同じ点を押したら解除
-} else {
-  selectedPointId = pendingSelectPointId || null;
-}
-
-  if (selectedPointId) {
-    setStatus(`status: selected ${selectedPointId} ${pose.points?.[selectedPointId]?.name || ''}`);
-
-    actionHighlights.push({
-      id: selectedPointId,
-      time: Date.now()
-    });
-
-    drawPose(); // ← 追加。pushしたあとに描画
-setTimeout(() => drawPose(), 100);
-setTimeout(() => drawPose(), 300);
-setTimeout(() => drawPose(), 600);
-setTimeout(() => drawPose(), 1000);
-setTimeout(() => drawPose(), 1600);
-setTimeout(() => drawPose(), 2200);
-setTimeout(() => drawPose(), 3000);
-
-    sendSelectedAction(selectedPointId);
-  } else {
-    setStatus('status: selected none');
-    drawPose();
-  }
-}
-
-    isDragging = false;
-    isPanning = false;
-    isPanelDragging = false;
-
-    mouseDownButton = -1;
-    pendingSelectPointId = null;
-    pendingSelectShift = false;
-    didDragSinceMouseDown = false;
-  });
 }
 
 function installSendInterceptor() {
@@ -2426,6 +2394,120 @@ function updateStripButtonLabel(btn) {
   if (!btn) return;
   btn.textContent = stripPoseJsonOnSend ? 'STRIP: ON' : 'STRIP: OFF';
 }
+function installGlobalPointerHandlers() {
+  if (globalPointerHandlersInstalled) return;
+  globalPointerHandlersInstalled = true;
+
+  document.addEventListener('mousemove', (e) => {
+    const dx = e.clientX - lastMouseX;
+    const dy = e.clientY - lastMouseY;
+
+    const totalMove = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+    if (totalMove > 4) {
+      didDragSinceMouseDown = true;
+    }
+
+    lastMouseX = e.clientX;
+    lastMouseY = e.clientY;
+
+    // hover判定
+    if (!isDragging && !isPanning && !isPanelDragging && lastProjectedPoints) {
+      const panel = document.getElementById(PANEL_ID);
+      const canvas = panel?.querySelector('#' + CANVAS_ID);
+
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
+
+        if (mx < 0 || my < 0 || mx > rect.width || my > rect.height) {
+          hoveredPointId = null;
+        } else {
+          hoveredPointId = findNearestPointId(mx, my, lastProjectedPoints, 10);
+        }
+
+        if (!selectedPointId) {
+          updateSelectedPointInfo(getPosePointsWithSceneOffset(pose.points || {}));
+        }
+      }
+    }
+
+    if (isPanelDragging) {
+      const panel = document.getElementById(PANEL_ID);
+      if (!panel) return;
+
+      const left = parseInt(panel.style.left || '0', 10);
+      const top = parseInt(panel.style.top || '0', 10);
+      panel.style.left = `${left + dx}px`;
+      panel.style.top = `${top + dy}px`;
+      return;
+    }
+
+    if (isDragging) {
+      if (forceFrontView) {
+        setForceFrontUI(false, true);
+      }
+
+      INTERNAL_CAMERA.yaw += dx * 0.01;
+      INTERNAL_CAMERA.pitch = clampPitch(INTERNAL_CAMERA.pitch + dy * 0.01);
+      drawPose();
+      return;
+    }
+
+    if (isPanning) {
+      INTERNAL_CAMERA.tx += dx;
+      INTERNAL_CAMERA.ty += dy;
+      drawPose();
+      return;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (
+      mouseDownButton === 0 &&
+      !pendingSelectShift &&
+      !didDragSinceMouseDown
+    ) {
+      if (pendingSelectPointId && pendingSelectPointId === selectedPointId) {
+        selectedPointId = null;
+      } else {
+        selectedPointId = pendingSelectPointId || null;
+      }
+
+      if (selectedPointId) {
+        setStatus(`status: selected ${selectedPointId} ${pose.points?.[selectedPointId]?.name || ''}`);
+
+        actionHighlights.push({
+          id: selectedPointId,
+          time: Date.now()
+        });
+
+        drawPose();
+        setTimeout(() => drawPose(), 100);
+        setTimeout(() => drawPose(), 300);
+        setTimeout(() => drawPose(), 600);
+        setTimeout(() => drawPose(), 1000);
+        setTimeout(() => drawPose(), 1600);
+        setTimeout(() => drawPose(), 2200);
+        setTimeout(() => drawPose(), 3000);
+
+        sendSelectedAction(selectedPointId);
+      } else {
+        setStatus('status: selected none');
+        drawPose();
+      }
+    }
+
+    isDragging = false;
+    isPanning = false;
+    isPanelDragging = false;
+
+    mouseDownButton = -1;
+    pendingSelectPointId = null;
+    pendingSelectShift = false;
+    didDragSinceMouseDown = false;
+  });
+}
 function findGeminiComposer() {
   // Geminiの最新構造に対応した強化版
   const candidates = [
@@ -2542,7 +2624,8 @@ if (
   before === after ||
   (
     !before.includes('<POSE_JSON_START>') &&
-    !before.includes('<POSE_SCENE_META_START>')
+    !before.includes('<POSE_SCENE_META_START>') &&
+    !before.includes('<POSE_EXTRA>')
   )
 ) {
   return false;
@@ -2595,6 +2678,7 @@ function removePoseJsonBlocks(text) {
   return text
     .replace(/<POSE_JSON_START>[\s\S]*?<POSE_JSON_END>\s*/g, '')
     .replace(/<POSE_SCENE_META_START>[\s\S]*?<POSE_SCENE_META_END>\s*/g, '')
+    .replace(/<POSE_EXTRA>[\s\S]*?<\/POSE_EXTRA>\s*/g, '')
     .trim();
 }
 function removePoseJsonBlocksFromDom(root) {
@@ -2612,7 +2696,8 @@ function removePoseJsonBlocksFromDom(root) {
     const original = textNode.nodeValue;
 const replaced = original
   .replace(/<POSE_JSON_START>[\s\S]*?<POSE_JSON_END>\s*/g, '')
-  .replace(/<POSE_SCENE_META_START>[\s\S]*?<POSE_SCENE_META_END>\s*/g, '');
+  .replace(/<POSE_SCENE_META_START>[\s\S]*?<POSE_SCENE_META_END>\s*/g, '')
+  .replace(/<POSE_EXTRA>[\s\S]*?<\/POSE_EXTRA>\s*/g, '');
 
     if (replaced !== original) {
       textNode.nodeValue = replaced;
@@ -3411,9 +3496,6 @@ function drawFloorPad(ctx, posePoints, canvasW, canvasH) {
   const pelvisRaw = posePoints?.ID10;
   if (!pelvisRaw) return;
 
-  const size = 1.0; // 座布団くらい
-  const half = size / 2;
-
   // pose内の最下Yを探す
   let minY = Infinity;
   for (const id of Object.keys(posePoints || {})) {
@@ -3425,14 +3507,19 @@ function drawFloorPad(ctx, posePoints, canvasW, canvasH) {
   }
   if (!isFinite(minY)) return;
 
-  // 少しだけ下にずらす
   const floorY = minY - 0.10;
 
+  // 手前を広く、奥を狭くする
+  const nearHalfX = 8.0;
+  const farHalfX = 3.2;
+  const nearZ = 7.0;
+  const farZ = -1.2;
+
   const corners3D = [
-    { x: pelvisRaw.x - half, y: floorY, z: pelvisRaw.z - half },
-    { x: pelvisRaw.x + half, y: floorY, z: pelvisRaw.z - half },
-    { x: pelvisRaw.x + half, y: floorY, z: pelvisRaw.z + half },
-    { x: pelvisRaw.x - half, y: floorY, z: pelvisRaw.z + half }
+    { x: pelvisRaw.x - nearHalfX, y: floorY, z: pelvisRaw.z + nearZ }, // 左手前
+    { x: pelvisRaw.x + nearHalfX, y: floorY, z: pelvisRaw.z + nearZ }, // 右手前
+    { x: pelvisRaw.x + farHalfX,  y: floorY, z: pelvisRaw.z + farZ  }, // 右奥
+    { x: pelvisRaw.x - farHalfX,  y: floorY, z: pelvisRaw.z + farZ  }  // 左奥
   ];
 
   const projected = corners3D.map(p => projectPoint(p));
@@ -3453,10 +3540,14 @@ function drawFloorPad(ctx, posePoints, canvasW, canvasH) {
   }));
 
   ctx.save();
-  ctx.fillStyle = 'rgba(80, 255, 140, 0.18)';
-  ctx.strokeStyle = 'rgba(120, 255, 170, 0.45)';
-  ctx.lineWidth = 1;
 
+  const groundColor = poseExtra?.groundColor || '#b58b5a';
+
+  ctx.fillStyle = groundColor + '55';
+  ctx.strokeStyle = groundColor + 'aa';
+  ctx.lineWidth = 1.2;
+
+  // 床本体
   ctx.beginPath();
   ctx.moveTo(screenPts[0].x, screenPts[0].y);
   ctx.lineTo(screenPts[1].x, screenPts[1].y);
@@ -3466,7 +3557,205 @@ function drawFloorPad(ctx, posePoints, canvasW, canvasH) {
   ctx.fill();
   ctx.stroke();
 
+  // 床の縦ラインを少し入れる
+  const lineCount = 8;
+  for (let i = 1; i < lineCount; i++) {
+    const t = i / lineCount;
+
+    const near = {
+      x: screenPts[0].x + (screenPts[1].x - screenPts[0].x) * t,
+      y: screenPts[0].y + (screenPts[1].y - screenPts[0].y) * t
+    };
+
+    const far = {
+      x: screenPts[3].x + (screenPts[2].x - screenPts[3].x) * t,
+      y: screenPts[3].y + (screenPts[2].y - screenPts[3].y) * t
+    };
+
+    ctx.beginPath();
+    ctx.moveTo(near.x, near.y);
+    ctx.lineTo(far.x, far.y);
+    ctx.strokeStyle = groundColor + '44';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   ctx.restore();
+}
+function drawExtraBoxes(ctx, posePoints, canvasW, canvasH) {
+  const boxes = poseExtra?.boxes;
+  if (!Array.isArray(boxes) || !boxes.length) return;
+
+  const boxFaces = [];
+
+  const { fitScale, centerX, centerY } = getLayoutMetrics(
+    posePoints || {},
+    canvasW,
+    canvasH
+  );
+
+  const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
+
+  function toScreen(p) {
+    const r = projectPoint(p);
+    return {
+      x: canvasW / 2 + tx + (r.x - centerX) * scale,
+      y: canvasH / 2 + ty - (r.y - centerY) * scale
+    };
+  }
+
+  function calcDepth(p) {
+    const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
+    return r.z;
+  }
+
+  function pushFace(points, depth, fillColor, strokeColor) {
+    if (!points || points.length < 4) return;
+
+    boxFaces.push({
+      depth,
+      points,
+      fillColor,
+      strokeColor
+    });
+  }
+
+  for (const box of boxes) {
+    const x = Number(box?.x) || 0;
+    const y = Number(box?.y) || 0;
+    const z = Number(box?.z) || 0;
+    const w = Math.max(0.01, Number(box?.w) || 1);
+    const h = Math.max(0.01, Number(box?.h) || 1);
+    const d = Math.max(0.01, Number(box?.d) || 1);
+    const color = box?.color || '#8b4513';
+
+    const xL = x - w / 2;
+    const xR = x + w / 2;
+    const yB = y;
+    const yT = y + h;
+    const zF = z;
+    const zB = z - d;
+
+    // 前面
+    const frontBL = toScreen({ x: xL, y: yB, z: zF });
+    const frontBR = toScreen({ x: xR, y: yB, z: zF });
+    const frontTR = toScreen({ x: xR, y: yT, z: zF });
+    const frontTL = toScreen({ x: xL, y: yT, z: zF });
+
+    // 背面
+    const backBL = toScreen({ x: xL, y: yB, z: zB });
+    const backBR = toScreen({ x: xR, y: yB, z: zB });
+    const backTR = toScreen({ x: xR, y: yT, z: zB });
+    const backTL = toScreen({ x: xL, y: yT, z: zB });
+
+    const view = getViewCamera(INTERNAL_CAMERA);
+    const yaw = view?.yaw || 0;
+    const rightVisible = Math.sin(yaw) >= 0;
+
+    const frontCenter = {
+      x: x,
+      y: y + h * 0.5,
+      z: zF
+    };
+
+    const topCenter = {
+      x: x,
+      y: y + h,
+      z: z - d * 0.5
+    };
+
+    // 上面
+    pushFace(
+      [backTL, backTR, frontTR, frontTL],
+      calcDepth(topCenter),
+      shadeColor(color, 18),
+      shadeColor(color, 5)
+    );
+
+    // 側面
+    if (rightVisible) {
+      const sideCenter = {
+        x: xR,
+        y: y + h * 0.5,
+        z: z - d * 0.5
+      };
+
+      pushFace(
+        [backBR, frontBR, frontTR, backTR],
+        calcDepth(sideCenter),
+        shadeColor(color, -12),
+        shadeColor(color, -20)
+      );
+    } else {
+      const sideCenter = {
+        x: xL,
+        y: y + h * 0.5,
+        z: z - d * 0.5
+      };
+
+      pushFace(
+        [backTL, frontTL, frontBL, backBL],
+        calcDepth(sideCenter),
+        shadeColor(color, -12),
+        shadeColor(color, -20)
+      );
+    }
+
+    // 前面
+    pushFace(
+      [frontBL, frontBR, frontTR, frontTL],
+      calcDepth(frontCenter),
+      color,
+      shadeColor(color, -18)
+    );
+  }
+
+  boxFaces.sort((a, b) => a.depth - b.depth);
+
+  for (const face of boxFaces) {
+    ctx.beginPath();
+    ctx.moveTo(face.points[0].x, face.points[0].y);
+
+    for (let i = 1; i < face.points.length; i++) {
+      ctx.lineTo(face.points[i].x, face.points[i].y);
+    }
+
+    ctx.closePath();
+    ctx.fillStyle = face.fillColor;
+    ctx.strokeStyle = face.strokeColor;
+    ctx.lineWidth = 1.2;
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+function getExtraBoxesDepth() {
+  const boxes = poseExtra?.boxes;
+  if (!Array.isArray(boxes) || !boxes.length) return -9999;
+
+  let sum = 0;
+  let count = 0;
+
+  for (const box of boxes) {
+    const x = Number(box?.x) || 0;
+    const y = Number(box?.y) || 0;
+    const z = Number(box?.z) || 0;
+    const h = Math.max(0.01, Number(box?.h) || 1);
+    const d = Math.max(0.01, Number(box?.d) || 1);
+
+    const center = {
+      x,
+      y: y + h * 0.5,
+      z: z - d * 0.5
+    };
+
+    const r = rotatePoint(center, getViewCamera(INTERNAL_CAMERA));
+    sum += r.z;
+    count++;
+  }
+
+  return count ? (sum / count) : -9999;
 }
 function drawSideBreastByDepth(ctx, projected, rawPoints, color, cam, refs, currentScale, view) {
   const chest = projected.ID02;
@@ -4228,6 +4517,14 @@ ctx.beginPath();
 ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
 ctx.fillStyle = color;
 ctx.fill();
+
+if (id === hoveredPointId && id !== selectedPointId) {
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, r + 4, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
   }
 }
 
@@ -4668,7 +4965,9 @@ function updateSelectedPointInfo(rawPoints) {
     el.removeChild(el.firstChild);
   }
 
-  if (!selectedPointId || !rawPoints?.[selectedPointId]) {
+  const activeId = selectedPointId || hoveredPointId;
+
+  if (!activeId || !rawPoints?.[activeId]) {
     const span = document.createElement('span');
     span.style.color = '#777';
     span.textContent = 'selected: none';
@@ -4676,17 +4975,20 @@ function updateSelectedPointInfo(rawPoints) {
     return;
   }
 
-  const p = rawPoints[selectedPointId];
+  const p = rawPoints[activeId];
   const name = p.name || '';
 
   const line1 = document.createElement('div');
-  line1.style.color = '#fff3a0';
+  line1.style.color = selectedPointId ? '#fff3a0' : '#8fdcff';
 
   const b = document.createElement('b');
-  b.textContent = selectedPointId;
+  b.textContent = activeId;
   line1.appendChild(b);
 
-  const nameText = document.createTextNode(` ${name}`);
+  const stateText = document.createTextNode(selectedPointId ? ' selected ' : ' hover ');
+  line1.appendChild(stateText);
+
+  const nameText = document.createTextNode(name);
   line1.appendChild(nameText);
 
   const line2 = document.createElement('div');
