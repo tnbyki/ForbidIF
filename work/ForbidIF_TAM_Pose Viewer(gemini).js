@@ -64,7 +64,39 @@ let sendInterceptorInstalled = false;
     ['ID13', 'ID15'],
     ['ID15', 'ID17']
   ];
-
+const ACTION_BUTTONS = [
+  { key: 'push',   icon: '👆', help: '押す' },
+  { key: 'lick',   icon: '👅', help: '舐める' },
+  { key: 'Massage',    icon: '🤲', help: '揉む' },
+  { key: 'kiss',   icon: '💋', help: 'キス' },
+  { key: 'touch',  icon: '🫳', help: '触る' },
+  { key: 'grab',   icon: '🤏', help: 'つかむ' },
+  { key: 'insert', icon: '🪄', help: '入れる' },
+  { key: 'hold',   icon: '✊', help: '持つ' },
+  { key: 'press',  icon: '⚠️', help: '押し込む' },
+  { key: 'lift',  icon: '💪', help: '持ち上げる' },
+  { key: 'open',   icon: '🦵', help: '広げる' },
+  { key: 'see',    icon: '👀', help: '見る' },
+  { key: 'tune',   icon: '🔎', help: '調べる' },
+  { key: 'extra',  icon: '➕', help: '予備' }
+];
+const ACTION_LABELS = {
+  push: '押す',
+  lick: '舐める',
+  Massage: '揉む',
+  kiss: 'キス',
+  touch: '触る',
+  grab: 'つかむ',
+  insert: '入れる',
+  hold: '持つ',
+  press: '圧迫',
+  lift: '持ち上げる',
+  open: '開く',
+  see: '見る',
+  tune: '調整',
+  extra: '予備'
+};
+let activeActionKeys = new Set();
 const INTERNAL_CAMERA = {
   yaw: 0,
   pitch: 0,
@@ -110,6 +142,7 @@ let pose = {
     ID27: { name: 'Bust Center', x: 0.00, y: 0.76, z: 0.14 }
   }
 };
+let actionHighlights = [];
 
   let lastPoseBlock = '';
   let autoSyncObserverStarted = false;
@@ -122,6 +155,76 @@ let poseSceneMeta = null;
 let lastPoseMetaBlock = '';
 let lastProjectedPoints = null;
 let selectedPointId = null;
+let mouseDownButton = -1;
+let dragStartX = 0;
+let dragStartY = 0;
+let didDragSinceMouseDown = false;
+let pendingSelectPointId = null;
+let pendingSelectShift = false;
+const POINT_LABELS = {
+  ID01: 'HEAD',
+  ID02: 'CHEST',
+  ID03: 'NECK',
+  ID04: 'HEAD_TOP',
+
+  ID05: 'SHOULDR',
+  ID06: 'SHOULDL',
+
+  ID07: 'ARMR',
+  ID08: 'ARML',
+
+  ID09: 'HANDR',
+  ID11: 'HANDL',
+
+  ID10: 'PELVIS',
+
+  ID12: 'HIPR',
+  ID13: 'HIPL',
+
+  ID14: 'KNEER',
+  ID15: 'KNEEL',
+
+  ID16: 'FOOTR',
+  ID17: 'FOOTL',
+
+  ID18: 'MOUTH',
+
+  ID19: 'BSTR',
+  ID20: 'BSTL',
+  ID27: 'BUST',
+
+  ID21: 'GENITAL',
+  ID22: 'ANUS'
+};
+
+
+ function toggleActionButton(key) {
+  if (activeActionKeys.has(key)) {
+    activeActionKeys.delete(key);
+  } else {
+    activeActionKeys.add(key);
+  }
+  updateActionButtonsUI();
+}
+
+function updateActionButtonsUI() {
+  const wrap = document.getElementById('pose-min-action-row');
+  if (!wrap) return;
+
+  const buttons = wrap.querySelectorAll('[data-action-key]');
+  buttons.forEach(btn => {
+    const key = btn.getAttribute('data-action-key');
+    const on = activeActionKeys.has(key);
+
+    btn.style.background = on ? '#2a2a2a' : '#111';
+    btn.style.border = on ? '1px solid #7a7a7a' : '1px solid #444';
+    btn.style.boxShadow = on
+      ? 'inset 0 2px 6px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)'
+      : 'inset 0 1px 0 rgba(255,255,255,0.04)';
+    btn.style.transform = on ? 'translateY(1px)' : 'translateY(0)';
+    btn.style.opacity = on ? '1' : '0.92';
+  });
+}
 
   function sanitizePoseJsonText(text) {
     if (!text) return '';
@@ -1281,9 +1384,12 @@ drawParts.push({
 
 
 drawPointDots(ctx, P, scenePoints);
+    drawActionHighlights(ctx, P);
+//    drawSelectedPointOverlay(ctx, P, scenePoints);
 drawPointLabels(ctx, P, scenePoints);
+updateSelectedPointInfo(scenePoints);
 
-  setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
+setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
 
 function drawBodySurface(ctx, P, rawPoints, bodyBasis) {
@@ -1804,6 +1910,11 @@ function installGlobalPointerHandlers() {
     const dx = e.clientX - lastMouseX;
     const dy = e.clientY - lastMouseY;
 
+    const totalMove = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+    if (totalMove > 4) {
+      didDragSinceMouseDown = true;
+    }
+
     lastMouseX = e.clientX;
     lastMouseY = e.clientY;
 
@@ -1823,22 +1934,57 @@ function installGlobalPointerHandlers() {
         setForceFrontUI(false, true);
       }
 
-INTERNAL_CAMERA.yaw += dx * 0.01;
-INTERNAL_CAMERA.pitch = clampPitch(INTERNAL_CAMERA.pitch + dy * 0.01);
-drawPose();
+      INTERNAL_CAMERA.yaw += dx * 0.01;
+      INTERNAL_CAMERA.pitch = clampPitch(INTERNAL_CAMERA.pitch + dy * 0.01);
+      drawPose();
+      return;
     }
 
     if (isPanning) {
-INTERNAL_CAMERA.tx += dx;
-INTERNAL_CAMERA.ty += dy;
-drawPose();
+      INTERNAL_CAMERA.tx += dx;
+      INTERNAL_CAMERA.ty += dy;
+      drawPose();
+      return;
     }
   });
 
   document.addEventListener('mouseup', () => {
+if (
+  mouseDownButton === 0 &&
+  !pendingSelectShift &&
+  !didDragSinceMouseDown
+) {
+if (pendingSelectPointId && pendingSelectPointId === selectedPointId) {
+  selectedPointId = null; // 同じ点を押したら解除
+} else {
+  selectedPointId = pendingSelectPointId || null;
+}
+
+  if (selectedPointId) {
+    setStatus(`status: selected ${selectedPointId} ${pose.points?.[selectedPointId]?.name || ''}`);
+
+    actionHighlights.push({
+      id: selectedPointId,
+      time: Date.now()
+    });
+
+    drawPose(); // ← 追加。pushしたあとに描画
+
+    sendSelectedAction(selectedPointId);
+  } else {
+    setStatus('status: selected none');
+    drawPose();
+  }
+}
+
     isDragging = false;
     isPanning = false;
     isPanelDragging = false;
+
+    mouseDownButton = -1;
+    pendingSelectPointId = null;
+    pendingSelectShift = false;
+    didDragSinceMouseDown = false;
   });
 }
 
@@ -1882,7 +2028,7 @@ document.addEventListener('keydown', (e) => {
     panel.style.position = 'fixed';
     panel.style.left = '8px';
     panel.style.top = '80px';
-    panel.style.width = '190px';
+ panel.style.width = '280px';
     panel.style.background = 'rgba(20,20,20,0.96)';
     panel.style.color = '#ddd';
     panel.style.border = '1px solid #444';
@@ -1953,31 +2099,39 @@ canvas.height = 500;
 
 canvas.addEventListener('mousedown', (e) => {
   e.preventDefault();
+
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  didDragSinceMouseDown = false;
+  mouseDownButton = e.button;
 
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
-  if (e.button === 0 && !e.shiftKey && typeof findNearestPointId === 'function') {
-    const hitId = findNearestPointId(mx, my, lastProjectedPoints, 12);
+  pendingSelectPointId = null;
+  pendingSelectShift = !!e.shiftKey;
 
-    if (hitId) {
-      selectedPointId = hitId;
-      drawPose();
-      setStatus(`status: selected ${hitId} ${pose.points?.[hitId]?.name || ''}`);
-      return;
-    }
+  if (e.button === 0 && !e.shiftKey && typeof findNearestPointId === 'function') {
+    pendingSelectPointId = findNearestPointId(mx, my, lastProjectedPoints, 12);
+    isDragging = true;
+    isPanning = false;
+    return;
   }
 
   if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
     isPanning = true;
-  } else if (e.button === 0) {
+    isDragging = false;
+    return;
+  }
+
+  if (e.button === 0) {
     isDragging = true;
+    isPanning = false;
   }
 });
-
     canvas.addEventListener('auxclick', (e) => {
       if (e.button === 1) e.preventDefault();
     });
@@ -2021,14 +2175,77 @@ canvas.addEventListener('mousedown', (e) => {
 
   drawPose();
 }, { passive: false });
+const actionRow = document.createElement('div');
+actionRow.id = 'pose-min-action-row';
+actionRow.style.display = 'flex';
+actionRow.style.flexWrap = 'wrap';
+actionRow.style.gap = '4px';
+actionRow.style.marginTop = '6px';
 
-    bodyWrap.appendChild(canvas);
+for (const item of ACTION_BUTTONS) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = item.icon;
+  btn.setAttribute('data-action-key', item.key);
+btn.title = item.help || item.key;
 
-    const meta = document.createElement('div');
-    meta.id = 'pose-min-meta';
-    meta.style.marginTop = '6px';
-    meta.style.lineHeight = '1.3';
-    bodyWrap.appendChild(meta);
+  btn.style.width = '36px';
+  btn.style.height = '28px';
+  btn.style.borderRadius = '8px';
+  btn.style.border = '1px solid #444';
+  btn.style.background = '#111';
+  btn.style.color = '#fff';
+  btn.style.cursor = 'pointer';
+  btn.style.fontSize = '16px';
+  btn.style.lineHeight = '1';
+  btn.style.padding = '0';
+  btn.style.display = 'flex';
+  btn.style.alignItems = 'center';
+  btn.style.justifyContent = 'center';
+  btn.style.transition = 'transform 0.06s ease, background 0.12s ease, border 0.12s ease, box-shadow 0.12s ease';
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleActionButton(item.key);
+  });
+
+  btn.addEventListener('mouseenter', () => {
+    if (!activeActionKeys.has(item.key)) {
+      btn.style.background = '#181818';
+    }
+  });
+
+  btn.addEventListener('mouseleave', () => {
+    if (!activeActionKeys.has(item.key)) {
+      btn.style.background = '#111';
+    }
+  });
+
+  actionRow.appendChild(btn);
+}
+bodyWrap.appendChild(canvas);
+
+bodyWrap.appendChild(actionRow);
+
+const selectedInfo = document.createElement('div');
+selectedInfo.id = 'pose-min-selected-info';
+selectedInfo.style.marginTop = '6px';
+selectedInfo.style.padding = '6px 8px';
+selectedInfo.style.border = '1px solid #333';
+selectedInfo.style.borderRadius = '6px';
+selectedInfo.style.background = 'rgba(255,255,255,0.03)';
+selectedInfo.style.color = '#bbb';
+selectedInfo.style.lineHeight = '1.35';
+selectedInfo.style.minHeight = '34px';
+selectedInfo.textContent = 'selected: none';
+bodyWrap.appendChild(selectedInfo);
+
+const meta = document.createElement('div');
+meta.id = 'pose-min-meta';
+meta.style.marginTop = '6px';
+meta.style.lineHeight = '1.3';
+bodyWrap.appendChild(meta);
 
 const row = document.createElement('div');
 row.style.display = 'flex';
@@ -2134,18 +2351,22 @@ camRow.appendChild(rightBtn);
 camRow.appendChild(frontBtn);
 camRow.appendChild(backBtn);
 camRow.appendChild(bottomBtn);
+updateActionButtonsUI();
 
+bodyWrap.appendChild(canvas);
+bodyWrap.appendChild(actionRow);
 bodyWrap.appendChild(camRow);
-
+bodyWrap.appendChild(selectedInfo);
+bodyWrap.appendChild(meta);
 bodyWrap.appendChild(viewOptionRow);
 bodyWrap.appendChild(row);
 
-    const status = document.createElement('div');
-    status.id = 'pose-min-status';
-    status.style.marginTop = '6px';
-    status.style.color = '#999';
-    status.textContent = 'status: ready';
-    bodyWrap.appendChild(status);
+const status = document.createElement('div');
+status.id = 'pose-min-status';
+status.style.marginTop = '6px';
+status.style.color = '#999';
+status.textContent = 'status: ready';
+bodyWrap.appendChild(status);
 
     document.body.appendChild(panel);
     return panel;
@@ -2196,7 +2417,70 @@ function findGeminiComposer() {
 
   return null;
 }
+function buildActionText(pointId) {
+  const part = POINT_LABELS[pointId] || pointId;
+  const verbs = [...activeActionKeys]
+    .map(key => ACTION_LABELS[key])
+    .filter(Boolean);
 
+  if (!verbs.length) return part;
+  return `${verbs.join(' ')} ${part}`;
+}
+
+function findSendButton() {
+  const buttons = [...document.querySelectorAll('button')];
+  return buttons.find(btn => {
+    const label =
+      (btn.getAttribute('aria-label') || '') + ' ' +
+      (btn.textContent || '');
+    return /send|送信/i.test(label);
+  }) || null;
+}
+
+function sendTextToGemini(text) {
+  const composer = findGeminiComposer();
+  if (!composer) {
+    setStatus('status: composer not found');
+    return false;
+  }
+
+  composer.focus();
+
+  const plain = (composer.innerText || composer.textContent || '').trim();
+  const nextText = plain ? `${plain}\n${text}` : text;
+
+  composer.innerText = nextText;
+  composer.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+setTimeout(() => {
+  let tries = 0;
+
+  const timer = setInterval(() => {
+    tries++;
+
+    const sendBtn = findSendButton();
+    if (sendBtn && !sendBtn.disabled) {
+      clearInterval(timer);
+      sendBtn.click();
+      setStatus(`status: sent ${text}`);
+      return;
+    }
+
+    if (tries >= 10) {
+      clearInterval(timer);
+      setStatus('status: send retry timeout');
+    }
+  }, 200);
+}, 200);
+
+  return true;
+}
+
+function sendSelectedAction(pointId) {
+  if (!pointId) return false;
+  const text = buildActionText(pointId);
+  return sendTextToGemini(text);
+}
 function stripPoseJsonFromComposer() {
   if (!stripPoseJsonOnSend) return false;
 
@@ -3892,8 +4176,8 @@ function drawPointDots(ctx, projected, rawPoints) {
     }
 
 if (id === selectedPointId) {
-  r = 8;
-  color = 'rgba(255,230,80,0.98)';
+  r = 10;
+  color = 'rgba(0,224,255,0.98)';
 }
 
 ctx.beginPath();
@@ -4327,6 +4611,136 @@ const name = rawPoints?.[id]?.name || '';
 
   ctx.restore();
 }
+   function formatPointCoord(v) {
+  if (!Number.isFinite(v)) return '-';
+  return v.toFixed(3);
+}
+
+function updateSelectedPointInfo(rawPoints) {
+  const el = document.getElementById('pose-min-selected-info');
+  if (!el) return;
+
+  while (el.firstChild) {
+    el.removeChild(el.firstChild);
+  }
+
+  if (!selectedPointId || !rawPoints?.[selectedPointId]) {
+    const span = document.createElement('span');
+    span.style.color = '#777';
+    span.textContent = 'selected: none';
+    el.appendChild(span);
+    return;
+  }
+
+  const p = rawPoints[selectedPointId];
+  const name = p.name || '';
+
+  const line1 = document.createElement('div');
+  line1.style.color = '#fff3a0';
+
+  const b = document.createElement('b');
+  b.textContent = selectedPointId;
+  line1.appendChild(b);
+
+  const nameText = document.createTextNode(` ${name}`);
+  line1.appendChild(nameText);
+
+  const line2 = document.createElement('div');
+  line2.style.color = '#ddd';
+  line2.textContent =
+    `x: ${formatPointCoord(p.x)}　y: ${formatPointCoord(p.y)}　z: ${formatPointCoord(p.z)}`;
+
+  el.appendChild(line1);
+  el.appendChild(line2);
+}
+
+function drawSelectedPointOverlay(ctx, projected, rawPoints) {
+  if (!selectedPointId) return;
+
+  const p2 = projected?.[selectedPointId];
+  const p3 = rawPoints?.[selectedPointId];
+  if (!p2 || !p3) return;
+
+  const label = `${selectedPointId} ${p3.name || ''}`;
+  const coord = `x:${formatPointCoord(p3.x)} y:${formatPointCoord(p3.y)} z:${formatPointCoord(p3.z)}`;
+
+  ctx.save();
+
+  // 選択点リング
+  ctx.beginPath();
+ctx.arc(p2.x, p2.y, 16, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,230,80,0.95)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(p2.x, p2.y, 16, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,230,80,0.35)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 吹き出し位置
+  const padX = 8;
+  const padY = 6;
+  const boxX = p2.x + 14;
+  const boxY = p2.y - 34;
+
+  ctx.font = '11px monospace';
+  const w = Math.max(
+    ctx.measureText(label).width,
+    ctx.measureText(coord).width
+  ) + padX * 2;
+
+  const h = 34;
+
+  // 背景
+  ctx.fillStyle = 'rgba(10,10,10,0.88)';
+  ctx.strokeStyle = 'rgba(255,230,80,0.75)';
+  ctx.lineWidth = 1;
+  roundRectPath(ctx, boxX, boxY, w, h, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // テキスト
+  ctx.fillStyle = '#fff3a0';
+  ctx.textBaseline = 'top';
+  ctx.fillText(label, boxX + padX, boxY + 5);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(coord, boxX + padX, boxY + 18);
+
+  ctx.restore();
+}
+function drawActionHighlights(ctx, projected) {
+  const now = Date.now();
+
+  actionHighlights = actionHighlights.filter(h => now - h.time < 1200);
+
+  for (const h of actionHighlights) {
+    const p = projected[h.id];
+    if (!p) continue;
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,120,180,0.35)';
+    ctx.fill();
+  }
+}
+function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+
 function shadeColor(color, percent) {
   const num = parseInt(color.slice(1), 16);
   const amt = Math.round(2.55 * percent);
