@@ -165,6 +165,28 @@ let lastPoseMetaBlock = '';
     block = block.slice(jsonStart, jsonEnd + 1);
     return sanitizePoseJsonText(block);
   }
+    function hasPoseSceneMetaBlock(text) {
+  return text.includes('<POSE_SCENE_META_START>') &&
+         text.includes('<POSE_SCENE_META_END>');
+}
+ function updateSyncButtonByMeta() {
+  const btn = document.getElementById('pose-min-sync-btn');
+  if (!btn) return;
+
+  const text = document.body?.textContent || '';
+
+  if (hasPoseSceneMetaBlock(text)) {
+    // メタあり
+    btn.style.background = '#8b1a1a';
+    btn.style.border = '1px solid #ff6b6b';
+  } else {
+    // 通常
+    btn.style.background = '#111';
+    btn.style.border = '1px solid #444';
+  }
+}
+   setInterval(updateSyncButtonByMeta, 200);
+
 function getPoseSourceText() {
   const bodyText = document.body?.textContent || '';
   const composer = findGeminiComposer();
@@ -209,13 +231,14 @@ function normalizeIncomingCamera(camera) {
 }
 
 function applyForcedViewIfNeeded() {
-  ensureCameraDefaults();
+const hasScene =
+  !!poseSceneMeta?.scene &&
+  Object.keys(poseSceneMeta.scene).length > 0;
 
-  if (!forceFrontView) return;
-
+if (forceFrontView && hasScene) {
   INTERNAL_CAMERA.yaw = 0;
   INTERNAL_CAMERA.pitch = 0;
-  INTERNAL_CAMERA.roll = 0;
+}
 }
 
 function resetCamera(withDraw = true) {
@@ -231,20 +254,21 @@ function resetCamera(withDraw = true) {
   }
 }
 
-  function makeButton(label, onClick) {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.style.flex = '1';
-    btn.style.height = '28px';
-    btn.style.border = '1px solid #444';
-    btn.style.borderRadius = '6px';
-    btn.style.background = '#111';
-    btn.style.color = '#fff';
-    btn.style.cursor = 'pointer';
-    btn.style.fontSize = '11px';
-    btn.addEventListener('click', onClick);
-    return btn;
-  }
+function makeButton(label, onClick, id = '') {
+  const btn = document.createElement('button');
+  if (id) btn.id = id;
+  btn.textContent = label;
+  btn.style.flex = '1';
+  btn.style.height = '28px';
+  btn.style.border = '1px solid #444';
+  btn.style.borderRadius = '6px';
+  btn.style.background = '#111';
+  btn.style.color = '#fff';
+  btn.style.cursor = 'pointer';
+  btn.style.fontSize = '11px';
+  btn.addEventListener('click', onClick);
+  return btn;
+}
 
 function setStatus(text) {
   const el = document.getElementById('pose-min-status');
@@ -261,7 +285,22 @@ function setStatus(text) {
       setStatus(`status: force front ${forceFrontView ? 'on' : 'off'}`);
     }
   }
+function setSyncButtonLoading(isLoading) {
+  const btn = document.getElementById('pose-min-sync-btn');
+  if (!btn) return;
 
+  if (isLoading) {
+btn.style.background = '#1a2f66';
+btn.style.border = '1px solid #2e4a99';
+    btn.style.color = '#ffffff';
+    btn.textContent = 'SYNC';
+  } else {
+    btn.style.background = '#111';
+    btn.style.border = '1px solid #444';
+    btn.style.color = '#ffffff';
+    btn.textContent = 'SYNC';
+  }
+}
 function rotatePoint(p, cam) {
   let x = p.x;
   let y = p.y;
@@ -730,6 +769,9 @@ function drawPose() {
   const headColor = '#f6d6cc';
   const handColor = '#ffd6de';
   const footColor = '#f2b8a8';
+ const breastCColor = '#cfcfcf';
+ const breastColor = '#b8b8b8';
+
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#0b0b0b';
@@ -903,24 +945,73 @@ function drawHeadBlock() {
   const mouth2D = projected.__MOUTH_POINT__;
   if (!head2D || !mouth2D) return;
 
+  const nippleL = P.ID20;
+  const nippleR = P.ID19;
+  if (!nippleL || !nippleR) return;
+
   const cam = getViewCamera(INTERNAL_CAMERA);
   const headR = rotatePoint(headCenter, cam);
   const mouthR = rotatePoint(mouthPoint, cam);
 
-const headRad = headRadius * 1.15;
-const faceRad = headRad * 0.75;
+  const headRad = headRadius * 1.15;
+  const faceRad = headRad * 0.75;
 
   const mouthFront = mouthR.z > headR.z;
 
-  if (mouthFront) {
-    drawCircle(ctx, head2D, headRad, '#8b5a2b');
-    drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
-  } else {
-    drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
-    drawCircle(ctx, head2D, headRad, '#8b5a2b');
-  }
+  // 耳位置（mouth基準）
+  const earOffsetX = faceRad * 1.0;
+  const earOffsetBack = faceRad * 1.00;
+  const earOffsetY = faceRad * -0.22;
+
+  const earL = {
+    x: mouth2D.x - earOffsetX,
+    y: mouth2D.y - earOffsetBack - earOffsetY
+  };
+
+  const earR = {
+    x: mouth2D.x + earOffsetX,
+    y: mouth2D.y - earOffsetBack - earOffsetY
+  };
+
+
+  // 耳→乳首の半分まで
+  const hairEndL = {
+    x: earL.x + (nippleL.x - earL.x) * 0.5,
+    y: earL.y + (nippleL.y - earL.y) * 0.5
+  };
+
+  const hairEndR = {
+    x: earR.x + (nippleR.x - earR.x) * 0.5,
+    y: earR.y + (nippleR.y - earR.y) * 0.5
+  };
+
+// ★追加：後ろの襟足（先に描く）
+
+
+
+
+
+// 既存
+if (mouthFront) {
+  drawCircle(ctx, head2D, headRad, '#8b5a2b');
+  drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+} else {
+  drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+  drawCircle(ctx, head2D, headRad, '#8b5a2b');
 }
 
+  // 耳横から胸へ向かう髪
+  drawCapsule(ctx, earL, hairEndL, 6, '#8b5a2b');
+  drawCapsule(ctx, earR, hairEndR, 6, '#8b5a2b');
+
+
+
+
+
+
+
+
+}
 function drawTorsoBlock() {
   if (sideStrength > 0.72) {
     drawBodySurfaceThick(ctx, P, scenePoints, bodyBasis);
@@ -944,7 +1035,7 @@ function drawBreastBlock() {
     ctx,
     P,
     scenePoints,
-    bodyColor,
+    breastColor ,
     breastRefs,
     INTERNAL_CAMERA,
     currentScale,
@@ -953,7 +1044,7 @@ function drawBreastBlock() {
     bodyFacing
   );
 
-  drawBreastBridge(ctx, P, bodyColor, view);
+  drawBreastBridge(ctx, P, breastCColor, view);
 }
 
 const breastDepth =
@@ -971,37 +1062,78 @@ const breastDepth =
     return count ? (sum / count) : torsoDepth;
   })();
 
-  function drawLegBlock() {
-    const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
-    const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
-    const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
-    const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
-    const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
+function drawLegBlock() {
+  const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
 
-    drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, footColor);
-    drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, footColor);
+  const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
+  const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
+  const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
+  const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
-    const pantsColor = 'rgba(140, 190, 240, 0.5)';
-    drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
+  // 色（下だけ少し暗く）
+  const lowerLegColor = shadeColor(footColor, -18);
 
-    if (rKneeDraw && rHeelDraw) {
-      drawCapsule(ctx, rHip, rKneeDraw, thighWidthDraw, footColor);
-      drawCapsule(ctx, rKneeDraw, rHeelDraw, legWidthDraw * 0.95, footColor);
-      drawCircle(ctx, rHeelDraw, legWidthDraw * 0.62, footColor);
-    }
+  // 太さ調整
+  const thighWidthBoost = 1.3; // 太もも太く
+  const kneeTaper = 0.88;       // 膝で細く
+  const calfBoost = 1.05;       // ふくらはぎ少し戻す（任意）
 
-    if (lKneeDraw && lHeelDraw) {
-      drawCapsule(ctx, lHip, lKneeDraw, thighWidthDraw, footColor);
-      drawCapsule(ctx, lKneeDraw, lHeelDraw, legWidthDraw * 0.95, footColor);
-      drawCircle(ctx, lHeelDraw, legWidthDraw * 0.62, footColor);
-    }
+  drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, footColor);
+  drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, footColor);
 
-    if (bodyFacing === 1 || bodyFacing === 2) {
-      drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
-    } else if (bodyFacing === 4 || bodyFacing === 5) {
-      drawCenterLine(ctx, rHip, lHip, genital, anus, 'rgba(140,220,255,0.95)');
-    }
+  const pantsColor = 'rgba(140, 190, 240, 0.5)';
+  drawCrotchFill(ctx, pelvis, rHip, lHip, legWidth, pantsColor);
+
+  // ===== 右脚 =====
+  if (rKneeDraw && rHeelDraw) {
+    // 太もも
+    drawCapsule(
+      ctx,
+      rHip,
+      rKneeDraw,
+      thighWidthDraw * thighWidthBoost,
+      footColor
+    );
+
+    // ふくらはぎ（少し細く + 少し戻す）
+    drawCapsule(
+      ctx,
+      rKneeDraw,
+      rHeelDraw,
+      legWidthDraw * kneeTaper * calfBoost,
+      lowerLegColor
+    );
+
+    drawCircle(ctx, rHeelDraw, legWidthDraw * 0.62, footColor);
   }
+
+  // ===== 左脚 =====
+  if (lKneeDraw && lHeelDraw) {
+    drawCapsule(
+      ctx,
+      lHip,
+      lKneeDraw,
+      thighWidthDraw * thighWidthBoost,
+      footColor
+    );
+
+    drawCapsule(
+      ctx,
+      lKneeDraw,
+      lHeelDraw,
+      legWidthDraw * kneeTaper * calfBoost,
+      lowerLegColor
+    );
+
+    drawCircle(ctx, lHeelDraw, legWidthDraw * 0.62, footColor);
+  }
+
+  if (bodyFacing === 1 || bodyFacing === 2) {
+    drawPelvisDiamond(ctx, rHip, genital, lHip, anus, pelvisLineColor);
+  } else if (bodyFacing === 4 || bodyFacing === 5) {
+    drawCenterLine(ctx, rHip, lHip, genital, anus, 'rgba(140,220,255,0.95)');
+  }
+}
 
   function drawArmBlock() {
     if (rShoulderDraw && rElbow) {
@@ -1109,16 +1241,28 @@ const breastDepth =
     draw: () => drawArmBlock()
   });
 
-  drawParts.push({
-    name: 'head',
-    depth: headDepth,
-    draw: () => {
-      if (neckTop2D && neckBottom2D) {
-        drawNeckSimple(ctx, neckTop2D, neckBottom2D, neckWidth, handColor);
-      }
-      drawHeadBlock();
+drawParts.push({
+  name: 'head',
+  depth: headDepth,
+  draw: () => {
+    // ★後ろ髪（位置は今のまま、順番だけ前へ）
+    drawEllipse(
+      ctx,
+      {
+        x: head.x - headRadius * 0.70,
+        y: head.y + headRadius * 1.20
+      },
+      headRadius * 0.55,
+      headRadius * 1.6,
+      '#8b5a2b'
+    );
+
+    if (neckTop2D && neckBottom2D) {
+      drawNeckSimple(ctx, neckTop2D, neckBottom2D, neckWidth, handColor);
     }
-  });
+    drawHeadBlock();
+  }
+});
 
   // 奥→手前の順で描く
   drawParts.sort((a, b) => a.depth - b.depth);
@@ -1214,16 +1358,18 @@ const spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
 
 //⭐下辺の広がり
 const bodyHipWidthScale = 1.8;
+//⭐スカート
+const bodyBottomExtend = 20; // ← テスト用。まずは 18 くらい
 
-  const bodyHipR = {
-    x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
-    y: hipR.y
-  };
+const bodyHipR = {
+  x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
+  y: hipR.y + bodyBottomExtend
+};
 
-  const bodyHipL = {
-    x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
-    y: hipL.y
-  };
+const bodyHipL = {
+  x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
+  y: hipL.y + bodyBottomExtend
+};
 
   const ctrlShoulderL = {
     x: shoulderL.x + (spineL.x - shoulderL.x) * 0.5,
@@ -1294,8 +1440,8 @@ ctx.fill();
 // ラベル（任意）
 ctx.fillStyle = '#fff';
 ctx.font = '10px monospace';
-ctx.fillText('L', spineL.x + 4, spineL.y - 4);
-ctx.fillText('R', spineR.x + 4, spineR.y - 4);
+//ctx.fillText('L', spineL.x + 4, spineL.y - 4);
+//ctx.fillText('R', spineR.x + 4, spineR.y - 4);
 
 
 
@@ -1498,13 +1644,16 @@ function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
   ctx.lineTo(rightShoulder.x, rightShoulder.y);
   ctx.stroke();
 }
-function syncPose() {
+async function syncPose() {
+  setSyncButtonLoading(true);
+await new Promise(r => setTimeout(r, 300));
   const text = document.body?.textContent || '';
   const jsonText = extractLatestPoseJsonBlock(text);
   const metaText = extractLatestPoseSceneMetaBlock(text);
 
   if (!jsonText && !metaText) {
     setStatus('status: syncPose no block');
+    setSyncButtonLoading(false);
     return;
   }
 
@@ -1516,6 +1665,7 @@ function syncPose() {
       parsed = JSON.parse(jsonText);
     } catch (e) {
       setStatus('status: json parse error');
+      setSyncButtonLoading(false);
       return;
     }
   }
@@ -1525,6 +1675,7 @@ function syncPose() {
       parsedMeta = JSON.parse(metaText);
     } catch (e) {
       setStatus('status: meta parse error');
+      setSyncButtonLoading(false);
       return;
     }
   }
@@ -1562,21 +1713,28 @@ poseSceneMeta = {
 };
     }
 
-    if (forceFrontView) {
+    const hasScene =
+      !!poseSceneMeta?.scene &&
+      Object.keys(poseSceneMeta.scene).length > 0;
+
+    if (forceFrontView && hasScene) {
       INTERNAL_CAMERA.yaw = 0;
       INTERNAL_CAMERA.pitch = 0;
+            fixedFitScale = null;
     }
 
-    fixedFitScale = null;
+
     drawPose();
 
     const p = pose.points?.ID14;
     setStatus(
       `status: sync ok knee=${p?.x?.toFixed?.(2)},${p?.y?.toFixed?.(2)},${p?.z?.toFixed?.(2)} grounded=${poseSceneMeta?.scene?.isGrounded ? '1' : '0'} jump=${poseSceneMeta?.scene?.isJumping ? '1' : '0'}`
     );
+    setSyncButtonLoading(false);
   } catch (e) {
     console.error('[POSE syncPose error]', e);
     setStatus('status: sync exception');
+    setSyncButtonLoading(false);
   }
 }
 
@@ -1886,15 +2044,14 @@ forceFrontCheckbox.addEventListener('change', () => {
 });
 
 const forceFrontText = document.createElement('span');
-forceFrontText.textContent = 'FORCE FRONT';
+forceFrontText.textContent = 'FORCE VIEW';
 
 viewOptionRow.appendChild(forceFrontCheckbox);
 viewOptionRow.appendChild(forceFrontText);
 
 
 const resetBtn = makeButton('RESET', () => resetCamera());
-const syncBtn = makeButton('SYNC', () => syncPose());
-
+const syncBtn = makeButton('SYNC', () => syncPose(), 'pose-min-sync-btn');
 
 const stripBtn = makeButton('', () => {
   stripPoseJsonOnSend = !stripPoseJsonOnSend;
@@ -1907,55 +2064,63 @@ updateStripButtonLabel(stripBtn);
 row.appendChild(resetBtn);
 row.appendChild(syncBtn);
 row.appendChild(stripBtn);
+const camRow = document.createElement('div');
+camRow.style.display = 'grid';
+camRow.style.gridTemplateColumns = '1fr 1fr 1fr';
+camRow.style.gap = '4px';
+camRow.style.marginTop = '6px';
 
-    const camRow = document.createElement('div');
-    camRow.style.display = 'flex';
-    camRow.style.flexWrap = 'wrap';
-    camRow.style.gap = '4px';
-    camRow.style.marginTop = '6px';
-
-camRow.appendChild(makeButton('FRONT', () => {
-  setForceFrontUI(true, true);
-  resetCamera(false);
-  applyForcedViewIfNeeded();
-  drawPose();
-}));
-
-camRow.appendChild(makeButton('BACK', () => {
-  setForceFrontUI(false, true);
-  resetCamera(false);
-  INTERNAL_CAMERA.yaw = Math.PI;
-  drawPose();
-}));
-
-camRow.appendChild(makeButton('LEFT', () => {
+const leftBtn = makeButton('LEFT', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
   INTERNAL_CAMERA.yaw = -Math.PI / 2;
   drawPose();
-}));
+});
 
-camRow.appendChild(makeButton('RIGHT', () => {
-  setForceFrontUI(false, true);
-  resetCamera(false);
-  INTERNAL_CAMERA.yaw = Math.PI / 2;
-  drawPose();
-}));
-
-camRow.appendChild(makeButton('TOP', () => {
+const topBtn = makeButton('TOP', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
   INTERNAL_CAMERA.pitch = Math.PI * 0.495;
   drawPose();
-}));
+});
 
-camRow.appendChild(makeButton('BOTTOM', () => {
+const rightBtn = makeButton('RIGHT', () => {
+  setForceFrontUI(false, true);
+  resetCamera(false);
+  INTERNAL_CAMERA.yaw = Math.PI / 2;
+  drawPose();
+});
+
+const frontBtn = makeButton('FRONT', () => {
+  setForceFrontUI(true, true);
+  resetCamera(false);
+  applyForcedViewIfNeeded();
+  drawPose();
+});
+
+const backBtn = makeButton('BACK', () => {
+  setForceFrontUI(false, true);
+  resetCamera(false);
+  INTERNAL_CAMERA.yaw = Math.PI;
+  drawPose();
+});
+
+const bottomBtn = makeButton('BOTTOM', () => {
   setForceFrontUI(false, true);
   resetCamera(false);
   INTERNAL_CAMERA.pitch = -Math.PI * 0.495;
   drawPose();
-}));
+});
+
+camRow.appendChild(leftBtn);
+camRow.appendChild(topBtn);
+camRow.appendChild(rightBtn);
+camRow.appendChild(frontBtn);
+camRow.appendChild(backBtn);
+camRow.appendChild(bottomBtn);
+
 bodyWrap.appendChild(camRow);
+
 bodyWrap.appendChild(viewOptionRow);
 bodyWrap.appendChild(row);
 
@@ -4116,12 +4281,25 @@ function drawPointLabels(ctx, projected, rawPoints) {
     // ラベル
     ctx.fillStyle = '#00ff88';
 const name = rawPoints?.[id]?.name || '';
-ctx.fillText(id + ' ' + name, p.x + 3, p.y);
+//ctx.fillText(id + ' ' + name, p.x + 3, p.y);
   }
 
   ctx.restore();
 }
+function shadeColor(color, percent) {
+  const num = parseInt(color.slice(1), 16);
+  const amt = Math.round(2.55 * percent);
+  const R = (num >> 16) + amt;
+  const G = (num >> 8 & 0x00FF) + amt;
+  const B = (num & 0x0000FF) + amt;
 
+  return "#" + (
+    0x1000000 +
+    (R < 255 ? (R < 0 ? 0 : R) : 255) * 0x10000 +
+    (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
+    (B < 255 ? (B < 0 ? 0 : B) : 255)
+  ).toString(16).slice(1);
+}
 
 function buildFallbackOutput(rawPose, prevState) {
   return {
