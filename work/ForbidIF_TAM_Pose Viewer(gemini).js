@@ -956,33 +956,49 @@ const faceRad = headRad * 0.75;
 }
 
 function drawTorsoBlock() {
-  drawBodySurface(ctx, P, scenePoints);
+  drawBodySurface(ctx, P, scenePoints, bodyBasis);
+  drawShoulderPeak(ctx, lShoulderDraw, shoulderNeckMid, rShoulderDraw, armWidth * 0.72, bodyColor);
+}
+function drawBreastBlock() {
+  const breastRefs = {
+    chest,
+    pelvis,
+    rShoulder: rShoulderDraw,
+    lShoulder: lShoulderDraw,
+    rHip,
+    lHip
+  };
 
-    const breastRefs = {
-      chest,
-      pelvis,
-      rShoulder: rShoulderDraw,
-      lShoulder: lShoulderDraw,
-      rHip,
-      lHip
-    };
+  drawBreasts(
+    ctx,
+    P,
+    scenePoints,
+    bodyColor,
+    breastRefs,
+    INTERNAL_CAMERA,
+    currentScale,
+    view,
+    bodyBasis,
+    bodyFacing
+  );
 
-    drawBreasts(
-      ctx,
-      P,
-      scenePoints,
-      bodyColor,
-      breastRefs,
-      INTERNAL_CAMERA,
-      currentScale,
-      view,
-      bodyBasis,
-      bodyFacing
-    );
+  drawBreastBridge(ctx, P, bodyColor, view);
+}
 
-    drawBreastBridge(ctx, P, bodyColor, view);
-    drawShoulderPeak(ctx, lShoulderDraw, shoulderNeckMid, rShoulderDraw, armWidth * 0.72, bodyColor);
-  }
+const breastDepth =
+  (() => {
+    const ids = ['ID19', 'ID20', 'ID23', 'ID24', 'ID25', 'ID26', 'ID27'];
+    let sum = 0;
+    let count = 0;
+    for (const id of ids) {
+      const p = scenePoints[id];
+      if (!p) continue;
+      const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
+      sum += r.z;
+      count++;
+    }
+    return count ? (sum / count) : torsoDepth;
+  })();
 
   function drawLegBlock() {
     const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
@@ -1109,6 +1125,13 @@ function drawTorsoBlock() {
     draw: () => drawTorsoBlock()
   });
 
+    drawParts.push({
+  name: 'breasts',
+  depth: breastDepth,
+  draw: () => drawBreastBlock()
+});
+
+
   drawParts.push({
     name: 'arms',
     depth: armDepth,
@@ -1146,7 +1169,7 @@ drawPointLabels(ctx, P, scenePoints);
   setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
 
-function drawBodySurface(ctx, P, rawPoints) {
+function drawBodySurface(ctx, P, rawPoints, bodyBasis) {
   if (!P || !rawPoints) return;
 
   const shoulderR = P.ID05;
@@ -1182,38 +1205,42 @@ const pelvisExpand = 1.0;
     pelvisWidth3D * pelvisExpand * currentScale
   );
 
-  const dirLRaw = {
-    x: hipL.x - spine.x,
-    y: hipL.y - spine.y
-  };
 
-  const dirRRaw = {
-    x: hipR.x - spine.x,
-    y: hipR.y - spine.y
-  };
+// === ID01を3Dでコピーして左右にずらす（最小版） ===
+const rawSpine = rawPoints.ID01;
 
-  const dirLLen = Math.hypot(dirLRaw.x, dirLRaw.y) || 1;
-  const dirRLen = Math.hypot(dirRRaw.x, dirRRaw.y) || 1;
+const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
 
-  const dirL = {
-    x: dirLRaw.x / dirLLen,
-    y: dirLRaw.y / dirLLen
-  };
+const halfWidth3D = 0.18;
 
-  const dirR = {
-    x: dirRRaw.x / dirRLen,
-    y: dirRRaw.y / dirRLen
-  };
-
-const spineL = {
-  x: spine.x + dirL.x * width,
-  y: spine.y
+// 候補を2つ作る
+const candA = {
+  x: rawSpine.x + right.x * halfWidth3D,
+  y: rawSpine.y + right.y * halfWidth3D,
+  z: rawSpine.z + right.z * halfWidth3D
 };
 
-const spineR = {
-  x: spine.x + dirR.x * width,
-  y: spine.y
+const candB = {
+  x: rawSpine.x - right.x * halfWidth3D,
+  y: rawSpine.y - right.y * halfWidth3D,
+  z: rawSpine.z - right.z * halfWidth3D
 };
+
+// どちらが左股関節側か / 右股関節側かで決める
+const distAtoL = dist3D(candA, rawHipL);
+const distAtoR = dist3D(candA, rawHipR);
+
+// candA が左股関節に近ければ A=Left, B=Right
+const spineL3 = distAtoL <= distAtoR ? candA : candB;
+const spineR3 = distAtoL <= distAtoR ? candB : candA;
+
+// 既存の投影系に乗せるため、一時的にcomputeLayoutを使う
+const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
+
+const spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
+const spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
+
+
 //⭐下辺の広がり
 const bodyHipWidthScale = 1.5;
 
@@ -1280,6 +1307,40 @@ const bodyHipWidthScale = 1.5;
 
   ctx.fillStyle = '#888';
   ctx.fill();
+
+
+    // === DEBUG: spineL / spineR ===
+ctx.fillStyle = 'red';
+
+ctx.beginPath();
+ctx.arc(spineL.x, spineL.y, 4, 0, Math.PI * 2);
+ctx.fill();
+
+ctx.beginPath();
+ctx.arc(spineR.x, spineR.y, 4, 0, Math.PI * 2);
+ctx.fill();
+
+// ラベル（任意）
+ctx.fillStyle = '#fff';
+ctx.font = '10px monospace';
+ctx.fillText('L', spineL.x + 4, spineL.y - 4);
+ctx.fillText('R', spineR.x + 4, spineR.y - 4);
+
+
+
+
+}
+function projectPointToScreen(p, width, height, layoutMetrics) {
+  const r = projectPoint(p);
+
+  const scale = layoutMetrics.fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
+
+  return {
+    x: width / 2 + tx + (r.x - layoutMetrics.centerX) * scale,
+    y: height / 2 + ty - (r.y - layoutMetrics.centerY) * scale
+  };
 }
 function drawShoulderBridge(ctx, leftShoulder, rightShoulder, width, color) {
   if (!leftShoulder || !rightShoulder) return;
