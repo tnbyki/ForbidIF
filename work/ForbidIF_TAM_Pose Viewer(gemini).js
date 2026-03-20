@@ -70,15 +70,15 @@ const ACTION_BUTTONS = [
   { key: 'Massage',    icon: '🤲', help: '揉む' },
   { key: 'kiss',   icon: '💋', help: 'キス' },
   { key: 'touch',  icon: '🫳', help: '触る' },
-  { key: 'grab',   icon: '🤏', help: 'つかむ' },
-  { key: 'insert', icon: '🪄', help: '入れる' },
+  { key: 'pull',   icon: '🤏', help: '引き寄せる' },
+  { key: 'insert', icon: '♂♀', help: '入れる' },
   { key: 'hold',   icon: '✊', help: '持つ' },
-  { key: 'press',  icon: '⚠️', help: '押し込む' },
+  { key: 'press',  icon: '✋', help: '押す' },
   { key: 'lift',  icon: '💪', help: '持ち上げる' },
   { key: 'open',   icon: '🦵', help: '広げる' },
   { key: 'see',    icon: '👀', help: '見る' },
   { key: 'tune',   icon: '🔎', help: '調べる' },
-  { key: 'extra',  icon: '➕', help: '予備' }
+{ key: 'strength', icon: '🟢', help: '強さ切替' }
 ];
 const ACTION_LABELS = {
   push: '押す',
@@ -86,17 +86,27 @@ const ACTION_LABELS = {
   Massage: '揉む',
   kiss: 'キス',
   touch: '触る',
-  grab: 'つかむ',
+  pull: '引き寄せる',
   insert: '入れる',
   hold: '持つ',
-  press: '圧迫',
+  press: '押す',
   lift: '持ち上げる',
   open: '開く',
   see: '見る',
   tune: '調整',
   extra: '予備'
 };
+
 let activeActionKeys = new Set();
+let strengthMode = 0;
+
+const STRENGTH_PRESETS = [
+  { icon: '🟢', label: '' },
+  { icon: '🟡', label: 'つよく ' },
+  { icon: '🔴', label: '激しく ' },
+  { icon: '🔵', label: 'やさしく ' }
+];
+
 const INTERNAL_CAMERA = {
   yaw: 0,
   pitch: 0,
@@ -198,32 +208,53 @@ const POINT_LABELS = {
 };
 
 
- function toggleActionButton(key) {
+function toggleActionButton(key) {
+  if (key === 'strength') {
+    strengthMode = (strengthMode + 1) % STRENGTH_PRESETS.length;
+    updateActionButtonsUI();
+    setStatus(`status: strength ${STRENGTH_PRESETS[strengthMode].icon}`);
+    return;
+  }
+
   if (activeActionKeys.has(key)) {
     activeActionKeys.delete(key);
   } else {
     activeActionKeys.add(key);
   }
+
   updateActionButtonsUI();
 }
-
 function updateActionButtonsUI() {
-  const wrap = document.getElementById('pose-min-action-row');
-  if (!wrap) return;
+  const root = document.getElementById('pose-min-action-row');
+  if (!root) return;
 
-  const buttons = wrap.querySelectorAll('[data-action-key]');
-  buttons.forEach(btn => {
+  const buttons = root.querySelectorAll('button[data-action-key]');
+
+  for (const btn of buttons) {
     const key = btn.getAttribute('data-action-key');
-    const on = activeActionKeys.has(key);
 
-    btn.style.background = on ? '#2a2a2a' : '#111';
-    btn.style.border = on ? '1px solid #7a7a7a' : '1px solid #444';
-    btn.style.boxShadow = on
-      ? 'inset 0 2px 6px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04)'
-      : 'inset 0 1px 0 rgba(255,255,255,0.04)';
-    btn.style.transform = on ? 'translateY(1px)' : 'translateY(0)';
-    btn.style.opacity = on ? '1' : '0.92';
-  });
+    const isActive = (key === 'strength')
+      ? strengthMode !== 0
+      : activeActionKeys.has(key);
+
+    if (key === 'strength') {
+      btn.textContent = STRENGTH_PRESETS[strengthMode].icon;
+    }
+
+    if (isActive) {
+      btn.style.background = '#00e0ff';
+      btn.style.color = '#000';
+      btn.style.border = '1px solid #00e0ff';
+      btn.style.transform = 'translateY(1px) scale(0.96)';
+      btn.style.boxShadow = 'inset 0 2px 6px rgba(0,0,0,0.5)';
+    } else {
+      btn.style.background = '#111';
+      btn.style.color = '#fff';
+      btn.style.border = '1px solid #444';
+      btn.style.transform = 'none';
+      btn.style.boxShadow = 'none';
+    }
+  }
 }
 
   function sanitizePoseJsonText(text) {
@@ -1176,7 +1207,7 @@ function drawLegBlock() {
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
   // 色（下だけ少し暗く）
-  const lowerLegColor = shadeColor(footColor, -18);
+  const lowerLegColor = shadeColor(footColor, -9);
 
   // 太さ調整
   const thighWidthBoost = 1.3; // 太もも太く
@@ -1969,6 +2000,13 @@ if (pendingSelectPointId && pendingSelectPointId === selectedPointId) {
     });
 
     drawPose(); // ← 追加。pushしたあとに描画
+setTimeout(() => drawPose(), 100);
+setTimeout(() => drawPose(), 300);
+setTimeout(() => drawPose(), 600);
+setTimeout(() => drawPose(), 1000);
+setTimeout(() => drawPose(), 1600);
+setTimeout(() => drawPose(), 2200);
+setTimeout(() => drawPose(), 3000);
 
     sendSelectedAction(selectedPointId);
   } else {
@@ -2423,8 +2461,10 @@ function buildActionText(pointId) {
     .map(key => ACTION_LABELS[key])
     .filter(Boolean);
 
-  if (!verbs.length) return part;
-  return `${verbs.join(' ')} ${part}`;
+  const strength = STRENGTH_PRESETS[strengthMode]?.label || '';
+
+  if (!verbs.length) return `${strength}${part}`.trim();
+  return `${strength}${verbs.join(' ')} ${part}`.trim();
 }
 
 function findSendButton() {
@@ -2459,12 +2499,16 @@ setTimeout(() => {
     tries++;
 
     const sendBtn = findSendButton();
-    if (sendBtn && !sendBtn.disabled) {
-      clearInterval(timer);
-      sendBtn.click();
-      setStatus(`status: sent ${text}`);
-      return;
-    }
+if (sendBtn && !sendBtn.disabled) {
+  clearInterval(timer);
+  sendBtn.click();
+
+  selectedPointId = null;
+  drawPose();
+
+  setStatus(`status: sent ${text}`);
+  return;
+}
 
     if (tries >= 10) {
       clearInterval(timer);
@@ -4714,18 +4758,23 @@ ctx.arc(p2.x, p2.y, 16, 0, Math.PI * 2);
 function drawActionHighlights(ctx, projected) {
   const now = Date.now();
 
-  actionHighlights = actionHighlights.filter(h => now - h.time < 1200);
+  actionHighlights = actionHighlights.filter(h => now - h.time < 3000);
 
   for (const h of actionHighlights) {
     const p = projected[h.id];
     if (!p) continue;
 
+    const age = now - h.time;
+    const t = 1 - age / 3000; // ← ゆっくり消える
+
     ctx.beginPath();
-    ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(255,120,180,0.35)';
+    ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,120,180,${0.35 * t})`;
     ctx.fill();
   }
 }
+
+
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
