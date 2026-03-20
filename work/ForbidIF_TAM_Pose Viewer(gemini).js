@@ -120,6 +120,8 @@ let forceFrontView = false;
 let fixedFitScale = null;
 let poseSceneMeta = null;
 let lastPoseMetaBlock = '';
+let lastProjectedPoints = null;
+let selectedPointId = null;
 
   function sanitizePoseJsonText(text) {
     if (!text) return '';
@@ -779,7 +781,7 @@ function drawPose() {
 
   const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
   const P = computeLayout(scenePoints, canvas.width, canvas.height);
-
+lastProjectedPoints = P;
   const head = P.ID04;
   const neck = P.ID03;
   const chest = P.ID02;
@@ -1652,7 +1654,7 @@ await new Promise(r => setTimeout(r, 300));
   const metaText = extractLatestPoseSceneMetaBlock(text);
 
   if (!jsonText && !metaText) {
-    setStatus('status: syncPose no block');
+//    setStatus('status: syncPose no block');
     setSyncButtonLoading(false);
     return;
   }
@@ -1687,11 +1689,12 @@ await new Promise(r => setTimeout(r, 300));
       poseSceneMeta = parsedMeta;
     }
 
-    if (parsed) {
-      if (typeof parsed.camera?.scale === 'number') INTERNAL_CAMERA.scale = parsed.camera.scale;
-      if (typeof parsed.camera?.tx === 'number') INTERNAL_CAMERA.tx = parsed.camera.tx;
-      if (typeof parsed.camera?.ty === 'number') INTERNAL_CAMERA.ty = parsed.camera.ty;
-
+if (parsed) {
+  if (forceFrontView) {
+    if (typeof parsed.camera?.scale === 'number') INTERNAL_CAMERA.scale = parsed.camera.scale;
+    if (typeof parsed.camera?.tx === 'number') INTERNAL_CAMERA.tx = parsed.camera.tx;
+    if (typeof parsed.camera?.ty === 'number') INTERNAL_CAMERA.ty = parsed.camera.ty;
+  }
       const rawPose = {
         frame: parsed.frame ?? pose.frame,
         root: parsed.root ?? pose.root,
@@ -1953,15 +1956,28 @@ canvas.addEventListener('mousedown', (e) => {
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
 
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (e.button === 0 && !e.shiftKey && typeof findNearestPointId === 'function') {
+    const hitId = findNearestPointId(mx, my, lastProjectedPoints, 12);
+
+    if (hitId) {
+      selectedPointId = hitId;
+      drawPose();
+      setStatus(`status: selected ${hitId} ${pose.points?.[hitId]?.name || ''}`);
+      return;
+    }
+  }
+
   if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
     isPanning = true;
   } else if (e.button === 0) {
     isDragging = true;
   }
 });
-canvas.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-});
+
     canvas.addEventListener('auxclick', (e) => {
       if (e.button === 1) e.preventDefault();
     });
@@ -3804,7 +3820,27 @@ const hipSpan = Math.max(14, hipSpan3D * (fixedFitScale || 1) * (INTERNAL_CAMERA
     ctx.stroke();
   }
 }
+function findNearestPointId(screenX, screenY, projected, maxDist = 12) {
+  if (!projected) return null;
 
+  let bestId = null;
+  let bestDist = Infinity;
+
+  for (const id of Object.keys(projected)) {
+    if (id.startsWith('__')) continue;
+
+    const p = projected[id];
+    if (!p) continue;
+
+    const d = Math.hypot(screenX - p.x, screenY - p.y);
+    if (d < bestDist) {
+      bestDist = d;
+      bestId = id;
+    }
+  }
+
+  return bestDist <= maxDist ? bestId : null;
+}
 function drawPointDots(ctx, projected, rawPoints) {
   const ids = Object.keys(projected || {});
   if (!ids.length) return;
@@ -3855,10 +3891,15 @@ function drawPointDots(ctx, projected, rawPoints) {
       color = 'rgba(255,235,150,0.95)';
     }
 
-    ctx.beginPath();
-    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
+if (id === selectedPointId) {
+  r = 8;
+  color = 'rgba(255,230,80,0.98)';
+}
+
+ctx.beginPath();
+ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+ctx.fillStyle = color;
+ctx.fill();
   }
 }
 
