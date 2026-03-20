@@ -2153,6 +2153,92 @@ medium = 標準
 full   = 明確な前方突出と下方ふくらみ
 large  = より大きい前方突出と外側・下側拡張
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ POSE_EXTRA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+<POSE_EXTRA>
+{
+  "bgColor": "#87ceeb",
+  "groundColor": "#6fa84f",
+
+  "hairColor": "#2b2b2b",
+  "skinColor": "#d9a07a",
+
+  "clothes": {
+    "outerTop": "#224488",
+    "innerTop": "#dddddd",
+    "bra": "#000000",
+    "panties": "#000000"
+  },
+
+  "lines": [
+    {
+      "name": "bodyLine",
+      "startId": "ID04",
+      "endId": "ID10",
+      "color": "#ff4444",
+      "width": 0.02
+    }
+  ],
+
+  "boxes": [
+    {
+      "name": "box01",
+      "x": 0.80,
+      "y": -0.80,
+      "z": 0.20,
+      "w": 0.50,
+      "h": 0.80,
+      "d": 0.50,
+      "color": "#666666"
+    }
+  ]
+}
+</POSE_EXTRA>
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ POSE_EXTRA ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- <POSE_EXTRA> は任意（なくてもよい）
+- 中身はJSON形式
+- 未知の項目は無視してよい
+- 各要素は必要なものだけ入れる
+
+■ 共通ルール
+- color は #RRGGBB
+- name は必須・重複しないこと
+
+■ bgColor
+- 背景色（空・壁など）
+
+■ groundColor
+- 地面・床の色（屋外/屋内共通）
+
+■ hairColor
+- 髪色
+
+■ skinColor
+- 肌色
+
+■ clothes
+- outerTop：上着（外）
+- innerTop：上着（内）
+- bra：ブラ
+- panties：パンツ
+
+■ lines
+- 補助線・軸・棒
+- startId / endId は骨格IDを指定
+
+■ boxes
+- 任意の箱（机・椅子・台など）
+- x,y,z は中心座標
+- w,h,d はサイズ
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 EOF
