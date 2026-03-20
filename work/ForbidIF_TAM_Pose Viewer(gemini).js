@@ -838,50 +838,16 @@ const poseBasis = getMetaBasis(
 
   const shoulderMid = midpoint(rShoulderDraw, lShoulderDraw);
   const shoulderNeckMid = mixPoint(shoulderMid, neck, 0.33);
-   const skullTop3D = scenePoints['ID04'];
-  const neck3D = scenePoints['ID03'];
+    const neckTop2D = neck;
 
-  const headCenter3D = (skullTop3D && neck3D) ? {
-    x: (skullTop3D.x + neck3D.x) * 0.5,
-    y: (skullTop3D.y + neck3D.y) * 0.5,
-    z: (skullTop3D.z + neck3D.z) * 0.5
-  } : null;
-
-  const neckProjected = headCenter3D
-    ? computeLayout(
-        {
-          ...scenePoints,
-          __HEAD_CENTER__: headCenter3D,
-          __NECK_POINT__: neck3D
-        },
-        canvas.width,
-        canvas.height
-      )
-    : null;
-
-  const neckTop3D = headCenter3D && neck3D
+  const neckBottom2D = (rShoulderDraw && lShoulderDraw)
     ? {
-        x: headCenter3D.x + (neck3D.x - headCenter3D.x) * 0.65,
-        y: headCenter3D.y + (neck3D.y - headCenter3D.y) * 0.65,
-        z: headCenter3D.z + (neck3D.z - headCenter3D.z) * 0.65
+        x: (rShoulderDraw.x + lShoulderDraw.x) * 0.5,
+        y: (rShoulderDraw.y + lShoulderDraw.y) * 0.5
       }
     : null;
 
-  const neckProjected2 = neckTop3D
-    ? computeLayout(
-        {
-          ...scenePoints,
-          __NECK_TOP__: neckTop3D,
-          __NECK_POINT__: neck3D
-        },
-        canvas.width,
-        canvas.height
-      )
-    : null;
-
-  const neckTop2D = neckProjected2?.__NECK_TOP__;
-  const neckBottom2D = neckProjected2?.__NECK_POINT__;
-  const neckWidth = Math.max(12, headRadius * 0.22);
+ const neckWidth = Math.max(16, headRadius * 0.32);
 
 function drawHeadBlock() {
   const skullTop = scenePoints['ID04'];
@@ -956,7 +922,12 @@ const faceRad = headRad * 0.75;
 }
 
 function drawTorsoBlock() {
-  drawBodySurface(ctx, P, scenePoints, bodyBasis);
+  if (sideStrength > 0.72) {
+    drawBodySurfaceThick(ctx, P, scenePoints, bodyBasis);
+  } else {
+    drawBodySurface(ctx, P, scenePoints, bodyBasis);
+  }
+
   drawShoulderPeak(ctx, lShoulderDraw, shoulderNeckMid, rShoulderDraw, armWidth * 0.72, bodyColor);
 }
 function drawBreastBlock() {
@@ -1038,7 +1009,7 @@ const breastDepth =
     }
     if (rElbow && rWrist) {
       drawCapsule(ctx, rElbow, rWrist, armWidthDraw * 0.92, handColor);
-      drawCircle(ctx, rWrist, armWidthDraw * 0.62, handColor);
+      drawCircle(ctx, rWrist, armWidthDraw * 0.62, '#eab899');
     }
 
     if (lShoulderDraw && lElbow) {
@@ -1046,7 +1017,7 @@ const breastDepth =
     }
     if (lElbow && lWrist) {
       drawCapsule(ctx, lElbow, lWrist, armWidthDraw * 0.92, handColor);
-      drawCircle(ctx, lWrist, armWidthDraw * 0.62, handColor);
+      drawCircle(ctx, lWrist, armWidthDraw * 0.62, '#eab899');
     }
   }
 
@@ -1242,7 +1213,7 @@ const spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
 
 
 //⭐下辺の広がり
-const bodyHipWidthScale = 1.5;
+const bodyHipWidthScale = 1.8;
 
   const bodyHipR = {
     x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
@@ -1330,6 +1301,179 @@ ctx.fillText('R', spineR.x + 4, spineR.y - 4);
 
 
 }
+function drawBodySurfaceThick(ctx, P, rawPoints, bodyBasis) {
+  if (!P || !rawPoints) return;
+
+  const shoulderR = P.ID05;
+  const shoulderL = P.ID06;
+  const pelvis    = P.ID10;
+  const hipR      = P.ID12;
+  const hipL      = P.ID13;
+
+  if (!shoulderR || !shoulderL || !pelvis || !hipR || !hipL) return;
+
+  const panel = document.getElementById(PANEL_ID);
+  const canvas = panel?.querySelector('#' + CANVAS_ID);
+  const cw = canvas?.width || 500;
+  const ch = canvas?.height || 500;
+
+  const rawSpine = rawPoints.ID01;
+  const rawHipR = rawPoints.ID12;
+  const rawHipL = rawPoints.ID13;
+  const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
+
+  const halfWidth3D = 0.18;
+
+  const candA = {
+    x: rawSpine.x + right.x * halfWidth3D,
+    y: rawSpine.y + right.y * halfWidth3D,
+    z: rawSpine.z + right.z * halfWidth3D
+  };
+
+  const candB = {
+    x: rawSpine.x - right.x * halfWidth3D,
+    y: rawSpine.y - right.y * halfWidth3D,
+    z: rawSpine.z - right.z * halfWidth3D
+  };
+
+  const distAtoL = dist3D(candA, rawHipL);
+  const distAtoR = dist3D(candA, rawHipR);
+
+  const spineL3 = distAtoL <= distAtoR ? candA : candB;
+  const spineR3 = distAtoL <= distAtoR ? candB : candA;
+
+  const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
+  let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
+  let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
+
+  const bodyHipWidthScale = 1.5;
+  let bodyHipR = {
+    x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
+    y: hipR.y
+  };
+
+  let bodyHipL = {
+    x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
+    y: hipL.y
+  };
+
+  // 横向きのときだけ、最小厚みを持たせる
+  const bodyView = getBodyViewInfo(INTERNAL_CAMERA);
+  const thickT = smoothstep01((bodyView.sideStrength - 0.55) / 0.30);
+
+  const spineMid = midpoint(spineL, spineR);
+  const hipMid = midpoint(bodyHipL, bodyHipR);
+
+  const spineHalfMin = lerp(0, 16, thickT);
+  const hipHalfMin   = lerp(0, 20, thickT);
+
+  if (spineMid) {
+    spineL = {
+      x: spineMid.x - spineHalfMin,
+      y: spineL.y
+    };
+    spineR = {
+      x: spineMid.x + spineHalfMin,
+      y: spineR.y
+    };
+  }
+
+  if (hipMid) {
+    bodyHipL = {
+      x: hipMid.x - hipHalfMin,
+      y: bodyHipL.y
+    };
+    bodyHipR = {
+      x: hipMid.x + hipHalfMin,
+      y: bodyHipR.y
+    };
+  }
+
+  const ctrlShoulderL = {
+    x: shoulderL.x + (spineL.x - shoulderL.x) * 0.5,
+    y: shoulderL.y + (spineL.y - shoulderL.y) * 0.5
+  };
+
+  const hipCurveOut = 1.35;
+
+  const ctrlHipL = {
+    x: spineL.x + (bodyHipL.x - spineL.x) * hipCurveOut,
+    y: spineL.y + (bodyHipL.y - spineL.y) * 0.5
+  };
+
+  const ctrlHipR = {
+    x: spineR.x + (bodyHipR.x - spineR.x) * hipCurveOut,
+    y: spineR.y + (bodyHipR.y - spineR.y) * 0.5
+  };
+
+  const ctrlShoulderR = {
+    x: shoulderR.x + (spineR.x - shoulderR.x) * 0.5,
+    y: shoulderR.y + (spineR.y - shoulderR.y) * 0.5
+  };
+
+  ctx.beginPath();
+
+  ctx.moveTo(shoulderR.x, shoulderR.y);
+  ctx.lineTo(shoulderL.x, shoulderL.y);
+
+  ctx.quadraticCurveTo(
+    ctrlShoulderL.x, ctrlShoulderL.y,
+    spineL.x, spineL.y
+  );
+
+  ctx.quadraticCurveTo(
+    ctrlHipL.x, ctrlHipL.y,
+    bodyHipL.x, bodyHipL.y
+  );
+
+  ctx.lineTo(bodyHipR.x, bodyHipR.y);
+
+  ctx.quadraticCurveTo(
+    ctrlHipR.x, ctrlHipR.y,
+    spineR.x, spineR.y
+  );
+
+  ctx.quadraticCurveTo(
+    ctrlShoulderR.x, ctrlShoulderR.y,
+    shoulderR.x, shoulderR.y
+  );
+
+  ctx.closePath();
+  ctx.fillStyle = '#888';
+  ctx.fill();
+}
+
+    function drawBodyCapsule(ctx, P, rawPoints) {
+  const chest = P.ID02;
+  const pelvis = P.ID10;
+  const hipR = P.ID12;
+  const hipL = P.ID13;
+  const shoulderR = P.ID05;
+  const shoulderL = P.ID06;
+
+  if (!chest || !pelvis || !hipR || !hipL || !shoulderR || !shoulderL) return;
+
+  const chestCenter = {
+    x: (shoulderR.x + shoulderL.x) * 0.5,
+    y: (shoulderR.y + shoulderL.y) * 0.5
+  };
+
+  const pelvisCenter = {
+    x: (hipR.x + hipL.x) * 0.5,
+    y: (hipR.y + hipL.y) * 0.5
+  };
+
+  const shoulderWidth = dist2D(shoulderR, shoulderL);
+  const hipWidth = dist2D(hipR, hipL);
+
+  const bodyWidth = Math.max(18, Math.min(90, Math.max(shoulderWidth * 0.55, hipWidth * 1.35)));
+
+  drawCapsule(ctx, chestCenter, pelvisCenter, bodyWidth, '#888');
+}
+
+
+
+
 function projectPointToScreen(p, width, height, layoutMetrics) {
   const r = projectPoint(p);
 
