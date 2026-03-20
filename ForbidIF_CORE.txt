@@ -2168,6 +2168,7 @@ large  = より大きい前方突出と外側・下側拡張
   "clothes": {
     "outerTop": "#224488",
     "innerTop": "#dddddd",
+    "outerBottom": "#666666",
     "bra": "#000000",
     "panties": "#000000"
   },
@@ -2224,10 +2225,11 @@ large  = より大きい前方突出と外側・下側拡張
 - 肌色
 
 ■ clothes
-- outerTop：上着（外）
-- innerTop：上着（内）
-- bra：ブラ
-- panties：パンツ
+- outerTop：上着（外・アウター）
+- innerTop：上着（内・インナー）
+- outerBottom：下半身の外側（スカート・ズボン）
+- bra：ブラ（胸用インナー）
+- panties：パンティ（下半身インナー）
 
 ■ lines
 - 補助線・軸・棒
