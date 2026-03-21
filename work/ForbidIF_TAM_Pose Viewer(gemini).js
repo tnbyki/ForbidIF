@@ -843,13 +843,93 @@ function drawPose(){
 
  const ctx = canvas.getContext('2d');
  if(!ctx) return;
- const bodyColor = '#e6e6e6';
- const pelvisLineColor = 'rgba(255,179,199,0.18)';
- const handColor = '#ffd6de';
- const footColor = '#f2b8a8';
- const breastCColor = '#4fb3b3';
- const breastColor = '#b8b8b8';
 
+ const clothes = poseExtra?.clothes || {};
+
+// ===== 基本色 =====
+const skinColor = poseExtra?.skinColor || '#e6e6e6';
+const hairColor = poseExtra?.hairColor || '#8b5a2b';
+
+// ===== ヘルパ =====
+function hasColor(c){
+  return !!c && c !== 'none';
+}
+function pickColor(...colors){
+  for(const c of colors){
+    if(hasColor(c)) return c;
+  }
+  return null;
+}
+
+// ===== 元色 =====
+const outerTopColor = hasColor(clothes.outerTop) ? clothes.outerTop : null;
+const innerTopColor = hasColor(clothes.innerTop) ? clothes.innerTop : null;
+const braColor = hasColor(clothes.bra) ? clothes.bra : null;
+const outerBottomColor = hasColor(clothes.outerBottom) ? clothes.outerBottom : null;
+const pantiesColor = hasColor(clothes.panties) ? clothes.panties : null;
+
+// ===== 顔 =====
+const faceColorBase = shadeColor(skinColor, 6);
+
+// ===== 上半身 =====
+// 固定ルール
+// 肩 = outerTop → innerTop → 肌
+// 腕 = 肌
+// 胴体 = outerTop → innerTop → 肌
+// 胸(左右) = outerTop → innerTop → bra → 肌
+// 胸中央 = outerTop → innerTopを少し暗く → 暗い肌
+
+const shoulderColor = pickColor(
+  outerTopColor,
+  innerTopColor,
+  skinColor
+) || skinColor;
+
+const armColor = skinColor;
+
+const torsoColor = pickColor(
+  outerTopColor,
+  innerTopColor,
+  skinColor
+) || skinColor;
+
+const breastColor = pickColor(
+  outerTopColor,
+  innerTopColor,
+  braColor,
+  skinColor
+) || skinColor;
+
+const breastCenterColor = outerTopColor
+  ? outerTopColor
+  : innerTopColor
+    ? shadeColor(innerTopColor, -5)
+    : darkenColor(skinColor, 6);
+
+// 手
+const handColor = skinColor;
+
+// ===== 下半身 =====
+// 胴下部分 = outerBottom → 肌
+// 腰ボール = panties → 白
+// 腿 = 肌
+// 足 = 肌
+
+const lowerBodyColor = pickColor(
+  outerBottomColor,
+  skinColor
+) || skinColor;
+
+const legColor = skinColor;
+const footColor = skinColor;
+const waistCenterColor = pickColor(
+  pantiesColor,
+  '#ffffff'
+) || '#ffffff';
+
+// その他
+const breastCColor = breastCenterColor;
+const pelvisLineColor = 'rgba(255,179,199,0.18)';
  ctx.clearRect(0, 0, canvas.width, canvas.height);
  ctx.fillStyle = '#0b0b0b';
 const bgColor = poseExtra?.bgColor || '#0b0b0b';
@@ -1054,11 +1134,13 @@ function drawHeadBlock(){
   y: earR.y + (nippleR.y - earR.y) * 0.5
  };
 
+const faceColor = faceColorBase;
+
 if(mouthFront){
  drawCircle(ctx, head2D, headRad, hairColor);
- drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+ drawCircle(ctx, mouth2D, faceRad, faceColor);
 }else{
- drawCircle(ctx, mouth2D, faceRad, '#f4c7a1');
+ drawCircle(ctx, mouth2D, faceRad, faceColor);
  drawCircle(ctx, head2D, headRad, hairColor);
 }
 
@@ -1067,130 +1149,166 @@ drawCapsule(ctx, earR, hairEndR, 6, hairColor);
 
 }
 function drawTorsoBlock(){
- if(sideStrength > 0.72){
-  drawBodySurfaceThick(ctx, P, scenePoints, bodyBasis);
- }else{
-  drawBodySurface(ctx, P, scenePoints, bodyBasis);
- }
 
- drawShoulderPeak(ctx, lShoulderDraw, shoulderNeckMid, rShoulderDraw, armWidth * 0.72, bodyColor);
+  // ===== 胴の形を一度パスとして作る =====
+  ctx.save();
+  ctx.beginPath();
+  drawBodySurface(ctx, P, scenePoints, bodyBasis, null); // ← 塗らない用に一回使う
+  ctx.clip();
+
+const splitY = lerp(P.ID02.y, P.ID10.y, 0.7);
+
+  // ===== 上（肌） =====
+  ctx.fillStyle = torsoColor;
+  ctx.fillRect(0, 0, ctx.canvas.width, splitY);
+
+  // ===== 下（服） =====
+  ctx.fillStyle = lowerBodyColor;
+  ctx.fillRect(0, splitY, ctx.canvas.width, ctx.canvas.height);
+
+  ctx.restore();
+
+  // 肩
+  drawShoulderPeak(
+    ctx,
+    lShoulderDraw,
+    shoulderNeckMid,
+    rShoulderDraw,
+    armWidth * 0.72,
+    shoulderColor
+  );
 }
 function drawBreastBlock(){
- const breastRefs = {
-  chest,
-  pelvis,
-  rShoulder: rShoulderDraw,
-  lShoulder: lShoulderDraw,
-  rHip,
-  lHip
- };
+  const refs = {
+    chest,
+    pelvis,
+    rShoulder: rShoulderDraw,
+    lShoulder: lShoulderDraw,
+    rHip,
+    lHip
+  };
 
- drawBreasts(
-  ctx,
-  P,
-  scenePoints,
-  breastColor ,
-  breastRefs,
-  INTERNAL_CAMERA,
-  currentScale,
-  view,
-  bodyBasis,
-  bodyFacing
- );
+  drawBreasts(
+    ctx,
+    P,
+    scenePoints,
+    breastColor,
+    refs,
+    INTERNAL_CAMERA,
+    currentScale,
+    view,
+    bodyBasis,
+    bodyFacing
+  );
 
- drawBreastBridge(ctx, P, breastCColor, view);
+  drawBreastBridge(ctx, P, breastCColor, view);
 }
 
-const breastDepth =
- (() => {
-  const ids = ['ID19', 'ID20', 'ID23', 'ID24', 'ID25', 'ID26', 'ID27'];
-  let sum = 0;
-  let count = 0;
-  for(const id of ids){
-   const p = scenePoints[id];
-   if(!p) continue;
-   const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
-   sum += r.z;
-   count++;
-  }
-  return count ? (sum / count) : torsoDepth;
- })();
+function drawWaistCenterBall(ctx, pelvis, rHip, lHip, legWidth, color = '#ffffff'){
+  if(!pelvis || !rHip || !lHip) return;
+
+  const hipMid = midpoint(rHip, lHip);
+  if(!hipMid) return;
+
+  const center = {
+    x: lerp(hipMid.x, pelvis.x, 0.22),
+    y: lerp(hipMid.y, pelvis.y, 0.35) + legWidth * 0.15
+  };
+
+  const rx = legWidth * 0.9; //サイズ
+  const ry = rx * 0.65; // ← ここで潰し具合調整
+
+  drawEllipse(ctx, center, rx, ry, color);
+}
 
 function drawLegBlock(){
- const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
+  const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
 
- const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
- const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
- const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
- const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
+  const rKneeDraw = spreadSidePoint(rKnee, 1, legWidth * 1.20, view);
+  const lKneeDraw = spreadSidePoint(lKnee, -1, legWidth * 1.20, view);
+  const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
+  const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
- const lowerLegColor = shadeColor(footColor, -9);
+  const lowerLegColor = shadeColor(footColor, -9);
+  const hipColor = skinColor;      // 左右の丸は肌色
+  const thighColor = legColor;     // 腿は肌
 
- const thighWidthBoost = 1.3;
- const kneeTaper = 0.88;
- const calfBoost = 1.05;
+  const thighWidthBoost = 1.3;
+  const kneeTaper = 0.88;
+  const calfBoost = 1.05;
 
- drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, footColor);
- drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, footColor);
-
- if(rKneeDraw && rHeelDraw){
-  drawCapsule(
-   ctx,
-   rHip,
-   rKneeDraw,
-   thighWidthDraw * thighWidthBoost,
-   footColor
+  drawWaistCenterBall(
+    ctx,
+    pelvis,
+    rHip,
+    lHip,
+    legWidth,
+    waistCenterColor
   );
 
-  drawCapsule(
-   ctx,
-   rKneeDraw,
-   rHeelDraw,
-   legWidthDraw * kneeTaper * calfBoost,
-   lowerLegColor
-  );
+  drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, hipColor);
+  drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, hipColor);
 
-  drawCircle(ctx, rHeelDraw, legWidthDraw * 0.62, footColor);
- }
+  if(rKneeDraw && rHeelDraw){
+    drawCapsule(
+      ctx,
+      rHip,
+      rKneeDraw,
+      thighWidthDraw * thighWidthBoost,
+      thighColor
+    );
 
- if(lKneeDraw && lHeelDraw){
-  drawCapsule(
-   ctx,
-   lHip,
-   lKneeDraw,
-   thighWidthDraw * thighWidthBoost,
-   footColor
-  );
+    drawCapsule(
+      ctx,
+      rKneeDraw,
+      rHeelDraw,
+      legWidthDraw * kneeTaper * calfBoost,
+      lowerLegColor
+    );
 
-  drawCapsule(
-   ctx,
-   lKneeDraw,
-   lHeelDraw,
-   legWidthDraw * kneeTaper * calfBoost,
-   lowerLegColor
-  );
+    drawCircle(ctx, rHeelDraw, legWidthDraw * 0.62, footColor);
+  }
 
-  drawCircle(ctx, lHeelDraw, legWidthDraw * 0.62, footColor);
- }
+  if(lKneeDraw && lHeelDraw){
+    drawCapsule(
+      ctx,
+      lHip,
+      lKneeDraw,
+      thighWidthDraw * thighWidthBoost,
+      thighColor
+    );
+
+    drawCapsule(
+      ctx,
+      lKneeDraw,
+      lHeelDraw,
+      legWidthDraw * kneeTaper * calfBoost,
+      lowerLegColor
+    );
+
+    drawCircle(ctx, lHeelDraw, legWidthDraw * 0.62, footColor);
+  }
 }
+function drawArmBlock(){
+  const upperArmColor = armColor;
+  const lowerArmColor = armColor;
 
- function drawArmBlock(){
   if(rShoulderDraw && rElbow){
-   drawCapsule(ctx, rShoulderDraw, rElbow, armWidthDraw, handColor);
+    drawCapsule(ctx, rShoulderDraw, rElbow, armWidthDraw, upperArmColor);
   }
   if(rElbow && rWrist){
-   drawCapsule(ctx, rElbow, rWrist, armWidthDraw * 0.92, handColor);
-   drawCircle(ctx, rWrist, armWidthDraw * 0.62, '#eab899');
+    drawCapsule(ctx, rElbow, rWrist, armWidthDraw * 0.92, lowerArmColor);
+    drawCircle(ctx, rWrist, armWidthDraw * 0.62, handColor);
   }
 
   if(lShoulderDraw && lElbow){
-   drawCapsule(ctx, lShoulderDraw, lElbow, armWidthDraw, handColor);
+    drawCapsule(ctx, lShoulderDraw, lElbow, armWidthDraw, upperArmColor);
   }
   if(lElbow && lWrist){
-   drawCapsule(ctx, lElbow, lWrist, armWidthDraw * 0.92, handColor);
-   drawCircle(ctx, lWrist, armWidthDraw * 0.62, '#eab899');
+    drawCapsule(ctx, lElbow, lWrist, armWidthDraw * 0.92, lowerArmColor);
+    drawCircle(ctx, lWrist, armWidthDraw * 0.62, handColor);
   }
- }
+}
 
  const drawParts = [];
 
@@ -1223,7 +1341,20 @@ function drawLegBlock(){
    }
    return count ? (sum / count) : 0;
   })();
-
+const breastDepth =
+ (() => {
+  const ids = ['ID19', 'ID20', 'ID27'];
+  let sum = 0;
+  let count = 0;
+  for(const id of ids){
+   const p = scenePoints[id];
+   if(!p) continue;
+   const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
+   sum += r.z;
+   count++;
+  }
+  return count ? (sum / count) : torsoDepth;
+ })();
  const armDepth =
   (() => {
    const ids = ['ID05', 'ID06', 'ID07', 'ID08', 'ID09', 'ID11'];
@@ -1266,11 +1397,11 @@ drawParts.push({
  depth: legDepth,
  draw: () => drawLegBlock()
 });
- drawParts.push({
+drawParts.push({
   name: 'torso',
   depth: torsoDepth,
   draw: () => drawTorsoBlock()
- });
+});
 
   drawParts.push({
  name: 'breasts',
@@ -1286,7 +1417,7 @@ drawParts.push({
 
 drawParts.push({
  name: 'head',
- depth: headDepth,
+ depth: headDepth + 1000,
  draw: () => {
   const hairColor = poseExtra?.hairColor || '#8b5a2b';
 
@@ -1322,7 +1453,7 @@ updateSelectedPointInfo(scenePoints);
 setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
 
-function drawBodySurface(ctx, P, rawPoints, bodyBasis){
+function drawBodySurface(ctx, P, rawPoints, bodyBasis, fillColor = '#888'){
  if(!P || !rawPoints) return;
 
  const shoulderR = P.ID05;
@@ -1449,8 +1580,10 @@ const bodyHipL = {
 
  ctx.closePath();
 
- ctx.fillStyle = '#888';
- ctx.fill();
+if(fillColor){
+  ctx.fillStyle = fillColor;
+  ctx.fill();
+}
 
 ctx.fillStyle = 'red';
 
@@ -1458,146 +1591,7 @@ ctx.fillStyle = '#fff';
 ctx.font = '10px monospace';
 
 }
-function drawBodySurfaceThick(ctx, P, rawPoints, bodyBasis){
- if(!P || !rawPoints) return;
 
- const shoulderR = P.ID05;
- const shoulderL = P.ID06;
- const pelvis    = P.ID10;
- const hipR      = P.ID12;
- const hipL      = P.ID13;
-
- if(!shoulderR || !shoulderL || !pelvis || !hipR || !hipL) return;
-
- const panel = document.getElementById(PANEL_ID);
- const canvas = panel?.querySelector('#' + CANVAS_ID);
- const cw = canvas?.width || 500;
- const ch = canvas?.height || 500;
-
- const rawSpine = rawPoints.ID01;
- const rawHipR = rawPoints.ID12;
- const rawHipL = rawPoints.ID13;
- const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
-
- const halfWidth3D = 0.18;
-
- const candA = {
-  x: rawSpine.x + right.x * halfWidth3D,
-  y: rawSpine.y + right.y * halfWidth3D,
-  z: rawSpine.z + right.z * halfWidth3D
- };
-
- const candB = {
-  x: rawSpine.x - right.x * halfWidth3D,
-  y: rawSpine.y - right.y * halfWidth3D,
-  z: rawSpine.z - right.z * halfWidth3D
- };
-
- const distAtoL = dist3D(candA, rawHipL);
- const distAtoR = dist3D(candA, rawHipR);
-
- const spineL3 = distAtoL <= distAtoR ? candA : candB;
- const spineR3 = distAtoL <= distAtoR ? candB : candA;
-
- const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
- let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
- let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
-
- const bodyHipWidthScale = 1.5;
- let bodyHipR = {
-  x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
-  y: hipR.y
- };
-
- let bodyHipL = {
-  x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
-  y: hipL.y
- };
-
- const bodyView = getBodyViewInfo(INTERNAL_CAMERA);
- const thickT = smoothstep01((bodyView.sideStrength - 0.55) / 0.30);
-
- const spineMid = midpoint(spineL, spineR);
- const hipMid = midpoint(bodyHipL, bodyHipR);
-
- const spineHalfMin = lerp(0, 16, thickT);
- const hipHalfMin   = lerp(0, 20, thickT);
-
- if(spineMid){
-  spineL = {
-   x: spineMid.x - spineHalfMin,
-   y: spineL.y
-  };
-  spineR = {
-   x: spineMid.x + spineHalfMin,
-   y: spineR.y
-  };
- }
-
- if(hipMid){
-  bodyHipL = {
-   x: hipMid.x - hipHalfMin,
-   y: bodyHipL.y
-  };
-  bodyHipR = {
-   x: hipMid.x + hipHalfMin,
-   y: bodyHipR.y
-  };
- }
-
- const ctrlShoulderL = {
-  x: shoulderL.x + (spineL.x - shoulderL.x) * 0.5,
-  y: shoulderL.y + (spineL.y - shoulderL.y) * 0.5
- };
-
- const hipCurveOut = 1.35;
-
- const ctrlHipL = {
-  x: spineL.x + (bodyHipL.x - spineL.x) * hipCurveOut,
-  y: spineL.y + (bodyHipL.y - spineL.y) * 0.5
- };
-
- const ctrlHipR = {
-  x: spineR.x + (bodyHipR.x - spineR.x) * hipCurveOut,
-  y: spineR.y + (bodyHipR.y - spineR.y) * 0.5
- };
-
- const ctrlShoulderR = {
-  x: shoulderR.x + (spineR.x - shoulderR.x) * 0.5,
-  y: shoulderR.y + (spineR.y - shoulderR.y) * 0.5
- };
-
- ctx.beginPath();
-
- ctx.moveTo(shoulderR.x, shoulderR.y);
- ctx.lineTo(shoulderL.x, shoulderL.y);
-
- ctx.quadraticCurveTo(
-  ctrlShoulderL.x, ctrlShoulderL.y,
-  spineL.x, spineL.y
- );
-
- ctx.quadraticCurveTo(
-  ctrlHipL.x, ctrlHipL.y,
-  bodyHipL.x, bodyHipL.y
- );
-
- ctx.lineTo(bodyHipR.x, bodyHipR.y);
-
- ctx.quadraticCurveTo(
-  ctrlHipR.x, ctrlHipR.y,
-  spineR.x, spineR.y
- );
-
- ctx.quadraticCurveTo(
-  ctrlShoulderR.x, ctrlShoulderR.y,
-  shoulderR.x, shoulderR.y
- );
-
- ctx.closePath();
- ctx.fillStyle = '#888';
- ctx.fill();
-}
 
 function projectPointToScreen(p, width, height, layoutMetrics){
  const r = projectPoint(p);
@@ -1628,10 +1622,8 @@ if(extraText){
  try {
   poseExtra = JSON.parse(extraText);
  } catch (e){
-  poseExtra = null;
+  console.warn('[POSE_EXTRA parse error]', e);
  }
-}else{
- poseExtra = null;
 }
 
  if(!jsonText && !metaText){
@@ -2564,16 +2556,16 @@ function drawSoftTorso(ctx, chest, pelvis, shoulderR, shoulderL, hipR, hipL, col
   y: shoulderL.y + (chestCenter.y - shoulderL.y) * shoulderInset
  };
 
- const hipOut = 1.10;
+const hipOut = 0.78;
 
- const botR = {
-  x: hipR.x + (hipCenter.x - hipR.x) * hipInset + (hipR.x - hipCenter.x) * hipOut,
-  y: hipR.y + (hipCenter.y - hipR.y) * hipInset
- };
- const botL = {
-  x: hipL.x + (hipCenter.x - hipL.x) * hipInset + (hipL.x - hipCenter.x) * hipOut,
-  y: hipL.y + (hipCenter.y - hipL.y) * hipInset
- };
+const botR = {
+ x: hipR.x + (hipCenter.x - hipR.x) * hipInset + (hipR.x - hipCenter.x) * hipOut,
+ y: hipR.y + (hipCenter.y - hipR.y) * hipInset
+};
+const botL = {
+ x: hipL.x + (hipCenter.x - hipL.x) * hipInset + (hipL.x - hipCenter.x) * hipOut,
+ y: hipL.y + (hipCenter.y - hipL.y) * hipInset
+};
 
  const waistY = lerp(chestCenter.y, hipCenter.y, 0.80);
 
@@ -2718,6 +2710,7 @@ function getFrontTorsoShape(P, refs){
  const chest = refs.chest || P.ID02;
  const pelvis = refs.pelvis || P.ID10;
  const neck = P.ID03;
+ const bodyFacing = refs.bodyFacing || 1;
 
  const shoulderR = refs.rShoulder;
  const shoulderL = refs.lShoulder;
@@ -2743,22 +2736,26 @@ function getFrontTorsoShape(P, refs){
   y: shoulderL.y + (chestCenter.y - shoulderL.y) * shoulderInset
  };
 
-const hipOut = 0.38;
+ // 下側を太めにする
+ const hipOut = 0.56;
 
-const botR = {
- x: hipR.x + (hipCenter.x - hipR.x) * hipInset + (hipR.x - hipCenter.x) * hipOut,
- y: hipR.y + (hipCenter.y - hipR.y) * hipInset
-};
-const botL = {
- x: hipL.x + (hipCenter.x - hipL.x) * hipInset + (hipL.x - hipCenter.x) * hipOut,
- y: hipL.y + (hipCenter.y - hipL.y) * hipInset
-};
+ const botR = {
+  x: hipR.x + (hipCenter.x - hipR.x) * hipInset + (hipR.x - hipCenter.x) * hipOut,
+  y: hipR.y + (hipCenter.y - hipR.y) * hipInset + 4
+ };
 
- const waistY = lerp(chestCenter.y, hipCenter.y, 0.44);
+ const botL = {
+  x: hipL.x + (hipCenter.x - hipL.x) * hipInset + (hipL.x - hipCenter.x) * hipOut,
+  y: hipL.y + (hipCenter.y - hipL.y) * hipInset + 4
+ };
+
+ // 腰を少し下げつつ、細すぎないようにする
+ const waistY = lerp(chestCenter.y, hipCenter.y, 0.56);
 
  const topHalfWidth = Math.abs(topR.x - topL.x) * 0.5;
  const botHalfWidth = Math.abs(botR.x - botL.x) * 0.5;
- const waistHalfWidth = Math.min(topHalfWidth, botHalfWidth) * 0.58;
+
+ const waistHalfWidth = lerp(topHalfWidth, botHalfWidth, 0.42) * 0.72;
 
  const waistR = {
   x: chestCenter.x + waistHalfWidth,
@@ -2769,42 +2766,45 @@ const botL = {
   x: chestCenter.x - waistHalfWidth,
   y: waistY
  };
-const hipBlend = 0.78;
-
-const hipCurveR = {
- x: lerp(waistR.x, botR.x, hipBlend) + (botR.x - waistR.x) * 0.25,
- y: lerp(waistR.y, botR.y, hipBlend)
-};
-
-const hipCurveL = {
- x: lerp(waistL.x, botL.x, hipBlend) + (botL.x - waistL.x) * 0.25,
- y: lerp(waistL.y, botL.y, hipBlend)
-};
 
  const neckWidth = Math.max(10, dist2D(topR, topL) * 0.22);
 
- const neckFront = {
+ const neckFrontR = {
   x: chestCenter.x + neckWidth * 0.35,
   y: neck.y + curveY * 0.25
  };
 
- const neckBack = {
+ const neckBackL = {
   x: chestCenter.x - neckWidth * 0.35,
   y: neck.y + curveY * 0.25
  };
 
+ const isBackView = bodyFacing >= 4;
+
+ if(isBackView){
+  return {
+   neckBack: neckFrontR,
+   upperBack: topR,
+   lowerBack: waistR,
+   backBottom: botR,
+   frontBottom: botL,
+   belly: waistL,
+   chestFront: topL,
+   neckFront: neckBackL
+  };
+ }
+
  return {
-  neckBack,
+  neckBack: neckBackL,
   upperBack: topL,
   lowerBack: waistL,
   backBottom: botL,
   frontBottom: botR,
   belly: waistR,
   chestFront: topR,
-  neckFront
+  neckFront: neckFrontR
  };
 }
-
 function getSideTorsoShape(P, rawPoints, cam, refs, view){
  const chest = refs.chest || P.ID02;
  const pelvis = refs.pelvis || P.ID10;
@@ -2923,10 +2923,12 @@ const shoulderTopMid = {
 
  ctx.moveTo(shape.upperBack.x, shape.upperBack.y);
 
- ctx.quadraticCurveTo(
-  shape.upperBack.x, shape.upperBack.y,
-  shape.lowerBack.x, shape.lowerBack.y
- );
+  ctx.quadraticCurveTo(
+    lerp(shape.upperBack.x, shape.lowerBack.x, 0.18) - 8,
+    lerp(shape.upperBack.y, shape.lowerBack.y, 0.50),
+    shape.lowerBack.x,
+    shape.lowerBack.y
+  );
 
  ctx.quadraticCurveTo(
   shape.backBottom.x, shape.backBottom.y,
@@ -3407,6 +3409,89 @@ function drawShoulderPeak(ctx, leftShoulder, neckMid, rightShoulder, width, colo
  ctx.stroke();
 }
 
+function drawWaistBridge(ctx, pelvis, rHip, lHip, genital, anus, legWidth){
+ if(!pelvis || !rHip || !lHip) return;
+
+ const hipMid = midpoint(rHip, lHip);
+ if(!hipMid) return;
+
+ const innerR = {
+  x: lerp(rHip.x, hipMid.x, 0.34),
+  y: lerp(rHip.y, hipMid.y, 0.18)
+ };
+
+ const innerL = {
+  x: lerp(lHip.x, hipMid.x, 0.34),
+  y: lerp(lHip.y, hipMid.y, 0.18)
+ };
+
+ const frontCenterBase = genital || pelvis;
+ const backCenterBase = anus || pelvis;
+
+ const frontCenter = {
+  x: lerp(pelvis.x, frontCenterBase.x, 0.42),
+  y: lerp(pelvis.y, frontCenterBase.y, 0.42)
+ };
+
+ const backCenter = {
+  x: lerp(pelvis.x, backCenterBase.x, 0.42),
+  y: lerp(pelvis.y, backCenterBase.y, 0.42)
+ };
+
+ const topLeft = {
+  x: lerp(innerL.x, pelvis.x, 0.18),
+  y: lerp(innerL.y, pelvis.y, 0.55)
+ };
+
+ const topRight = {
+  x: lerp(innerR.x, pelvis.x, 0.18),
+  y: lerp(innerR.y, pelvis.y, 0.55)
+ };
+
+ const frontBulge = Math.max(6, legWidth * 0.22);
+ const backBulge = Math.max(5, legWidth * 0.18);
+
+ const frontCtrl = {
+  x: frontCenter.x,
+  y: frontCenter.y + frontBulge
+ };
+
+ const backCtrl = {
+  x: backCenter.x,
+  y: backCenter.y - backBulge
+ };
+
+ ctx.fillStyle = '#888';
+ ctx.beginPath();
+
+ ctx.moveTo(topLeft.x, topLeft.y);
+
+ ctx.quadraticCurveTo(
+  backCtrl.x,
+  backCtrl.y,
+  topRight.x,
+  topRight.y
+ );
+
+ ctx.quadraticCurveTo(
+  frontCtrl.x,
+  frontCtrl.y,
+  innerR.x,
+  innerR.y
+ );
+
+ ctx.lineTo(innerL.x, innerL.y);
+
+ ctx.quadraticCurveTo(
+  frontCtrl.x,
+  frontCtrl.y,
+  topLeft.x,
+  topLeft.y
+ );
+
+ ctx.closePath();
+ ctx.fill();
+}
 
 function clampPitch(v){
  const LIMIT = Math.PI * 0.495;
@@ -4022,6 +4107,10 @@ function shadeColor(color, percent){
   (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
   (B < 255 ? (B < 0 ? 0 : B) : 255)
  ).toString(16).slice(1);
+}
+
+function darkenColor(color, amount){
+ return shadeColor(color, -amount);
 }
 
 function buildFallbackOutput(rawPose, prevState){
