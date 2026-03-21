@@ -1156,17 +1156,64 @@ function drawTorsoBlock(){
   drawBodySurface(ctx, P, scenePoints, bodyBasis, null); // ← 塗らない用に一回使う
   ctx.clip();
 
-const splitY = lerp(P.ID02.y, P.ID10.y, 0.7);
 
-  // ===== 上（肌） =====
-  ctx.fillStyle = torsoColor;
-  ctx.fillRect(0, 0, ctx.canvas.width, splitY);
+const splitCenter = {
+  x: lerp(P.ID02.x, P.ID10.x, 0.7),
+  y: lerp(P.ID02.y, P.ID10.y, 0.7)
+};
 
-  // ===== 下（服） =====
-  ctx.fillStyle = lowerBodyColor;
-  ctx.fillRect(0, splitY, ctx.canvas.width, ctx.canvas.height);
+let up2D = null;
 
+if(bodyBasis?.up){
+  const upView = rotatePoint(bodyBasis.up, getViewCamera(INTERNAL_CAMERA));
+  const upLen = Math.hypot(upView.x, upView.y);
+
+  if(upLen > 0.0001){
+    up2D = {
+      x: upView.x / upLen,
+      y: -upView.y / upLen
+    };
+  }
+}
+
+// up が画面上で潰れる角度用の保険
+if(!up2D){
+  const chestToPelvisX = P.ID02.x - P.ID10.x;
+  const chestToPelvisY = P.ID02.y - P.ID10.y;
+  const fallbackLen = Math.hypot(chestToPelvisX, chestToPelvisY) || 1;
+
+  up2D = {
+    x: chestToPelvisX / fallbackLen,
+    y: chestToPelvisY / fallbackLen
+  };
+}
+
+const sideX = -up2D.y;
+const sideY = up2D.x;
+
+// 胸側
+fillHalfPlane(
+  ctx,
+  splitCenter,
+  sideX,
+  sideY,
+  up2D.x,
+  up2D.y,
+  torsoColor
+);
+
+// 骨盤側
+fillHalfPlane(
+  ctx,
+  splitCenter,
+  sideX,
+  sideY,
+  -up2D.x,
+  -up2D.y,
+  lowerBodyColor
+);
   ctx.restore();
+
 
   // 肩
   drawShoulderPeak(
@@ -1178,6 +1225,37 @@ const splitY = lerp(P.ID02.y, P.ID10.y, 0.7);
     shoulderColor
   );
 }
+    function fillHalfPlane(ctx, center, sideX, sideY, dirX, dirY, color){
+  const FAR = 4000;
+
+  const p1 = {
+    x: center.x + sideX * FAR,
+    y: center.y + sideY * FAR
+  };
+  const p2 = {
+    x: center.x - sideX * FAR,
+    y: center.y - sideY * FAR
+  };
+  const p3 = {
+    x: p2.x + dirX * FAR,
+    y: p2.y + dirY * FAR
+  };
+  const p4 = {
+    x: p1.x + dirX * FAR,
+    y: p1.y + dirY * FAR
+  };
+
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.lineTo(p3.x, p3.y);
+  ctx.lineTo(p4.x, p4.y);
+  ctx.closePath();
+
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
 function drawBreastBlock(){
   const refs = {
     chest,
@@ -1229,7 +1307,7 @@ function drawLegBlock(){
   const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
-  const lowerLegColor = shadeColor(footColor, -9);
+  const lowerLegColor = shadeColor(footColor, -4);
   const hipColor = skinColor;      // 左右の丸は肌色
   const thighColor = legColor;     // 腿は肌
 
