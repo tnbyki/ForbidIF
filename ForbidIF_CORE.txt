@@ -2322,13 +2322,29 @@ large  = より大きい前方突出と外側・下側拡張
 ■ boxes
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+
 - 任意の箱（机・椅子・台・壁・扉・格子・家具など）
-- x,y,z は基準座標
-- w,h,d はサイズ
-- box.space = "scene" のとき scene 基準で配置する
-- box.space = "root" のとき root 基準で配置する
-- space 未指定時は viewer 側の既定値に従う
-- 現在の viewer では x,y,z は中心座標として扱う
+- 床については groundColor で描画されるため、通常は boxes に含めない
+
+【座標仕様】
+- boxes は scene 空間に配置する
+- boxes は placement.groundOffset の影響を受けない
+- x は中心座標
+- y は底面（床に接する高さ）
+- z は前面
+
+【配置ルール】
+- 床に接する家具は y=0 に置く
+- 高さ h の箱は、上面が y+h になる
+- 人体の足元は groundOffset により y=0 に合う
+
+【禁止事項】
+- boxes の y に groundOffset を流用してはいけない
+- boxes の座標に人体の補正（groundOffset）を適用してはいけない
+
+【補足（重要）】
+- boxes の座標は world基準（scene.position基準）である
+- 人体のみが groundOffset により持ち上げられる
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 例
