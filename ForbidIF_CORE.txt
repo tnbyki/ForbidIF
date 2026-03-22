@@ -2228,8 +2228,10 @@ large  = より大きい前方突出と外側・下側拡張
 
 ■ 座標ルール
 - ID10(root) は pelvis center の人体内部基準点であり、world原点ではない
-- scene.position は床面上の world 配置基準点である
-- placement.groundOffset は root から床基準点までのオフセットである
+- scene.position は pose 全体の world 配置基準点である
+- placement.groundOffset は root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
+- placement.groundOffset は床そのものを意味しない
+- viewer は placement.groundOffset の意味を解釈せず、そのまま配置に使用する
 - viewer は各点を以下で world 座標に変換する
   worldPoint = localPoint + scene.position - placement.groundOffset
 - root と scene の座標系を混同してはならない
