@@ -2067,6 +2067,7 @@ ID23 : Right Breast Outer
 ID24 : Left Breast Outer
 ID25 : Right Breast Lower
 ID26 : Left Breast Lower
+※ ID23〜26（Breast Outer / Lower）は現在未使用（将来拡張用）
 ID27 : Breast Center
 
 [ANCHOR MAP]
@@ -2162,8 +2163,16 @@ large  = より大きい前方突出と外側・下側拡張
   "bgColor": "#87ceeb",
   "groundColor": "#6fa84f",
 
-  "hairColor": "#2b2b2b",
-  "skinColor": "#d9a07a",
+  "appearance": {
+    "hairColor": "#2b2b2b",
+    "skinColor": "#d9a07a"
+  },
+
+  "body": {
+    "breastScale": 1.0,
+    "waistWidth": 1.0,
+    "hairLength": 1.0
+  },
 
   "clothes": {
     "outerTop": "#224488",
@@ -2172,16 +2181,6 @@ large  = より大きい前方突出と外側・下側拡張
     "bra": "#000000",
     "panties": "#000000"
   },
-
-  "lines": [
-    {
-      "name": "bodyLine",
-      "startId": "ID04",
-      "endId": "ID10",
-      "color": "#ff4444",
-      "width": 0.02
-    }
-  ],
 
   "boxes": [
     {
@@ -2214,15 +2213,26 @@ large  = より大きい前方突出と外側・下側拡張
 
 ■ bgColor
 - 背景色（空・壁など）
-
 ■ groundColor
 - 地面・床の色（屋外/屋内共通）
 
-■ hairColor
-- 髪色
+■ appearance
+- 色や表面の見た目を指定する（体の形は変えない）
+- appearance.hairColor : 髪色
+- appearance.skinColor : 肌色
 
-■ skinColor
-- 肌色
+■ body
+- ポーズではなく、体の基本的な特徴を指定する
+- 体型や髪の長さなど、個体差の表現に使う
+- 各項目は意味に応じて形式が異なる
+
+- body.breastSize : 胸の大きさ（cm目安の数値で指定）
+- body.waistWidth : 腰まわりの幅（倍率で指定、1.0が基準）
+- body.hairLength : 髪の長さ（short / middle / long のカテゴリ指定）
+例：
+- breastSize : 90
+- waistWidth : 1.2
+- hairLength : long
 
 ■ clothes
 - outerTop：上着（外・アウター）
