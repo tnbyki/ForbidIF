@@ -2207,13 +2207,12 @@ large  = より大きい前方突出と外側・下側拡張
   ]
 }
 </POSE_EXTRA>
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_EXTRA ルール
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 - <POSE_EXTRA> は原則として出力する
-- 中身はJSON形式
+- 中身は JSON 形式
 - scene, placement, appearance, clothes, body, lines, boxes など描画に必要な設定を含める
 - 未知の項目は無視してよい
 - 各要素は必要なものだけ入れる
@@ -2226,32 +2225,115 @@ large  = より大きい前方突出と外側・下側拡張
 - bgColor        = "#87ceeb"
 - groundColor    = "#6fa84f"
 
-■ 座標ルール
-- ID10(root) は pelvis center の人体内部基準点であり、world原点ではない
-- scene.position は pose 全体の world 配置基準点である
-- placement.groundOffset は root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 配置モデル
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- POSE_JSON の points はローカル座標系で定義される純粋な形状であり、world 位置を持たない
+- ID10(root) は pelvis center の人体内部基準点であり、world 原点ではない
+- scene.position は pose 全体を配置する world 上の基準位置である
+- placement.groundOffset は、root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
 - placement.groundOffset は床そのものを意味しない
 - viewer は placement.groundOffset の意味を解釈せず、そのまま配置に使用する
 - viewer は各点を以下で world 座標に変換する
+
   worldPoint = localPoint + scene.position - placement.groundOffset
+
 - root と scene の座標系を混同してはならない
 
-■ 共通ルール
-- color は #RRGGBB
-- name は必須・重複しないこと
-
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 配置ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 - 環境物（床・机・椅子・box等）は scene 基準で配置する
 - 人体内部パーツおよび体に追従する要素（lines等）は root 基準で配置する
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ placement.groundOffset の意味
-- root(ID10) から見た「接地基準点（床に接する位置）」の相対座標
-- 立ちポーズ → 足裏の位置
-- 座りポーズ → 接地している位置（尻 または 足）
-- 浮遊ポーズ → {x:0, y:0, z:0} または任意
-- viewer はこの値を使って、接地点が scene.position に一致するように配置する
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- placement.groundOffset は root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
+- 立ちポーズでは通常、足裏付近を基準とする
+- 着座ポーズでは通常、座面接触点付近を基準とする
+- 浮遊・飛行ポーズでは、胴体中心など、そのポーズを安定して配置するための代表基準点を用いてよい
+- viewer はこの値を解釈せず、そのまま配置に使用する
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 共通ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- color は #RRGGBB
+- name は必須・重複しないこと
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ bgColor
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- 背景色（空・壁など）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ groundColor
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- 地面・床の色（屋外 / 屋内共通）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ appearance
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- 色や表面の見た目を指定する（体の形は変えない）
+- appearance.hairColor : 髪色
+- appearance.skinColor : 肌色
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ body
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- ポーズではなく、体の基本的な特徴を指定する
+- 体型や髪の長さなど、個体差の表現に使う
+- body.breastScale : 胸の大きさ（倍率、1.0 が基準）
+- body.waistWidth  : 腰まわりの幅（倍率、1.0 が基準）
+- body.hairLength  : 髪の長さ（viewer 実装に従う値）
 
 例：
+- breastScale : 1.2
+- waistWidth  : 1.0
+- hairLength  : 1.0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ clothes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- outerTop：上着（外・アウター）
+- innerTop：上着（内・インナー）
+- outerBottom：下半身の外側（スカート・ズボン）
+- bra：胸用インナー
+- panties：下半身インナー
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ lines
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- 補助線・軸・棒などの体追従要素
+- startId / endId は骨格IDを指定する
+- lines は原則として root 基準で配置する
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ boxes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+- 任意の箱（机・椅子・台・壁・扉・格子・家具など）
+- x,y,z は基準座標
+- w,h,d はサイズ
+- box.space = "scene" のとき scene 基準で配置する
+- box.space = "root" のとき root 基準で配置する
+- space 未指定時は viewer 側の既定値に従う
+- 現在の viewer では x,y,z は中心座標として扱う
+- 背中とお尻は接触面に寄りかかるが、めり込まないようにわずかに外側へ逃がして配置する
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 例
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <POSE_EXTRA>
 {
@@ -2282,53 +2364,6 @@ large  = より大きい前方突出と外側・下側拡張
   ]
 }
 </POSE_EXTRA>
-
-■ bgColor
-- 背景色（空・壁など）
-
-■ groundColor
-- 地面・床の色（屋外/屋内共通）
-
-■ appearance
-- 色や表面の見た目を指定する（体の形は変えない）
-- appearance.hairColor : 髪色
-- appearance.skinColor : 肌色
-
-■ body
-- ポーズではなく、体の基本的な特徴を指定する
-- 体型や髪の長さなど、個体差の表現に使う
-- 各項目は意味に応じて形式が異なる
-- body.breastSize : 胸の大きさ（cm目安の数値で指定）
-- body.waistWidth : 腰まわりの幅（倍率で指定、1.0が基準）
-- body.hairLength : 髪の長さ（short / middle / long のカテゴリ指定）
-
-例：
-- breastSize : 90
-- waistWidth : 1.2
-- hairLength : long
-
-■ clothes
-- outerTop：上着（外・アウター）
-- innerTop：上着（内・インナー）
-- outerBottom：下半身の外側（スカート・ズボン）
-- bra：胸用インナー
-- panties：下半身インナー
-
-■ lines
-- 補助線・軸・棒などの体追従要素
-- startId / endId は骨格IDを指定する
-- lines は原則として root 基準で配置する
-
-■ boxes
-- 任意の箱（机・椅子・台・壁・扉・格子・家具など）
-- x,y,z は基準座標
-- w,h,d はサイズ
-- box.space = "scene" のとき scene 基準で配置する
-- box.space = "root" のとき root 基準で配置する
-- space 未指定時は viewer 側の既定値に従う
-- 現在の viewer では x,y,z は中心座標として扱う
-- 背中とお尻は接触面に寄りかかるが、めり込まないようにわずかに外側へ逃がして配置する
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 EOF
