@@ -2202,17 +2202,30 @@ large  = より大きい前方突出と外側・下側拡張
 ■ POSE_EXTRA ルール
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- <POSE_EXTRA> は任意（なくてもよい）
+- <POSE_EXTRA> は原則として出力する
 - 中身はJSON形式
+- scene, clothes, body, lines, boxes など描画に必要な設定を含める
 - 未知の項目は無視してよい
 - 各要素は必要なものだけ入れる
 
-ID10(root) は人体内部の基準点であり、world原点ではない。
-scene.position は world配置原点である。
-環境物（床・机・椅子・box等）は scene 基準で配置する。
-人体内部パーツおよび体に追従する要素（lines等）は root 基準で配置する。
-root と scene の座標系を混同してはならない。
+■ 既定値
+以下は未指定時に適用される
 
+- scene.position = {x:0, y:0, z:0}
+- scene.forward  = {x:0, y:0, z:1}
+- scene.up       = {x:0, y:1, z:0}
+
+- bgColor        = "#87ceeb"
+- groundColor    = "#6fa84f"
+
+■ 座標ルール
+- ID10(root) は人体内部の基準点であり、world原点ではない
+- scene.position は world配置原点である
+
+- 環境物（床・机・椅子・box等）は scene 基準で配置する
+- 人体内部パーツおよび体に追従する要素（lines等）は root 基準で配置する
+
+- root と scene の座標系を混同してはならない
 ■ 共通ルール
 - color は #RRGGBB
 - name は必須・重複しないこと
