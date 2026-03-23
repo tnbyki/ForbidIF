@@ -48,7 +48,7 @@ let globalPointerHandlersInstalled = false;
 let sendInterceptorInstalled = false;
 let poseExtra = null;
 let hoveredPointId = null;
-
+const extraBoxesDepth = getExtraBoxesDepth();
 const ACTION_BUTTONS = [
  { key: 'push',   icon: '👆', help: '押す' },
  { key: 'lick',   icon: '👅', help: '舐める' },
@@ -969,12 +969,9 @@ ctx.fillStyle = bgColor;
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
 drawWorldFloor(ctx, scenePoints, canvas.width, canvas.height);
-try {
-  drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height);
-} catch (e) {
-  console.error('[drawExtraBoxes error]', e);
-}
+
 const P = computeLayout(scenePoints, canvas.width, canvas.height);
+lastProjectedPoints = P;
  const head = P.ID04;
  const neck = P.ID03;
  const chest = P.ID02;
@@ -1606,9 +1603,15 @@ if(bodyForwardScore < -0.10){
 }
 
 drawParts.push({
- name: 'legs',
- depth: legDepth,
- draw: () => drawLegBlock()
+  name: 'boxes',
+  depth: extraBoxesDepth,
+  draw: () => drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height)
+});
+
+drawParts.push({
+  name: 'legs',
+  depth: legDepth,
+  draw: () => drawLegBlock()
 });
 
 drawParts.push({
@@ -2095,7 +2098,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 }
 
- function getOrCreatePanel(){
+function getOrCreatePanel(){
   let panel = document.getElementById(PANEL_ID);
   if(panel) return panel;
 
@@ -2529,19 +2532,19 @@ function installGlobalPointerHandlers(){
   }
  });
 
- document.addEventListener('mouseup', () => {
-  if(
-   mouseDownButton === 0 &&
-   !pendingSelectShift &&
-   !didDragSinceMouseDown
-  ){
-   if(pendingSelectPointId && pendingSelectPointId === selectedPointId){
-    selectedPointId = null;
-   }else{
-    selectedPointId = pendingSelectPointId || null;
-   }
+document.addEventListener('mouseup', () => {
+ if(
+  mouseDownButton === 0 &&
+  !pendingSelectShift &&
+  !didDragSinceMouseDown
+ ){
+  if(pendingSelectPointId !== null && pendingSelectPointId === selectedPointId){
+   selectedPointId = null;
+  }else{
+   selectedPointId = pendingSelectPointId !== null ? pendingSelectPointId : null;
+  }
 
-   if(selectedPointId){
+  if(selectedPointId){
     setStatus(`status: selected ${selectedPointId} ${pose.points?.[selectedPointId]?.name || ''}`);
 
     actionHighlights.push({
@@ -3578,10 +3581,34 @@ function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
     };
   }
 
+  function shadeColorSimple(hex, amount){
+    if(typeof hex !== 'string') return '#888888';
+
+    let c = hex.trim();
+    if(c.startsWith('#')) c = c.slice(1);
+    if(c.length === 3){
+      c = c.split('').map(ch => ch + ch).join('');
+    }
+    if(c.length !== 6) return '#888888';
+
+    const n = parseInt(c, 16);
+    if(Number.isNaN(n)) return '#888888';
+
+    let r = (n >> 16) & 255;
+    let g = (n >> 8) & 255;
+    let b = n & 255;
+
+    r = Math.max(0, Math.min(255, r + amount));
+    g = Math.max(0, Math.min(255, g + amount));
+    b = Math.max(0, Math.min(255, b + amount));
+
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+
   for(const box of boxes){
     const x = Number(box?.x) || 0;
     const y = (Number(box?.y) || 0) - getGroundOffset().y;
-    const z = -(Number(box?.z) || 0);
+const z = Number(box?.z) || 0;
 
     const w = Math.max(0.01, Number(box?.w) || 1);
     const h = Math.max(0.01, Number(box?.h) || 1);
@@ -3596,26 +3623,86 @@ function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
     const zF = z;
     const zBk = z - d;
 
-    const pts = [
-      toScreen({ x: xL, y: yT, z: zF }),
-      toScreen({ x: xR, y: yT, z: zF }),
-      toScreen({ x: xR, y: yB, z: zF }),
-      toScreen({ x: xL, y: yB, z: zF })
-    ];
+    const pFTL = { x: xL, y: yT, z: zF  };
+    const pFTR = { x: xR, y: yT, z: zF  };
+    const pFBR = { x: xR, y: yB, z: zF  };
+    const pFBL = { x: xL, y: yB, z: zF  };
 
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    ctx.lineTo(pts[1].x, pts[1].y);
-    ctx.lineTo(pts[2].x, pts[2].y);
-    ctx.lineTo(pts[3].x, pts[3].y);
-    ctx.closePath();
+    const pBTL = { x: xL, y: yT, z: zBk };
+    const pBTR = { x: xR, y: yT, z: zBk };
+    const pBBR = { x: xR, y: yB, z: zBk };
+    const pBBL = { x: xL, y: yB, z: zBk };
 
-    ctx.fillStyle = color;
-    ctx.fill();
+    const sFTL = toScreen(pFTL);
+    const sFTR = toScreen(pFTR);
+    const sFBR = toScreen(pFBR);
+    const sFBL = toScreen(pFBL);
 
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    const sBTL = toScreen(pBTL);
+    const sBTR = toScreen(pBTR);
+    const sBBR = toScreen(pBBR);
+    const sBBL = toScreen(pBBL);
+
+const topDepth = (
+  rotatePoint(pFTL, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pBTR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pBTL, getViewCamera(INTERNAL_CAMERA)).z
+) / 4;
+
+const sideDepth = (
+  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pFBR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pBBR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pBTR, getViewCamera(INTERNAL_CAMERA)).z
+) / 4;
+
+const frontDepth = (
+  rotatePoint(pFTL, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pFBR, getViewCamera(INTERNAL_CAMERA)).z +
+  rotatePoint(pFBL, getViewCamera(INTERNAL_CAMERA)).z
+) / 4;
+
+const faces = [
+  {
+    key: 'top',
+    depth: topDepth,
+    pts: [sBTL, sBTR, sFTR, sFTL],
+    color: shadeColorSimple(color, 24)
+  },
+  {
+    key: 'side',
+    depth: sideDepth,
+    pts: [sFTR, sBTR, sBBR, sFBR],
+    color: shadeColorSimple(color, -20)
+  },
+  {
+    key: 'front',
+    depth: frontDepth,
+    pts: [sFTL, sFTR, sFBR, sFBL],
+    color: color
+  }
+];
+
+    faces.sort((a, b) => a.depth - b.depth);
+
+    for(const face of faces){
+      const pts = face.pts;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      ctx.lineTo(pts[1].x, pts[1].y);
+      ctx.lineTo(pts[2].x, pts[2].y);
+      ctx.lineTo(pts[3].x, pts[3].y);
+      ctx.closePath();
+
+      ctx.fillStyle = face.color;
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
   }
 }
 function getExtraBoxesDepth(){
@@ -3628,7 +3715,7 @@ function getExtraBoxesDepth(){
  for(const box of boxes){
   const x = Number(box?.x) || 0;
   const y = Number(box?.y) || 0;
-  const z = Number(box?.z) || 0;
+const z = -(Number(box?.z) || 0);
   const h = Math.max(0.01, Number(box?.h) || 1);
   const d = Math.max(0.01, Number(box?.d) || 1);
 
@@ -3835,23 +3922,26 @@ function drawPointDots(ctx, projected, rawPoints){
    color = 'rgba(255,235,150,0.95)';
   }
 
-if(id === selectedPointId){
- r = 10;
- color = 'rgba(0,224,255,0.98)';
-}
+  if(id === selectedPointId){
+   r = 10;
+   color = 'rgba(0,224,255,0.98)';
+  }
 
-ctx.beginPath();
-ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+ctx.save();
+ctx.globalAlpha = 0.5;
 ctx.fillStyle = color;
 ctx.fill();
+ctx.restore();
 
-if(id === hoveredPointId && id !== selectedPointId){
- ctx.beginPath();
- ctx.arc(pt.x, pt.y, r + 4, 0, Math.PI * 2);
- ctx.strokeStyle = 'rgba(255,255,255,0.85)';
- ctx.lineWidth = 2;
- ctx.stroke();
-}
+  if(id === hoveredPointId && id !== selectedPointId){
+   ctx.beginPath();
+   ctx.arc(pt.x, pt.y, r + 4, 0, Math.PI * 2);
+   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+   ctx.lineWidth = 2;
+   ctx.stroke();
+  }
  }
 }
 
