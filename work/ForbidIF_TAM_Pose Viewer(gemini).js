@@ -14,27 +14,28 @@
  const PANEL_ID = 'gemini-pose-min-panel';
  const CANVAS_ID = 'gemini-pose-min-canvas';
 let rootState = {
- scenePosition: { x: 0, y: 0, z: 0 },
- sceneVelocity: { x: 0, y: 0, z: 0 },
+  scenePosition: { x: 0, y: 0, z: 0 },
+  sceneVelocity: { x: 0, y: 0, z: 0 },
 
- bodyForward: { x: 0, y: 0, z: 1 },
- bodyUp: { x: 0, y: 1, z: 0 },
- bodyRight: { x: 1, y: 0, z: 0 },
+  bodyForward: { x: 0, y: 0, z: 1 },
+  bodyUp: { x: 0, y: 1, z: 0 },
+  bodyRight: { x: 1, y: 0, z: 0 },
 
- headForward: { x: 0, y: 0, z: 1 },
- headUp: { x: 0, y: 1, z: 0 },
- headRight: { x: 1, y: 0, z: 0 },
+  headForward: { x: 0, y: 0, z: 1 },
+  headUp: { x: 0, y: 1, z: 0 },
+  headRight: { x: 1, y: 0, z: 0 },
 
- rightFootContact: false,
- leftFootContact: false,
- isGrounded: true,
- isJumping: false,
+  rightFootContact: false,
+  leftFootContact: false,
+  isGrounded: true,
+  isJumping: false,
 
- groundedFrames: 0,
- airborneFrames: 0,
+  groundedFrames: 0,
+  airborneFrames: 0,
 
- _prevRHeelY: 0,
- _prevLHeelY: 0
+  // ここを修正！ 初期値0だと初回Vyが無限大になる
+  _prevRHeelY: -1.35,   // ← Right Heelの初期Y（poseのデフォルト値）
+  _prevLHeelY: -1.35    // ← Left Heelの初期Y
 };
 
 let isDragging = false;
@@ -189,7 +190,17 @@ const POINT_LABELS = {
  ID21: 'GENITAL',
  ID22: 'ANUS'
 };
+function getAppearanceColors(extra) {
+  const appearance = extra?.appearance || {};
 
+  const hairColor =
+    appearance.hairColor ?? extra?.hairColor ?? "#2b2b2b";
+
+  const skinColor =
+    appearance.skinColor ?? extra?.skinColor ?? "#d9a07a";
+
+  return { hairColor, skinColor };
+}
 function toggleActionButton(key){
  if(key === 'strength'){
   strengthMode = (strengthMode + 1) % STRENGTH_PRESETS.length;
@@ -435,7 +446,10 @@ function getViewCamera(cam){
 }
 
 function getScenePositionOffset(){
- const sp = poseSceneMeta?.scene?.position;
+ const sp =
+  poseExtra?.scene?.position ||
+  poseSceneMeta?.scene?.position;
+
  return {
   x: Number(sp?.x) || 0,
   y: Number(sp?.y) || 0,
@@ -443,17 +457,28 @@ function getScenePositionOffset(){
  };
 }
 
-function applyScenePositionToPoint(p){
- if(!p) return p;
- const ofs = getScenePositionOffset();
+function getGroundOffset(){
+ const go = poseExtra?.placement?.groundOffset;
  return {
-  ...p,
-  x: p.x + ofs.x,
-  y: p.y + ofs.y,
-  z: p.z + ofs.z
+  x: Number(go?.x) || 0,
+  y: Number(go?.y) || 0,
+  z: Number(go?.z) || 0
  };
 }
 
+function applyScenePositionToPoint(p){
+ if(!p) return p;
+
+ const ofs = getScenePositionOffset();
+ const go = getGroundOffset();
+
+ return {
+  ...p,
+  x: p.x + ofs.x - go.x,
+  y: p.y + ofs.y - go.y,
+  z: p.z + ofs.z - go.z
+ };
+}
 function getPosePointsWithSceneOffset(points){
  const out = {};
  for(const id of Object.keys(points || {})){
@@ -461,7 +486,6 @@ function getPosePointsWithSceneOffset(points){
  }
  return out;
 }
-
 function projectPoint(p){
  const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
  return {
@@ -469,7 +493,6 @@ function projectPoint(p){
   y: r.y
  };
 }
-
  function computeLayout(points, width, height){
   ensureCameraDefaults();
 
@@ -841,14 +864,20 @@ function drawPose(){
  const canvas = panel.querySelector('#' + CANVAS_ID);
  if(!canvas) return;
 
+ const body = poseExtra?.body || {};
+ const waistWidth = body.waistWidth ?? 1.0;
+
  const ctx = canvas.getContext('2d');
  if(!ctx) return;
 
  const clothes = poseExtra?.clothes || {};
 
-// ===== 基本色 =====
-const skinColor = poseExtra?.skinColor || '#e6e6e6';
-const hairColor = poseExtra?.hairColor || '#8b5a2b';
+// ===== 基本色（appearance対応） =====
+const skinColor =
+  poseExtra?.appearance?.skinColor ?? poseExtra?.skinColor ?? '#e6e6e6';
+
+const hairColor =
+  poseExtra?.appearance?.hairColor ?? poseExtra?.hairColor ?? '#8b5a2b';
 
 // ===== ヘルパ =====
 function hasColor(c){
@@ -872,39 +901,41 @@ const pantiesColor = hasColor(clothes.panties) ? clothes.panties : null;
 const faceColorBase = shadeColor(skinColor, 6);
 
 // ===== 上半身 =====
-// 固定ルール
-// 肩 = outerTop → innerTop → 肌
-// 腕 = 肌
-// 胴体 = outerTop → innerTop → 肌
-// 胸(左右) = outerTop → innerTop → bra → 肌
-// 胸中央 = outerTop → innerTopを少し暗く → 暗い肌
+// ルール
+// 1) outerTopあり + innerTopあり
+//    肩=outerTop / 腕=outerTop / 胴体=innerTop / 胸(左右)=innerTop / 胸中央=innerTop
+// 2) outerTopなし + innerTopあり
+//    肩=肌 / 腕=肌 / 胴体=innerTop / 胸(左右)=innerTop / 胸中央=肌
+// 3) outerTopなし + innerTopなし + braあり
+//    肩=肌 / 腕=肌 / 胴体=肌 / 胸(左右)=bra / 胸中央=肌
 
-const shoulderColor = pickColor(
-  outerTopColor,
-  innerTopColor,
-  skinColor
-) || skinColor;
+const hasOuterTop = hasColor(outerTopColor);
+const hasInnerTop = hasColor(innerTopColor);
+const hasBra = hasColor(braColor);
 
-const armColor = skinColor;
+// 肩
+const shoulderColor =
+  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
 
-const torsoColor = pickColor(
-  outerTopColor,
-  innerTopColor,
-  skinColor
-) || skinColor;
+// 腕
+const armColor =
+  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
 
-const breastColor = pickColor(
-  outerTopColor,
-  innerTopColor,
-  braColor,
-  skinColor
-) || skinColor;
+// 胴体
+const torsoBaseColor =
+  hasInnerTop ? innerTopColor : skinColor;
 
-const breastCenterColor = outerTopColor
-  ? outerTopColor
-  : innerTopColor
-    ? shadeColor(innerTopColor, -5)
-    : darkenColor(skinColor, 6);
+const torsoColor = shadeColor(torsoBaseColor, -3);
+
+// 胸（左右）
+const breastColor =
+  hasInnerTop ? innerTopColor :
+  hasBra ? braColor :
+  skinColor;
+
+// 胸中央
+const breastCenterColor =
+  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
 
 // 手
 const handColor = skinColor;
@@ -936,9 +967,14 @@ const bgColor = poseExtra?.bgColor || '#0b0b0b';
 
 ctx.fillStyle = bgColor;
 ctx.fillRect(0, 0, canvas.width, canvas.height);
- const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
- const P = computeLayout(scenePoints, canvas.width, canvas.height);
-lastProjectedPoints = P;
+const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
+drawWorldFloor(ctx, scenePoints, canvas.width, canvas.height);
+try {
+  drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height);
+} catch (e) {
+  console.error('[drawExtraBoxes error]', e);
+}
+const P = computeLayout(scenePoints, canvas.width, canvas.height);
  const head = P.ID04;
  const neck = P.ID03;
  const chest = P.ID02;
@@ -1049,7 +1085,8 @@ function drawHeadBlock(){
  const neck = scenePoints['ID03'];
  if(!skullTop || !neck) return;
 
- const hairColor = poseExtra?.hairColor || '#8b5a2b';
+const hairColor =
+  poseExtra?.appearance?.hairColor ?? poseExtra?.hairColor ?? '#8b5a2b';
 
  const metaHead = poseSceneMeta?.head;
  let f = metaHead?.forward || { x: 0, y: 0, z: 1 };
@@ -1125,15 +1162,14 @@ function drawHeadBlock(){
  };
 
  const hairEndL = {
-  x: earL.x + (nippleL.x - earL.x) * 0.5,
-  y: earL.y + (nippleL.y - earL.y) * 0.5
- };
+  x: earL.x,
+  y: earL.y + headRad * 0.9
+};
 
- const hairEndR = {
-  x: earR.x + (nippleR.x - earR.x) * 0.5,
-  y: earR.y + (nippleR.y - earR.y) * 0.5
- };
-
+const hairEndR = {
+  x: earR.x,
+  y: earR.y + headRad * 0.9
+};
 const faceColor = faceColorBase;
 
 if(mouthFront){
@@ -1153,7 +1189,7 @@ function drawTorsoBlock(){
   // ===== 胴の形を一度パスとして作る =====
   ctx.save();
   ctx.beginPath();
-  drawBodySurface(ctx, P, scenePoints, bodyBasis, null); // ← 塗らない用に一回使う
+drawBodySurface(ctx, P, scenePoints, bodyBasis, waistWidth, null);
   ctx.clip();
 
 
@@ -1281,8 +1317,7 @@ function drawBreastBlock(){
 
   drawBreastBridge(ctx, P, breastCColor, view);
 }
-
-function drawWaistCenterBall(ctx, pelvis, rHip, lHip, legWidth, color = '#ffffff'){
+function drawWaistCenterBall(ctx, pelvis, rHip, lHip, legWidth, waistWidth = 1.0, color = '#ffffff', alpha = 1){
   if(!pelvis || !rHip || !lHip) return;
 
   const hipMid = midpoint(rHip, lHip);
@@ -1293,12 +1328,75 @@ function drawWaistCenterBall(ctx, pelvis, rHip, lHip, legWidth, color = '#ffffff
     y: lerp(hipMid.y, pelvis.y, 0.35) + legWidth * 0.15
   };
 
-  const rx = legWidth * 0.9; //サイズ
-  const ry = rx * 0.65; // ← ここで潰し具合調整
+const rx = legWidth * 0.9 * waistWidth;
+  const ry = rx * 0.65;
 
+  ctx.save();
+  ctx.globalAlpha = alpha;
   drawEllipse(ctx, center, rx, ry, color);
+  ctx.restore();
 }
+function drawLowPantiesPanel(
+  ctx,
+  pelvis,
+  rHip,
+  lHip,
+  genital,
+  anus,
+  legWidth,
+  color = '#ff99cc',
+  bodyFacing = 3
+){
+  if(!pelvis || !rHip || !lHip) return;
 
+  const hipMid = midpoint(rHip, lHip);
+  if(!hipMid) return;
+
+  const hipSpan = Math.abs(rHip.x - lHip.x);
+  const halfW = Math.max(legWidth * 0.95, hipSpan * 0.42);
+
+  const frontView = bodyFacing <= 2;
+  const backView = bodyFacing >= 4;
+
+  const anchor = frontView
+    ? (genital || hipMid)
+    : backView
+      ? (anus || hipMid)
+      : hipMid;
+
+  const topY = lerp(hipMid.y, anchor.y, 0.16);
+  const bottomY = lerp(hipMid.y, anchor.y, 0.78);
+
+  const centerDrop = frontView
+    ? legWidth * 0.34
+    : backView
+      ? legWidth * 0.20
+      : legWidth * 0.26;
+
+  const sideDrop = frontView
+    ? legWidth * 0.10
+    : backView
+      ? legWidth * 0.04
+      : legWidth * 0.07;
+
+  const p1 = { x: hipMid.x - halfW,        y: topY };
+  const p2 = { x: hipMid.x + halfW,        y: topY };
+  const p3 = { x: hipMid.x + halfW * 0.78, y: bottomY - sideDrop };
+  const p4 = { x: hipMid.x,                y: bottomY + centerDrop };
+  const p5 = { x: hipMid.x - halfW * 0.78, y: bottomY - sideDrop };
+
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.lineTo(p3.x, p3.y);
+  ctx.lineTo(p4.x, p4.y);
+  ctx.lineTo(p5.x, p5.y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
 function drawLegBlock(){
   const hipRadius = thighWidth * lerp(0.90, 0.94, sideStrength);
 
@@ -1308,21 +1406,25 @@ function drawLegBlock(){
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
   const lowerLegColor = shadeColor(footColor, -4);
-  const hipColor = skinColor;      // 左右の丸は肌色
-  const thighColor = legColor;     // 腿は肌
+  const hipColor = skinColor;
+  const thighColor = legColor;
 
   const thighWidthBoost = 1.3;
   const kneeTaper = 0.88;
   const calfBoost = 1.05;
 
-  drawWaistCenterBall(
-    ctx,
-    pelvis,
-    rHip,
-    lHip,
-    legWidth,
-    waistCenterColor
-  );
+  const waistBallAlpha = bodyFacing >= 4 ? 0.92 : 0.42;
+
+drawWaistCenterBall(
+  ctx,
+  pelvis,
+  rHip,
+  lHip,
+  legWidth,
+  waistWidth,
+  waistCenterColor,
+  waistBallAlpha
+);
 
   drawCircle(ctx, { x: rHip.x, y: rHip.y }, hipRadius * 0.95, hipColor);
   drawCircle(ctx, { x: lHip.x, y: lHip.y }, hipRadius * 0.95, hipColor);
@@ -1387,7 +1489,22 @@ function drawArmBlock(){
     drawCircle(ctx, lWrist, armWidthDraw * 0.62, handColor);
   }
 }
+function drawPantiesOverlay(){
+  if (outerBottomColor && outerBottomColor !== 'none') return;
+  if (!pantiesColor || pantiesColor === 'none') return;
 
+  drawLowPantiesPanel(
+    ctx,
+    pelvis,
+    rHip,
+    lHip,
+    genital,
+    anus,
+    legWidth,
+    pantiesColor,
+    bodyFacing
+  );
+}
  const drawParts = [];
 
  const headDepth =
@@ -1405,9 +1522,9 @@ function drawArmBlock(){
    return count ? (sum / count) : 0;
   })();
 
- const torsoDepth =
+const torsoDepth =
   (() => {
-   const ids = ['ID02', 'ID01', 'ID10', 'ID19', 'ID20', 'ID27'];
+   const ids = ['ID02', 'ID01', 'ID10'];
    let sum = 0;
    let count = 0;
    for(const id of ids){
@@ -1422,16 +1539,23 @@ function drawArmBlock(){
 const breastDepth =
  (() => {
   const ids = ['ID19', 'ID20', 'ID27'];
+  let maxZ = -Infinity;
   let sum = 0;
   let count = 0;
+
   for(const id of ids){
    const p = scenePoints[id];
    if(!p) continue;
    const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
+   maxZ = Math.max(maxZ, r.z);
    sum += r.z;
    count++;
   }
-  return count ? (sum / count) : torsoDepth;
+
+  if(count === 0) return torsoDepth;
+
+
+return maxZ;
  })();
  const armDepth =
   (() => {
@@ -1462,42 +1586,60 @@ const breastDepth =
    }
    return count ? (sum / count) : 0;
   })();
-drawFloorPad(ctx, scenePoints, canvas.width, canvas.height);
 
-drawParts.push({
- name: 'boxes',
- depth: getExtraBoxesDepth(),
- draw: () => drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height)
-});
+const bodyForwardScore = bodyFacingInfo?.score ?? 0;
+
+let breastDepthFinal = breastDepth;
+
+// 前向きなら胸を少し前へ
+if(bodyForwardScore > 0.15){
+  const t = clamp((bodyForwardScore - 0.15) / 0.55, 0, 1);
+  const bias = 0.02 * t;
+  breastDepthFinal = Math.max(breastDepthFinal, torsoDepth + bias);
+}
+
+// 後ろ向きなら胸を少し後ろへ
+if(bodyForwardScore < -0.10){
+  const t = clamp(((-bodyForwardScore) - 0.10) / 0.55, 0, 1);
+  const bias = 0.06 * t;
+  breastDepthFinal = Math.min(breastDepthFinal, torsoDepth - bias);
+}
 
 drawParts.push({
  name: 'legs',
  depth: legDepth,
  draw: () => drawLegBlock()
 });
+
 drawParts.push({
   name: 'torso',
   depth: torsoDepth,
   draw: () => drawTorsoBlock()
 });
 
-  drawParts.push({
+drawParts.push({
+  name: 'panties',
+  depth: torsoDepth + 1,
+  draw: () => drawPantiesOverlay()
+});
+
+drawParts.push({
  name: 'breasts',
- depth: breastDepth,
+ depth: breastDepthFinal,
  draw: () => drawBreastBlock()
 });
 
- drawParts.push({
+drawParts.push({
   name: 'arms',
   depth: armDepth,
   draw: () => drawArmBlock()
- });
-
+});
 drawParts.push({
  name: 'head',
- depth: headDepth + 1000,
+ depth: headDepth,
  draw: () => {
-  const hairColor = poseExtra?.hairColor || '#8b5a2b';
+const hairColor =
+  poseExtra?.appearance?.hairColor ?? poseExtra?.hairColor ?? '#8b5a2b';
 
   drawEllipse(
    ctx,
@@ -1531,7 +1673,7 @@ updateSelectedPointInfo(scenePoints);
 setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
 
-function drawBodySurface(ctx, P, rawPoints, bodyBasis, fillColor = '#888'){
+function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0, fillColor = '#888'){
  if(!P || !rawPoints) return;
 
  const shoulderR = P.ID05;
@@ -1592,10 +1734,55 @@ const spineR3 = distAtoL <= distAtoR ? candB : candA;
 
 const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
 
-const spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
-const spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
+let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
+let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
 
-const bodyHipWidthScale = 1.8;
+// ===== 真横で胴の厚みが潰れるときの2D補正 =====
+const torsoMinScreenWidth = 14;
+
+const spineMid = {
+ x: (spineL.x + spineR.x) * 0.5,
+ y: (spineL.y + spineR.y) * 0.5
+};
+
+const torsoAxis = {
+ x: pelvis.x - spineMid.x,
+ y: pelvis.y - spineMid.y
+};
+
+const torsoAxisLen = Math.hypot(torsoAxis.x, torsoAxis.y) || 1;
+
+// 胴の縦方向に直角な2D方向
+let torsoSide2D = {
+ x: -torsoAxis.y / torsoAxisLen,
+ y:  torsoAxis.x / torsoAxisLen
+};
+
+// もし縦軸が潰れていたら保険で画面横方向
+if(!Number.isFinite(torsoSide2D.x) || !Number.isFinite(torsoSide2D.y)){
+ torsoSide2D = { x: 1, y: 0 };
+}
+
+const currentTorsoWidth = Math.hypot(
+ spineR.x - spineL.x,
+ spineR.y - spineL.y
+);
+
+if(currentTorsoWidth < torsoMinScreenWidth){
+ const halfFix = torsoMinScreenWidth * 0.5;
+
+ spineL = {
+  x: spineMid.x - torsoSide2D.x * halfFix,
+  y: spineMid.y - torsoSide2D.y * halfFix
+ };
+
+ spineR = {
+  x: spineMid.x + torsoSide2D.x * halfFix,
+  y: spineMid.y + torsoSide2D.y * halfFix
+ };
+}
+
+const bodyHipWidthScale = 1.8 * waistWidth;
 const bodyBottomExtend = 20;
 
 const bodyHipR = {
@@ -1683,7 +1870,36 @@ function projectPointToScreen(p, width, height, layoutMetrics){
   y: height / 2 + ty - (r.y - layoutMetrics.centerY) * scale
  };
 }
+function getGroundScreenTransform(posePoints, canvasW, canvasH){
+  const { fitScale } = getLayoutMetrics(
+    posePoints || {},
+    canvasW,
+    canvasH
+  );
 
+  const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
+
+  // worldの床基準点（scene.position）
+  const scenePos = getScenePositionOffset();
+  const groundOrigin = {
+    x: scenePos.x,
+    y: scenePos.y,
+    z: scenePos.z
+  };
+
+  const r = projectPoint(groundOrigin);
+
+  // 床が画面のやや下に来るように固定
+  const screenGroundY = canvasH * 0.78 + ty;
+
+  return {
+    scale,
+    originX: canvasW / 2 + tx - r.x * scale,
+    originY: screenGroundY + r.y * scale
+  };
+}
 async function syncPose(){
  setSyncButtonLoading(true);
  await new Promise(r => setTimeout(r, 300));
@@ -3176,8 +3392,55 @@ function drawBreasts(ctx, projected, rawPoints, color, refs, cam, currentScale, 
  const rx = radius * (1 - sideStrength * 0.3);
  const ry = radius;
 
- drawEllipse(ctx, centerR, rx, ry, color);
- drawEllipse(ctx, centerL, rx, ry, color);
+drawBreastSplit(ctx, centerR, rx, ry, color);
+drawBreastSplit(ctx, centerL, rx, ry, color);
+}
+function drawBreastSplit(ctx, center, rx, ry, color){
+ if(!center) return;
+
+ // 下側はそのまま丸みを残す
+ const lowerCenter = {
+  x: center.x,
+  y: center.y + ry * 0.10
+ };
+
+ const lowerRx = rx;
+ const lowerRy = ry * 0.72;
+
+ // 上側は少し細く・少し浅く
+ const upperCenter = {
+  x: center.x,
+  y: center.y - ry * 0.22
+ };
+
+ const upperRx = rx * 0.82;
+ const upperRy = ry * 0.42;
+
+ // 下半分
+ ctx.save();
+ ctx.beginPath();
+ ctx.rect(
+  center.x - rx - 4,
+  center.y,
+  (rx + 4) * 2,
+  ry + 8
+ );
+ ctx.clip();
+ drawEllipse(ctx, lowerCenter, lowerRx, lowerRy, color);
+ ctx.restore();
+
+ // 上半分
+ ctx.save();
+ ctx.beginPath();
+ ctx.rect(
+  center.x - rx - 4,
+  center.y - ry - 8,
+  (rx + 4) * 2,
+  ry + 8
+ );
+ ctx.clip();
+ drawEllipse(ctx, upperCenter, upperRx, upperRy, color);
+ ctx.restore();
 }
 function drawEllipse(ctx, p, rx, ry, color){
  if(!p) return;
@@ -3190,234 +3453,170 @@ function drawEllipse(ctx, p, rx, ry, color){
  ctx.fill();
  ctx.restore();
 }
-function drawFloorPad(ctx, posePoints, canvasW, canvasH){
- const pelvisRaw = posePoints?.ID10;
- if(!pelvisRaw) return;
+function normalizeVec3(v){
+  const x = Number(v?.x) || 0;
+  const y = Number(v?.y) || 0;
+  const z = Number(v?.z) || 0;
+  const len = Math.hypot(x, y, z) || 1;
+  return { x: x / len, y: y / len, z: z / len };
+}
 
- let minY = Infinity;
- for(const id of Object.keys(posePoints || {})){
-  const p = posePoints[id];
-  if(!p) continue;
-  if(typeof p.y === 'number' && p.y < minY){
-   minY = p.y;
+function crossVec3(a, b){
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x
+  };
+}
+
+function addVec3(a, b){
+  return {
+    x: (a?.x || 0) + (b?.x || 0),
+    y: (a?.y || 0) + (b?.y || 0),
+    z: (a?.z || 0) + (b?.z || 0)
+  };
+}
+
+function scaleVec3(v, s){
+  return {
+    x: (v?.x || 0) * s,
+    y: (v?.y || 0) * s,
+    z: (v?.z || 0) * s
+  };
+}
+
+function drawWorldFloor(ctx, posePoints, canvasW, canvasH){
+  const scene = poseExtra?.scene || {};
+
+  const origin = {
+    x: Number(scene.position?.x) || 0,
+    y: Number(scene.position?.y) || 0,
+    z: Number(scene.position?.z) || 0
+  };
+
+  const up = normalizeVec3(scene.up || { x: 0, y: 1, z: 0 });
+  let forward = normalizeVec3(scene.forward || { x: 0, y: 0, z: 1 });
+
+  let right = crossVec3(forward, up);
+  const rightLen = Math.hypot(right.x, right.y, right.z);
+  if(rightLen < 1e-6){
+    forward = { x: 0, y: 0, z: 1 };
+    right = crossVec3(forward, up);
   }
- }
- if(!isFinite(minY)) return;
+  right = normalizeVec3(right);
+  forward = normalizeVec3(crossVec3(up, right));
 
- const floorY = minY - 0.10;
+  // 人体と同じ中心・ズーム
+  const { fitScale, centerX, centerY } = getLayoutMetrics(
+    posePoints || {},
+    canvasW,
+    canvasH
+  );
 
- const nearHalfX = 8.0;
- const farHalfX = 3.2;
- const nearZ = 7.0;
- const farZ = -1.2;
+  const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
 
- const corners3D = [
-  { x: pelvisRaw.x - nearHalfX, y: floorY, z: pelvisRaw.z + nearZ },
-  { x: pelvisRaw.x + nearHalfX, y: floorY, z: pelvisRaw.z + nearZ },
-  { x: pelvisRaw.x + farHalfX,  y: floorY, z: pelvisRaw.z + farZ  },
-  { x: pelvisRaw.x - farHalfX,  y: floorY, z: pelvisRaw.z + farZ  }
- ];
+  function toScreen(p){
+    const r = projectPoint(p);
+    return {
+      x: canvasW / 2 + tx + (r.x - centerX) * scale,
+      y: canvasH / 2 + ty - (r.y - centerY) * scale
+    };
+  }
 
- const projected = corners3D.map(p => projectPoint(p));
+  // 床サイズ
+  const halfW = 8.0;
+  const halfD = 8.0;
 
- const { fitScale, centerX, centerY } = getLayoutMetrics(
-  posePoints || {},
-  canvasW,
-  canvasH
- );
+  const p1 = addVec3(addVec3(origin, scaleVec3(right, -halfW)), scaleVec3(forward, -halfD));
+  const p2 = addVec3(addVec3(origin, scaleVec3(right,  halfW)), scaleVec3(forward, -halfD));
+  const p3 = addVec3(addVec3(origin, scaleVec3(right,  halfW)), scaleVec3(forward,  halfD));
+  const p4 = addVec3(addVec3(origin, scaleVec3(right, -halfW)), scaleVec3(forward,  halfD));
 
- const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
- const tx = INTERNAL_CAMERA.tx || 0;
- const ty = INTERNAL_CAMERA.ty || 0;
+  const s1 = toScreen(p1);
+  const s2 = toScreen(p2);
+  const s3 = toScreen(p3);
+  const s4 = toScreen(p4);
 
- const screenPts = projected.map(p => ({
-  x: canvasW / 2 + tx + (p.x - centerX) * scale,
-  y: canvasH / 2 + ty - (p.y - centerY) * scale
- }));
-
- ctx.save();
-
- const groundColor = poseExtra?.groundColor || '#b58b5a';
-
- ctx.fillStyle = groundColor + '55';
- ctx.strokeStyle = groundColor + 'aa';
- ctx.lineWidth = 1.2;
-
- ctx.beginPath();
- ctx.moveTo(screenPts[0].x, screenPts[0].y);
- ctx.lineTo(screenPts[1].x, screenPts[1].y);
- ctx.lineTo(screenPts[2].x, screenPts[2].y);
- ctx.lineTo(screenPts[3].x, screenPts[3].y);
- ctx.closePath();
- ctx.fill();
- ctx.stroke();
-
- const lineCount = 8;
- for(let i = 1; i < lineCount; i++){
-  const t = i / lineCount;
-
-  const near = {
-   x: screenPts[0].x + (screenPts[1].x - screenPts[0].x) * t,
-   y: screenPts[0].y + (screenPts[1].y - screenPts[0].y) * t
-  };
-
-  const far = {
-   x: screenPts[3].x + (screenPts[2].x - screenPts[3].x) * t,
-   y: screenPts[3].y + (screenPts[2].y - screenPts[3].y) * t
-  };
-
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(near.x, near.y);
-  ctx.lineTo(far.x, far.y);
-  ctx.strokeStyle = groundColor + '44';
+  ctx.moveTo(s1.x, s1.y);
+  ctx.lineTo(s2.x, s2.y);
+  ctx.lineTo(s3.x, s3.y);
+  ctx.lineTo(s4.x, s4.y);
+  ctx.closePath();
+
+  ctx.fillStyle = poseExtra?.groundColor || '#6fa84f';
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
   ctx.lineWidth = 1;
   ctx.stroke();
- }
 
- ctx.restore();
+  ctx.restore();
 }
 function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
- const boxes = poseExtra?.boxes;
- if(!Array.isArray(boxes) || !boxes.length) return;
+  const boxes = poseExtra?.boxes;
+  if(!Array.isArray(boxes) || !boxes.length) return;
 
- const boxFaces = [];
-
- const { fitScale, centerX, centerY } = getLayoutMetrics(
-  posePoints || {},
-  canvasW,
-  canvasH
- );
-
- const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
- const tx = INTERNAL_CAMERA.tx || 0;
- const ty = INTERNAL_CAMERA.ty || 0;
-
- function toScreen(p){
-  const r = projectPoint(p);
-  return {
-   x: canvasW / 2 + tx + (r.x - centerX) * scale,
-   y: canvasH / 2 + ty - (r.y - centerY) * scale
-  };
- }
-
- function calcDepth(p){
-  const r = rotatePoint(p, getViewCamera(INTERNAL_CAMERA));
-  return r.z;
- }
-
- function pushFace(points, depth, fillColor, strokeColor){
-  if(!points || points.length < 4) return;
-
-  boxFaces.push({
-   depth,
-   points,
-   fillColor,
-   strokeColor
-  });
- }
-
- for(const box of boxes){
-  const x = Number(box?.x) || 0;
-  const y = Number(box?.y) || 0;
-  const z = Number(box?.z) || 0;
-  const w = Math.max(0.01, Number(box?.w) || 1);
-  const h = Math.max(0.01, Number(box?.h) || 1);
-  const d = Math.max(0.01, Number(box?.d) || 1);
-  const color = box?.color || '#8b4513';
-
-  const xL = x - w / 2;
-  const xR = x + w / 2;
-  const yB = y;
-  const yT = y + h;
-  const zF = z;
-  const zB = z - d;
-
-  const frontBL = toScreen({ x: xL, y: yB, z: zF });
-  const frontBR = toScreen({ x: xR, y: yB, z: zF });
-  const frontTR = toScreen({ x: xR, y: yT, z: zF });
-  const frontTL = toScreen({ x: xL, y: yT, z: zF });
-
-  const backBL = toScreen({ x: xL, y: yB, z: zB });
-  const backBR = toScreen({ x: xR, y: yB, z: zB });
-  const backTR = toScreen({ x: xR, y: yT, z: zB });
-  const backTL = toScreen({ x: xL, y: yT, z: zB });
-
-  const view = getViewCamera(INTERNAL_CAMERA);
-  const yaw = view?.yaw || 0;
-  const rightVisible = Math.sin(yaw) >= 0;
-
-  const frontCenter = {
-   x: x,
-   y: y + h * 0.5,
-   z: zF
-  };
-
-  const topCenter = {
-   x: x,
-   y: y + h,
-   z: z - d * 0.5
-  };
-
-  pushFace(
-   [backTL, backTR, frontTR, frontTL],
-   calcDepth(topCenter),
-   shadeColor(color, 18),
-   shadeColor(color, 5)
+  const { fitScale, centerX, centerY } = getLayoutMetrics(
+    posePoints || {},
+    canvasW,
+    canvasH
   );
 
-  if(rightVisible){
-   const sideCenter = {
-    x: xR,
-    y: y + h * 0.5,
-    z: z - d * 0.5
-   };
+  const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
 
-   pushFace(
-    [backBR, frontBR, frontTR, backTR],
-    calcDepth(sideCenter),
-    shadeColor(color, -12),
-    shadeColor(color, -20)
-   );
-  }else{
-   const sideCenter = {
-    x: xL,
-    y: y + h * 0.5,
-    z: z - d * 0.5
-   };
-
-   pushFace(
-    [backTL, frontTL, frontBL, backBL],
-    calcDepth(sideCenter),
-    shadeColor(color, -12),
-    shadeColor(color, -20)
-   );
+  function toScreen(p){
+    const r = projectPoint(p);
+    return {
+      x: canvasW / 2 + tx + (r.x - centerX) * scale,
+      y: canvasH / 2 + ty - (r.y - centerY) * scale
+    };
   }
 
-  pushFace(
-   [frontBL, frontBR, frontTR, frontTL],
-   calcDepth(frontCenter),
-   color,
-   shadeColor(color, -18)
-  );
- }
+  for(const box of boxes){
+    const x = Number(box?.x) || 0;
+    const y = (Number(box?.y) || 0) - getGroundOffset().y;
+    const z = -(Number(box?.z) || 0);
 
- boxFaces.sort((a, b) => a.depth - b.depth);
+    const w = Math.max(0.01, Number(box?.w) || 1);
+    const h = Math.max(0.01, Number(box?.h) || 1);
+    const d = Math.max(0.01, Number(box?.d) || 1);
 
- for(const face of boxFaces){
-  ctx.beginPath();
-  ctx.moveTo(face.points[0].x, face.points[0].y);
+    const color = box?.color || '#888888';
 
-  for(let i = 1; i < face.points.length; i++){
-   ctx.lineTo(face.points[i].x, face.points[i].y);
+    const xL = x - w * 0.5;
+    const xR = x + w * 0.5;
+    const yB = y;
+    const yT = y + h;
+    const zF = z;
+    const zBk = z - d;
+
+    const pts = [
+      toScreen({ x: xL, y: yT, z: zF }),
+      toScreen({ x: xR, y: yT, z: zF }),
+      toScreen({ x: xR, y: yB, z: zF }),
+      toScreen({ x: xL, y: yB, z: zF })
+    ];
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    ctx.lineTo(pts[1].x, pts[1].y);
+    ctx.lineTo(pts[2].x, pts[2].y);
+    ctx.lineTo(pts[3].x, pts[3].y);
+    ctx.closePath();
+
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
   }
-
-  ctx.closePath();
-  ctx.fillStyle = face.fillColor;
-  ctx.strokeStyle = face.strokeColor;
-  ctx.lineWidth = 1.2;
-  ctx.fill();
-  ctx.stroke();
- }
 }
 function getExtraBoxesDepth(){
  const boxes = poseExtra?.boxes;
@@ -3433,11 +3632,11 @@ function getExtraBoxesDepth(){
   const h = Math.max(0.01, Number(box?.h) || 1);
   const d = Math.max(0.01, Number(box?.d) || 1);
 
-  const center = {
-   x,
-   y: y + h * 0.5,
-   z: z - d * 0.5
-  };
+const center = {
+  x,
+  y: y + h * 0.5,
+  z: z - d * 0.5
+};
 
   const r = rotatePoint(center, getViewCamera(INTERNAL_CAMERA));
   sum += r.z;
@@ -3657,220 +3856,80 @@ if(id === hoveredPointId && id !== selectedPointId){
 }
 
 function updateRoot(rawPose, prevState, dt){
- const pts = rawPose.points || {};
+  const pts = rawPose.points || {};
 
- const pelvis = pts.ID10;
- const chest  = pts.ID02;
- const neck   = pts.ID03;
- const rHip   = pts.ID12;
- const lHip   = pts.ID13;
- const rHeel  = pts.ID16;
- const lHeel  = pts.ID17;
- const skull  = pts.ID04;
- const mouth  = pts.ID18;
+  // 位置は完全に固定（置くだけ）
+  const scenePosition = { x: 0, y: 0, z: 0 };
+  const sceneVelocity = { x: 0, y: 0, z: 0 };
 
- if(!pelvis || !chest || !rHip || !lHip){
-  return buildFallbackOutput(rawPose, prevState);
- }
+  // 向き計算だけ残す（ポーズの向きは保つ）
+  const pelvis = pts.ID10;
+  const chest  = pts.ID02;
+  const rHip   = pts.ID12;
+  const lHip   = pts.ID13;
 
-let bodyRight = normalize(sub(rHip, lHip));
-let bodyUp    = normalize(sub(chest, pelvis));
-let bodyForward = normalize(cross(bodyUp, bodyRight));
-
-const genital = pts.ID21;
-const anus = pts.ID22;
-
-if(genital && anus){
- const frontHint = normalize(sub(genital, anus));
- if(dot(bodyForward, frontHint) < 0){
-  bodyForward = {
-   x: -bodyForward.x,
-   y: -bodyForward.y,
-   z: -bodyForward.z
-  };
- }
-}
-
- if(!isFiniteVec(bodyForward) || length(bodyForward) < 0.0001){
-  bodyForward = prevState.bodyForward;
- }
-
- bodyRight   = normalize(cross(bodyForward, bodyUp));
- bodyUp      = normalize(cross(bodyRight, bodyForward));
- bodyForward = normalize(bodyForward);
-
- bodyForward = normalize(lerpVec(prevState.bodyForward, bodyForward, 0.25));
- bodyUp      = normalize(lerpVec(prevState.bodyUp,      bodyUp,      0.25));
- bodyRight   = normalize(cross(bodyForward, bodyUp));
- bodyUp      = normalize(cross(bodyRight, bodyForward));
-
- let headForward = bodyForward;
- let headUp = bodyUp;
- let headRight = bodyRight;
-
- if(neck && skull && mouth){
-  let rawHeadUp = normalize(sub(skull, neck));
-  let faceDir   = normalize(sub(mouth, neck));
-
-  let rawHeadRight = normalize(cross(faceDir, rawHeadUp));
-  let rawHeadForward = normalize(cross(rawHeadUp, rawHeadRight));
-
-  if(isFiniteVec(rawHeadForward) && length(rawHeadForward) > 0.0001){
-   headForward = rawHeadForward;
-   headUp = rawHeadUp;
-   headRight = normalize(cross(headForward, headUp));
-   headUp = normalize(cross(headRight, headForward));
+  if (!pelvis || !chest || !rHip || !lHip) {
+    return buildFallbackOutput(rawPose, prevState);
   }
- }
 
- headForward = clampHeadYawPitch(bodyForward, bodyUp, headForward);
+  let bodyRight = normalize(sub(rHip, lHip));
+  let bodyUp    = normalize(sub(chest, pelvis));
+  let bodyForward = normalize(cross(bodyUp, bodyRight));
 
- headForward = normalize(lerpVec(prevState.headForward, headForward, 0.35));
- headUp      = normalize(lerpVec(prevState.headUp, headUp, 0.35));
- headRight   = normalize(cross(headForward, headUp));
- headUp      = normalize(cross(headRight, headForward));
+  const genital = pts.ID21;
+  const anus = pts.ID22;
+  if (genital && anus) {
+    const frontHint = normalize(sub(genital, anus));
+    if (dot(bodyForward, frontHint) < 0) {
+      bodyForward = { x: -bodyForward.x, y: -bodyForward.y, z: -bodyForward.z };
+    }
+  }
 
-let scenePosition = { ...prevState.scenePosition };
-let sceneVelocity = { ...prevState.sceneVelocity };
+  bodyRight   = normalize(cross(bodyForward, bodyUp));
+  bodyUp      = normalize(cross(bodyRight, bodyForward));
 
-scenePosition.x += sceneVelocity.x * dt;
-scenePosition.z += sceneVelocity.z * dt;
+  const headForward = prevState.headForward || { x: 0, y: 0, z: 1 };
+  const headUp      = prevState.headUp      || { x: 0, y: 1, z: 0 };
+  const headRight   = prevState.headRight   || { x: 1, y: 0, z: 0 };
 
-const groundY = 0.0;
-const gravity = -9.8;
-sceneVelocity.y += gravity * dt;
-scenePosition.y += sceneVelocity.y * dt;
+  const out = {
+    frame: (rawPose.frame ?? 0),
+    root: "ID10",
+    scene: {
+      position: scenePosition,
+      velocity: sceneVelocity,
+      groundY: 0,
+      isGrounded: false,
+      isJumping: false
+    },
+    body: {
+      root: "ID10",
+      forward: roundVec(bodyForward),
+      up: roundVec(bodyUp),
+      right: roundVec(bodyRight)
+    },
+    head: {
+      root: "ID03",
+      forward: roundVec(headForward),
+      up: roundVec(headUp),
+      right: roundVec(headRight)
+    },
+    points: pts
+  };
 
-const footEps = 0.04;
-const velEps  = 0.12;
-const footOffEps = 0.07;
-const velOffEps  = 0.20;
+  const nextState = {
+    ...prevState,
+    scenePosition,
+    sceneVelocity,
+    bodyForward,
+    bodyUp,
+    bodyRight,
+    headForward,
+    headUp,
+    headRight
+  };
 
-const prevRHeelY = prevState._prevRHeelY ?? rHeel?.y ?? groundY;
-const prevLHeelY = prevState._prevLHeelY ?? lHeel?.y ?? groundY;
-
-const rHeelVy = rHeel ? (rHeel.y - prevRHeelY) / Math.max(dt, 1e-6) : 999;
-const lHeelVy = lHeel ? (lHeel.y - prevLHeelY) / Math.max(dt, 1e-6) : 999;
-
-const rWorldY = (rHeel?.y ?? Infinity) + scenePosition.y;
-const lWorldY = (lHeel?.y ?? Infinity) + scenePosition.y;
-
-const rightFootContact =
- prevState.rightFootContact
-  ? (
-    !!rHeel &&
-    Math.abs(rWorldY - groundY) <= footOffEps &&
-    Math.abs(rHeelVy) <= velOffEps
-   )
-  : (
-    !!rHeel &&
-    Math.abs(rWorldY - groundY) <= footEps &&
-    Math.abs(rHeelVy) <= velEps
-   );
-
-const leftFootContact =
- prevState.leftFootContact
-  ? (
-    !!lHeel &&
-    Math.abs(lWorldY - groundY) <= footOffEps &&
-    Math.abs(lHeelVy) <= velOffEps
-   )
-  : (
-    !!lHeel &&
-    Math.abs(lWorldY - groundY) <= footEps &&
-    Math.abs(lHeelVy) <= velEps
-   );
-
-const isGrounded = rightFootContact || leftFootContact;
-let groundedFrames = prevState.groundedFrames || 0;
-let airborneFrames = prevState.airborneFrames || 0;
-
-if(isGrounded){
- groundedFrames += 1;
- airborneFrames = 0;
-}else{
- groundedFrames = 0;
- airborneFrames += 1;
-}
-
-let isJumping = prevState.isJumping;
-
-if(!isGrounded && airborneFrames >= 2){
- isJumping = true;
-}
-if(isGrounded && groundedFrames >= 2){
- isJumping = false;
-}
-
-if(isGrounded){
- sceneVelocity.y = 0;
-
- const footY = Math.min(
-  rHeel?.y ?? Infinity,
-  lHeel?.y ?? Infinity
- );
-
- if(isFinite(footY)){
-  scenePosition.y = groundY - footY;
- }
-}
-
- const out = {
-  frame: (rawPose.frame ?? 0),
-
-  root: "ID10",
-
-  scene: {
-   position: roundVec(scenePosition),
-   velocity: roundVec(sceneVelocity),
-   groundY,
-   isGrounded,
-   isJumping
-  },
-
-  body: {
-   root: "ID10",
-   forward: roundVec(bodyForward),
-   up: roundVec(bodyUp),
-   right: roundVec(bodyRight)
-  },
-
-  head: {
-   root: "ID03",
-   forward: roundVec(headForward),
-   up: roundVec(headUp),
-   right: roundVec(headRight)
-  },
-
-  points: pts
- };
-
- const nextState = {
-  ...prevState,
-  scenePosition,
-  sceneVelocity,
-
-  bodyForward,
-  bodyUp,
-  bodyRight,
-
-  headForward,
-  headUp,
-  headRight,
-
-  rightFootContact,
-  leftFootContact,
-  isGrounded,
-  isJumping,
-
-  groundedFrames,
-  airborneFrames,
-
-  _prevRHeelY: rHeel?.y ?? prevRHeelY,
-  _prevLHeelY: lHeel?.y ?? prevLHeelY
- };
-
- return { out, nextState };
+  return { out, nextState };
 }
 function sub(a, b){
  return {
