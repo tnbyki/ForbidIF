@@ -2234,30 +2234,43 @@ large  = より大きい前方突出と外側・下側拡張
 - POSE_JSON の points はローカル座標系で定義される純粋な形状であり、world 位置を持たない
 - ID10(root) は pelvis center の人体内部基準点であり、world 原点ではない
 - scene.position は pose 全体を配置する world 上の基準位置である
-- placement.groundOffset は、root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
-- placement.groundOffset は床そのものを意味しない
+- placement.groundOffset は、scene.position から見た root(ID10) の相対オフセットである
+- placement.groundOffset は接地・座面などの意味を持たず、純粋な配置オフセットである
 - viewer は placement.groundOffset の意味を解釈せず、そのまま配置に使用する
+- viewer は scene.position から placement.groundOffset を引いた位置に root を配置する
 - viewer は各点を以下で world 座標に変換する
 
   worldPoint = localPoint + scene.position - placement.groundOffset
 
 - root と scene の座標系を混同してはならない
+- 人体の配置ルールは常に同一であり、ポーズによって変わらない
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 配置ルール
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- 環境物（床・机・椅子・box等）は scene 基準で配置する
-- 人体内部パーツおよび体に追従する要素（lines等）は root 基準で配置する
+- 環境物（床・机・椅子・box等）は scene/world 基準で配置する
+- 人体はローカル形状を placement.groundOffset により scene に配置する
+
+※ 人体と環境物は別レイヤーとして扱う
+※ 環境物は人体の配置補正の影響を受けない
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ placement.groundOffset の意味
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- placement.groundOffset は root(ID10) から見た「scene.position に一致させる配置基準点」の相対座標である
-- 立ちポーズでは通常、足裏付近を基準とする
-- 着座ポーズでは通常、座面接触点付近を基準とする
-- 浮遊・飛行ポーズでは、胴体中心など、そのポーズを安定して配置するための代表基準点を用いてよい
+- placement.groundOffset は、人体ローカル座標系内で scene.position に一致させる配置基準点の相対座標である
+- placement.groundOffset は「どの点を scene.position に一致させるか」を指定する
+- 基準点の選択はポーズに依存するが、ルール自体は変わらない
+
+例：
+- 立ちポーズ：足裏代表点
+- 着座ポーズ：座面接触代表点
+- 寝姿勢：背面や腰の接触代表点
+- 浮遊：骨盤中心など安定した代表点
+
+※ ポーズによって「接地」などの意味を持たせてはならない
+※ 変わるのは groundOffset の値のみであり、配置ロジックは常に同一
 - viewer はこの値を解釈せず、そのまま配置に使用する
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2343,7 +2356,9 @@ large  = より大きい前方突出と外側・下側拡張
 
 - 床に接する家具は y=0 に置く
 - 高さ h の箱は、上面が y+h になる
-- 人体の足元は groundOffset により y=0 に合う
+- 人体は placement.groundOffset により scene.position に配置される
+- boxes は常に scene 基準で配置され、人体の配置補正の影響を受けない
+- 人体は「接地」ではなく「基準点一致」によって配置される
 
 【禁止事項】
 - boxes の y に groundOffset を流用してはいけない
@@ -2351,7 +2366,7 @@ large  = より大きい前方突出と外側・下側拡張
 
 【補足（重要）】
 - boxes の座標は world基準（scene.position基準）である
-- 人体のみが groundOffset により持ち上げられる
+- 人体のみが placement.groundOffset により scene に配置される
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 例
