@@ -952,11 +952,12 @@ const lowerBodyColor = pickColor(
 
 const legColor = skinColor;
 const footColor = skinColor;
-const waistCenterColor = pickColor(
-  pantiesColor,
-  '#ffffff'
-) || '#ffffff';
 
+// 腰ボールの色を決める（肌色＋ほんのり赤み）
+const waistCenterColor =
+  (pantiesColor && pantiesColor !== 'none')
+    ? pantiesColor
+    : shadeColor(skinColor, 5);   // ← ここで赤みを少し足す（+8）
 // その他
 const breastCColor = breastCenterColor;
 const pelvisLineColor = 'rgba(255,179,199,0.18)';
@@ -1615,15 +1616,31 @@ if(bodyForwardScore < -0.10){
 }
 
 // 箱を1つずつ正しいdepthで描画する（これが前後関係の鍵）
+// 箱を1つずつ正しいdepthで描画する
 const boxesWithDepth = (poseExtra?.boxes || []).map(box => ({
   ...box,
   depth: getBoxDepth(box)
 }));
 
 boxesWithDepth.forEach((box, index) => {
+  let depthToUse = box.depth;
+
+  const name = (box.name || "").toLowerCase();
+
+  // 奥に回したい box 名
+  const backKeywords = ["wall", "background", "back", "web", "room", "bed"];
+let boxToDraw = box;
+  if (backKeywords.some(keyword => name.includes(keyword))) {
+    depthToUse = box.depth - 10.0; // ← 調整値（0.6〜0.10くらいで様子見）
+      boxToDraw = {
+      ...box,
+      y: (Number(box.y) || 0) - 0.05   // ← 調整値（0.02〜0.1くらいで様子見）
+    };
+  }
+
   drawParts.push({
     name: `box_${index}`,
-    depth: box.depth - 0.00,        // ← これを追加！（少し手前に寄せる補正）
+    depth: depthToUse,
     draw: () => drawSingleBox(ctx, box, scenePoints, canvas.width, canvas.height)
   });
 });
@@ -3683,6 +3700,23 @@ function shadeColorSimple(hex, amount) {
   return `rgb(${r},${g},${b})`;
 }
 function drawSingleBox(ctx, box, posePoints, canvasW, canvasH) {
+  const name = (box.name || "").toLowerCase();
+
+  let baseDepth = getBoxDepth(box);
+  let finalDepth = baseDepth;
+  let alpha = 1.0;
+
+  // === 透明＋奥行き優先の対象になるキーワード ===
+  const backKeywords = ["wall", "background", "back", "room"];
+
+  const isBackElement = backKeywords.some(keyword => name.includes(keyword));
+
+  if (isBackElement) {
+    finalDepth = baseDepth - 5.0;     // 奥行きを強めに確保（-4〜-7で調整可）
+    alpha = 0.45;                     // 半透明度（0.3〜0.6で調整可）
+  }
+
+  // ====================== 描画 ======================
   const { fitScale, centerX, centerY } = getLayoutMetrics(posePoints || {}, canvasW, canvasH);
   const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
   const tx = INTERNAL_CAMERA.tx || 0;
@@ -3702,9 +3736,8 @@ function drawSingleBox(ctx, box, posePoints, canvasW, canvasH) {
   const w = Math.max(0.01, Number(box.w) || 1);
   const h = Math.max(0.01, Number(box.h) || 1);
   const d = Math.max(0.01, Number(box.d) || 1);
-  const color = box.color || '#888888';
+  const color = box.color || "#888888";
 
-  // 前面と背面の8点
   const pFTL = toScreen({ x: x - w*0.5, y: y + h, z: z });
   const pFTR = toScreen({ x: x + w*0.5, y: y + h, z: z });
   const pFBR = toScreen({ x: x + w*0.5, y: y,     z: z });
@@ -3716,12 +3749,22 @@ function drawSingleBox(ctx, box, posePoints, canvasW, canvasH) {
   const pBBL = toScreen({ x: x - w*0.5, y: y,     z: z + d });
 
   const faces = [
-    { pts: [pBTL, pBTR, pFTR, pFTL], color: shadeColorSimple(color, 35) },   // 上面（少し明るく）
-    { pts: [pFTR, pBTR, pBBR, pFBR], color: shadeColorSimple(color, -30) },  // 右側面
-    { pts: [pFTL, pFTR, pFBR, pFBL], color: color }                           // 前面
+    { pts: [pBTL, pBTR, pFTR, pFTL], color: shadeColorSimple(color, 35) },
+    { pts: [pFTR, pBTR, pBBR, pFBR], color: shadeColorSimple(color, -30) },
+    { pts: [pFTL, pFTR, pFBR, pFBL], color: color }
   ];
 
   for (const face of faces) {
+    ctx.save();
+
+    if (isBackElement) {
+      const camYaw = INTERNAL_CAMERA.yaw || 0;
+      // 後ろを向いているときだけ半透明にする
+      if (Math.cos(camYaw) < 0) {
+        ctx.globalAlpha = alpha;
+      }
+    }
+
     ctx.beginPath();
     ctx.moveTo(face.pts[0].x, face.pts[0].y);
     for (let i = 1; i < face.pts.length; i++) {
@@ -3731,9 +3774,11 @@ function drawSingleBox(ctx, box, posePoints, canvasW, canvasH) {
 
     ctx.fillStyle = face.color;
     ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
     ctx.lineWidth = 1.5;
     ctx.stroke();
+
+    ctx.restore();
   }
 }
 function drawBreastBridge(ctx, projected, color, view){
