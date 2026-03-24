@@ -48,7 +48,6 @@ let globalPointerHandlersInstalled = false;
 let sendInterceptorInstalled = false;
 let poseExtra = null;
 let hoveredPointId = null;
-const extraBoxesDepth = getExtraBoxesDepth();
 const ACTION_BUTTONS = [
  { key: 'push',   icon: '👆', help: '押す' },
  { key: 'lick',   icon: '👅', help: '舐める' },
@@ -961,6 +960,16 @@ const waistCenterColor = pickColor(
 // その他
 const breastCColor = breastCenterColor;
 const pelvisLineColor = 'rgba(255,179,199,0.18)';
+
+
+
+
+
+
+
+
+
+
  ctx.clearRect(0, 0, canvas.width, canvas.height);
  ctx.fillStyle = '#0b0b0b';
 const bgColor = poseExtra?.bgColor || '#0b0b0b';
@@ -1402,9 +1411,12 @@ function drawLegBlock(){
   const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
-  const lowerLegColor = shadeColor(footColor, -4);
-  const hipColor = skinColor;
-  const thighColor = legColor;
+  // 太もも・足の色を clothes.tights / shoes で上書き（なければ肌色）
+  const thighColor = hasColor(clothes.tights) ? clothes.tights : skinColor;
+  const footColor  = hasColor(clothes.shoes)  ? clothes.shoes  : skinColor;
+
+  const hipColor = skinColor;               // ヒップは肌色のまま
+  const lowerLegColor = shadeColor(skinColor, -4);  // ふくらはぎは肌色の暗め（変更なし）
 
   const thighWidthBoost = 1.3;
   const kneeTaper = 0.88;
@@ -1602,10 +1614,18 @@ if(bodyForwardScore < -0.10){
   breastDepthFinal = Math.min(breastDepthFinal, torsoDepth - bias);
 }
 
-drawParts.push({
-  name: 'boxes',
-  depth: extraBoxesDepth,
-  draw: () => drawExtraBoxes(ctx, scenePoints, canvas.width, canvas.height)
+// 箱を1つずつ正しいdepthで描画する（これが前後関係の鍵）
+const boxesWithDepth = (poseExtra?.boxes || []).map(box => ({
+  ...box,
+  depth: getBoxDepth(box)
+}));
+
+boxesWithDepth.forEach((box, index) => {
+  drawParts.push({
+    name: `box_${index}`,
+    depth: box.depth - 0.00,        // ← これを追加！（少し手前に寄せる補正）
+    draw: () => drawSingleBox(ctx, box, scenePoints, canvas.width, canvas.height)
+  });
 });
 
 drawParts.push({
@@ -3488,39 +3508,15 @@ function scaleVec3(v, s){
   };
 }
 
-function drawWorldFloor(ctx, posePoints, canvasW, canvasH){
+function drawWorldFloor(ctx, posePoints, canvasW, canvasH) {
   const scene = poseExtra?.scene || {};
 
-  const origin = {
-    x: Number(scene.position?.x) || 0,
-    y: Number(scene.position?.y) || 0,
-    z: Number(scene.position?.z) || 0
-  };
-
-  const up = normalizeVec3(scene.up || { x: 0, y: 1, z: 0 });
-  let forward = normalizeVec3(scene.forward || { x: 0, y: 0, z: 1 });
-
-  let right = crossVec3(forward, up);
-  const rightLen = Math.hypot(right.x, right.y, right.z);
-  if(rightLen < 1e-6){
-    forward = { x: 0, y: 0, z: 1 };
-    right = crossVec3(forward, up);
-  }
-  right = normalizeVec3(right);
-  forward = normalizeVec3(crossVec3(up, right));
-
-  // 人体と同じ中心・ズーム
-  const { fitScale, centerX, centerY } = getLayoutMetrics(
-    posePoints || {},
-    canvasW,
-    canvasH
-  );
-
+  const { fitScale, centerX, centerY } = getLayoutMetrics(posePoints || {}, canvasW, canvasH);
   const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
   const tx = INTERNAL_CAMERA.tx || 0;
   const ty = INTERNAL_CAMERA.ty || 0;
 
-  function toScreen(p){
+  function toScreen(p) {
     const r = projectPoint(p);
     return {
       x: canvasW / 2 + tx + (r.x - centerX) * scale,
@@ -3528,52 +3524,71 @@ function drawWorldFloor(ctx, posePoints, canvasW, canvasH){
     };
   }
 
-  // 床サイズ
-  const halfW = 8.0;
-  const halfD = 8.0;
+  // 足の裏を基準に床の高さを決める
+  const rightHeel = posePoints.ID16 || { y: -1.35 };
+  const leftHeel  = posePoints.ID17 || { y: -1.35 };
+  const heelY = (rightHeel.y + leftHeel.y) / 2;
 
-  const p1 = addVec3(addVec3(origin, scaleVec3(right, -halfW)), scaleVec3(forward, -halfD));
-  const p2 = addVec3(addVec3(origin, scaleVec3(right,  halfW)), scaleVec3(forward, -halfD));
-  const p3 = addVec3(addVec3(origin, scaleVec3(right,  halfW)), scaleVec3(forward,  halfD));
-  const p4 = addVec3(addVec3(origin, scaleVec3(right, -halfW)), scaleVec3(forward,  halfD));
+  // ★★★ ここを調整してね！ ★★★
+  // -0.08 = 少し下に離す
+  // -0.03 = 足の裏にほぼくっつける
+  // -0.055 = 現在おすすめ（神バランス）
+  const floorOffset = -0.055;
 
-  const s1 = toScreen(p1);
-  const s2 = toScreen(p2);
-  const s3 = toScreen(p3);
-  const s4 = toScreen(p4);
+  const floor3D = { x: 0, y: heelY + floorOffset, z: 0 };
+
+  const p1 = toScreen({ x: -12, y: floor3D.y, z: -12 });
+  const p2 = toScreen({ x:  12, y: floor3D.y, z: -12 });
+  const p3 = toScreen({ x:  12, y: floor3D.y, z:  12 });
+  const p4 = toScreen({ x: -12, y: floor3D.y, z:  12 });
 
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(s1.x, s1.y);
-  ctx.lineTo(s2.x, s2.y);
-  ctx.lineTo(s3.x, s3.y);
-  ctx.lineTo(s4.x, s4.y);
+  ctx.moveTo(p1.x, p1.y);
+  ctx.lineTo(p2.x, p2.y);
+  ctx.lineTo(p3.x, p3.y);
+  ctx.lineTo(p4.x, p4.y);
   ctx.closePath();
 
-  ctx.fillStyle = poseExtra?.groundColor || '#6fa84f';
+  ctx.fillStyle = poseExtra?.groundColor || '#4a7c2f';
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(0,0,0,0.18)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+  ctx.lineWidth = 2;
   ctx.stroke();
 
   ctx.restore();
 }
-function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
+// boxごとに個別の深度を計算して返す
+function getBoxDepth(box) {
+  if (!box) return -9999;
+
+  const x = Number(box.x) || 0;
+  const y = Number(box.y) || 0;
+  const z = Number(box.z) || 0;
+  const h = Math.max(0.01, Number(box.h) || 1);
+  const d = Math.max(0.01, Number(box.d) || 1);
+
+  // boxの中心
+  const center = {
+    x: x,
+    y: y + h * 0.5,
+    z: z - d * 0.5   // 奥行きを考慮
+  };
+
+  const rotated = rotatePoint(center, getViewCamera(INTERNAL_CAMERA));
+  return rotated.z;   // zが大きいほど手前
+}
+function drawExtraBoxes(ctx, posePoints, canvasW, canvasH) {
   const boxes = poseExtra?.boxes;
-  if(!Array.isArray(boxes) || !boxes.length) return;
+  if (!Array.isArray(boxes) || !boxes.length) return;
 
-  const { fitScale, centerX, centerY } = getLayoutMetrics(
-    posePoints || {},
-    canvasW,
-    canvasH
-  );
-
+  const { fitScale, centerX, centerY } = getLayoutMetrics(posePoints || {}, canvasW, canvasH);
   const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
   const tx = INTERNAL_CAMERA.tx || 0;
   const ty = INTERNAL_CAMERA.ty || 0;
 
-  function toScreen(p){
+  function toScreen(p) {
     const r = projectPoint(p);
     return {
       x: canvasW / 2 + tx + (r.x - centerX) * scale,
@@ -3581,18 +3596,22 @@ function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
     };
   }
 
-  function shadeColorSimple(hex, amount){
-    if(typeof hex !== 'string') return '#888888';
+  // 各boxに深度を付与してソート（手前が後で描画される）
+  const boxesWithDepth = boxes.map(box => ({
+    ...box,
+    depth: getBoxDepth(box)
+  }));
 
-    let c = hex.trim();
-    if(c.startsWith('#')) c = c.slice(1);
-    if(c.length === 3){
-      c = c.split('').map(ch => ch + ch).join('');
-    }
-    if(c.length !== 6) return '#888888';
+  // 深度が深い（奥）→浅い（手前）の順にソート
+  boxesWithDepth.sort((a, b) => a.depth - b.depth);
 
+  function shadeColorSimple(hex, amount) {
+    if (typeof hex !== 'string') return '#888888';
+    let c = hex.trim().replace('#', '');
+    if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+    if (c.length !== 6) return '#888888';
     const n = parseInt(c, 16);
-    if(Number.isNaN(n)) return '#888888';
+    if (isNaN(n)) return '#888888';
 
     let r = (n >> 16) & 255;
     let g = (n >> 8) & 255;
@@ -3602,137 +3621,121 @@ function drawExtraBoxes(ctx, posePoints, canvasW, canvasH){
     g = Math.max(0, Math.min(255, g + amount));
     b = Math.max(0, Math.min(255, b + amount));
 
-    return `rgb(${r}, ${g}, ${b})`;
+    return `rgb(${r},${g},${b})`;
   }
 
-  for(const box of boxes){
-    const x = Number(box?.x) || 0;
-    const y = (Number(box?.y) || 0) - getGroundOffset().y;
-const z = Number(box?.z) || 0;
+  for (const box of boxesWithDepth) {
+    const x = Number(box.x) || 0;
+    const y = Number(box.y) || 0;
+    const z = Number(box.z) || 0;
+    const w = Math.max(0.01, Number(box.w) || 1);
+    const h = Math.max(0.01, Number(box.h) || 1);
+    const d = Math.max(0.01, Number(box.d) || 1);
 
-    const w = Math.max(0.01, Number(box?.w) || 1);
-    const h = Math.max(0.01, Number(box?.h) || 1);
-    const d = Math.max(0.01, Number(box?.d) || 1);
+    const color = box.color || '#888888';
 
-    const color = box?.color || '#888888';
+    const pFTL = toScreen({ x: x - w*0.5, y: y + h, z: z });
+    const pFTR = toScreen({ x: x + w*0.5, y: y + h, z: z });
+    const pFBR = toScreen({ x: x + w*0.5, y: y,     z: z });
+    const pFBL = toScreen({ x: x - w*0.5, y: y,     z: z });
 
-    const xL = x - w * 0.5;
-    const xR = x + w * 0.5;
-    const yB = y;
-    const yT = y + h;
-    const zF = z;
-    const zBk = z - d;
+    const pBTL = toScreen({ x: x - w*0.5, y: y + h, z: z + d });
+    const pBTR = toScreen({ x: x + w*0.5, y: y + h, z: z + d });
+    const pBBR = toScreen({ x: x + w*0.5, y: y,     z: z + d });
+    const pBBL = toScreen({ x: x - w*0.5, y: y,     z: z + d });
 
-    const pFTL = { x: xL, y: yT, z: zF  };
-    const pFTR = { x: xR, y: yT, z: zF  };
-    const pFBR = { x: xR, y: yB, z: zF  };
-    const pFBL = { x: xL, y: yB, z: zF  };
-
-    const pBTL = { x: xL, y: yT, z: zBk };
-    const pBTR = { x: xR, y: yT, z: zBk };
-    const pBBR = { x: xR, y: yB, z: zBk };
-    const pBBL = { x: xL, y: yB, z: zBk };
-
-    const sFTL = toScreen(pFTL);
-    const sFTR = toScreen(pFTR);
-    const sFBR = toScreen(pFBR);
-    const sFBL = toScreen(pFBL);
-
-    const sBTL = toScreen(pBTL);
-    const sBTR = toScreen(pBTR);
-    const sBBR = toScreen(pBBR);
-    const sBBL = toScreen(pBBL);
-
-const topDepth = (
-  rotatePoint(pFTL, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pBTR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pBTL, getViewCamera(INTERNAL_CAMERA)).z
-) / 4;
-
-const sideDepth = (
-  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pFBR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pBBR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pBTR, getViewCamera(INTERNAL_CAMERA)).z
-) / 4;
-
-const frontDepth = (
-  rotatePoint(pFTL, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pFTR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pFBR, getViewCamera(INTERNAL_CAMERA)).z +
-  rotatePoint(pFBL, getViewCamera(INTERNAL_CAMERA)).z
-) / 4;
-
-const faces = [
-  {
-    key: 'top',
-    depth: topDepth,
-    pts: [sBTL, sBTR, sFTR, sFTL],
-    color: shadeColorSimple(color, 24)
-  },
-  {
-    key: 'side',
-    depth: sideDepth,
-    pts: [sFTR, sBTR, sBBR, sFBR],
-    color: shadeColorSimple(color, -20)
-  },
-  {
-    key: 'front',
-    depth: frontDepth,
-    pts: [sFTL, sFTR, sFBR, sFBL],
-    color: color
-  }
-];
+    const faces = [
+      { pts: [pBTL, pBTR, pFTR, pFTL], color: shadeColorSimple(color, 30), depth: box.depth + 0.1 }, // top
+      { pts: [pFTR, pBTR, pBBR, pFBR], color: shadeColorSimple(color, -25), depth: box.depth },     // side
+      { pts: [pFTL, pFTR, pFBR, pFBL], color: color, depth: box.depth - 0.1 }                      // front
+    ];
 
     faces.sort((a, b) => a.depth - b.depth);
 
-    for(const face of faces){
-      const pts = face.pts;
+    for (const face of faces) {
       ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      ctx.lineTo(pts[1].x, pts[1].y);
-      ctx.lineTo(pts[2].x, pts[2].y);
-      ctx.lineTo(pts[3].x, pts[3].y);
+      ctx.moveTo(face.pts[0].x, face.pts[0].y);
+      ctx.lineTo(face.pts[1].x, face.pts[1].y);
+      ctx.lineTo(face.pts[2].x, face.pts[2].y);
+      ctx.lineTo(face.pts[3].x, face.pts[3].y);
       ctx.closePath();
 
       ctx.fillStyle = face.color;
       ctx.fill();
-
-      ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
   }
 }
-function getExtraBoxesDepth(){
- const boxes = poseExtra?.boxes;
- if(!Array.isArray(boxes) || !boxes.length) return -9999;
-
- let sum = 0;
- let count = 0;
-
- for(const box of boxes){
-  const x = Number(box?.x) || 0;
-  const y = Number(box?.y) || 0;
-const z = -(Number(box?.z) || 0);
-  const h = Math.max(0.01, Number(box?.h) || 1);
-  const d = Math.max(0.01, Number(box?.d) || 1);
-
-const center = {
-  x,
-  y: y + h * 0.5,
-  z: z - d * 0.5
-};
-
-  const r = rotatePoint(center, getViewCamera(INTERNAL_CAMERA));
-  sum += r.z;
-  count++;
- }
-
- return count ? (sum / count) : -9999;
+function shadeColorSimple(hex, amount) {
+  if (typeof hex !== 'string') return '#888888';
+  let c = hex.trim().replace('#', '');
+  if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
+  if (c.length !== 6) return '#888888';
+  const n = parseInt(c, 16);
+  let r = (n >> 16) & 255;
+  let g = (n >> 8) & 255;
+  let b = n & 255;
+  r = Math.max(0, Math.min(255, r + amount));
+  g = Math.max(0, Math.min(255, g + amount));
+  b = Math.max(0, Math.min(255, b + amount));
+  return `rgb(${r},${g},${b})`;
 }
+function drawSingleBox(ctx, box, posePoints, canvasW, canvasH) {
+  const { fitScale, centerX, centerY } = getLayoutMetrics(posePoints || {}, canvasW, canvasH);
+  const scale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const tx = INTERNAL_CAMERA.tx || 0;
+  const ty = INTERNAL_CAMERA.ty || 0;
 
+  function toScreen(p) {
+    const r = projectPoint(p);
+    return {
+      x: canvasW / 2 + tx + (r.x - centerX) * scale,
+      y: canvasH / 2 + ty - (r.y - centerY) * scale
+    };
+  }
+
+  const x = Number(box.x) || 0;
+  const y = Number(box.y) || 0;
+  const z = Number(box.z) || 0;
+  const w = Math.max(0.01, Number(box.w) || 1);
+  const h = Math.max(0.01, Number(box.h) || 1);
+  const d = Math.max(0.01, Number(box.d) || 1);
+  const color = box.color || '#888888';
+
+  // 前面と背面の8点
+  const pFTL = toScreen({ x: x - w*0.5, y: y + h, z: z });
+  const pFTR = toScreen({ x: x + w*0.5, y: y + h, z: z });
+  const pFBR = toScreen({ x: x + w*0.5, y: y,     z: z });
+  const pFBL = toScreen({ x: x - w*0.5, y: y,     z: z });
+
+  const pBTL = toScreen({ x: x - w*0.5, y: y + h, z: z + d });
+  const pBTR = toScreen({ x: x + w*0.5, y: y + h, z: z + d });
+  const pBBR = toScreen({ x: x + w*0.5, y: y,     z: z + d });
+  const pBBL = toScreen({ x: x - w*0.5, y: y,     z: z + d });
+
+  const faces = [
+    { pts: [pBTL, pBTR, pFTR, pFTL], color: shadeColorSimple(color, 35) },   // 上面（少し明るく）
+    { pts: [pFTR, pBTR, pBBR, pFBR], color: shadeColorSimple(color, -30) },  // 右側面
+    { pts: [pFTL, pFTR, pFBR, pFBL], color: color }                           // 前面
+  ];
+
+  for (const face of faces) {
+    ctx.beginPath();
+    ctx.moveTo(face.pts[0].x, face.pts[0].y);
+    for (let i = 1; i < face.pts.length; i++) {
+      ctx.lineTo(face.pts[i].x, face.pts[i].y);
+    }
+    ctx.closePath();
+
+    ctx.fillStyle = face.color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
 function drawBreastBridge(ctx, projected, color, view){
  const chest = projected?.ID02;
  const nippleR = projected?.ID19;
