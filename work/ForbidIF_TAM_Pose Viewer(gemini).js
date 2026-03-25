@@ -57,7 +57,7 @@ const ACTION_BUTTONS = [
  { key: 'pull',   icon: '🤏', help: '引き寄せる' },
  { key: 'insert', icon: '♂♀', help: '入れる' },
  { key: 'hold',   icon: '✊', help: '持つ' },
- { key: 'press',  icon: '✋', help: '押す' },
+ { key: 'takeoff',  icon: '✋', help: '取る' },
  { key: 'lift',  icon: '💪', help: '持ち上げる' },
  { key: 'open',   icon: '🦵', help: '広げる' },
  { key: 'see',    icon: '👀', help: '見る' },
@@ -73,7 +73,7 @@ const ACTION_LABELS = {
  pull: '引き寄せる',
  insert: '入れる',
  hold: '持つ',
- press: '押す',
+ takeoff: '取る',
  lift: '持ち上げる',
  open: '開く',
  see: '見る',
@@ -898,8 +898,9 @@ const outerTopColor = hasColor(clothes.outerTop) ? clothes.outerTop : null;
 const innerTopColor = hasColor(clothes.innerTop) ? clothes.innerTop : null;
 const braColor = hasColor(clothes.bra) ? clothes.bra : null;
 const outerBottomColor = hasColor(clothes.outerBottom) ? clothes.outerBottom : null;
-const pantiesColor = hasColor(clothes.panties) ? clothes.panties : null;
-
+const pantiesColor = hasColor(clothes.panties)
+  ? clothes.panties
+  : (hasColor(clothes.innerBottom) ? clothes.innerBottom : null);
 // ===== 顔 =====
 const faceColorBase = shadeColor(skinColor, 6);
 
@@ -926,6 +927,7 @@ const torsoColor     = shadeColor(torsoBaseColor, -3);
 
 // 胸（左右）：innerTop → bra → 肌色の優先順位（outerTopは影響しない）
 const breastColor =
+  hasOuterTop ? outerTopColor :
   hasInnerTop ? innerTopColor :
   hasBra ? braColor :
   skinColor;
@@ -1038,10 +1040,19 @@ boxesForPick.forEach((box, index) => {
 });
 
 // line を登録
+// line を登録
 const linesForPick = poseExtra?.lines || [];
 linesForPick.forEach((line, index) => {
-  const a = scenePoints?.[line?.startId];
-  const b = scenePoints?.[line?.endId];
+  const a =
+    line?.start && Number.isFinite(line.start.x) && Number.isFinite(line.start.y) && Number.isFinite(line.start.z)
+      ? applyScenePositionToPoint(line.start)
+      : scenePoints?.[line?.startId];
+
+  const b =
+    line?.end && Number.isFinite(line.end.x) && Number.isFinite(line.end.y) && Number.isFinite(line.end.z)
+      ? applyScenePositionToPoint(line.end)
+      : scenePoints?.[line?.endId];
+
   if(!a || !b) return;
 
   const mid3D = {
@@ -1067,8 +1078,10 @@ linesForPick.forEach((line, index) => {
       {
         index,
         name: line?.name || `line_${index}`,
-        startId: line?.startId,
-        endId: line?.endId,
+        start: line?.start || null,
+        end: line?.end || null,
+        startId: line?.startId || null,
+        endId: line?.endId || null,
         source: line
       }
     )
@@ -1290,7 +1303,7 @@ drawCapsule(ctx, earR, hairEndR, 6, hairColor);
 function drawTorsoBlock(){
   ctx.save();
   ctx.beginPath();
-  drawBodySurface(ctx, P, scenePoints, bodyBasis, waistWidth);
+drawBodySurface(ctx, P, scenePoints, bodyBasis, waistWidth, outerBottomColor);
   ctx.clip();
 
   const splitCenter = {
@@ -1366,6 +1379,49 @@ fillHalfPlane(
     shoulderColor
   );
 }
+
+
+    function drawLines(ctx, points, lines, scale, rawPoints, canvasWidth, canvasHeight){
+  if(!Array.isArray(lines)) return;
+
+  const layoutMetrics = getLayoutMetrics(rawPoints, canvasWidth, canvasHeight);
+
+  for(const line of lines){
+    const start3D =
+      line?.start && Number.isFinite(line.start.x) && Number.isFinite(line.start.y) && Number.isFinite(line.start.z)
+        ? applyScenePositionToPoint(line.start)
+        : null;
+
+    const end3D =
+      line?.end && Number.isFinite(line.end.x) && Number.isFinite(line.end.y) && Number.isFinite(line.end.z)
+        ? applyScenePositionToPoint(line.end)
+        : null;
+
+    const a =
+      start3D
+        ? projectPointToScreen(start3D, canvasWidth, canvasHeight, layoutMetrics)
+        : points?.[line?.startId];
+
+    const b =
+      end3D
+        ? projectPointToScreen(end3D, canvasWidth, canvasHeight, layoutMetrics)
+        : points?.[line?.endId];
+
+    if(!a || !b) continue;
+
+    const width = Math.max(1, (line.width || 0.01) * scale * 0.25);
+
+    ctx.save();
+    ctx.strokeStyle = line.color || '#ffffff';
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
     function fillHalfPlane(ctx, center, sideX, sideY, dirX, dirY, color){
   const FAR = 4000;
 
@@ -1433,7 +1489,7 @@ function drawWaistCenterBall(ctx, pelvis, rHip, lHip, legWidth, waistWidth = 1.0
     y: lerp(hipMid.y, pelvis.y, 0.35) + legWidth * 0.15
   };
 
-const rx = legWidth * 0.9 * waistWidth;
+const rx = legWidth * 1.2 * waistWidth;
   const ry = rx * 0.65;
 
   ctx.save();
@@ -1521,8 +1577,18 @@ function drawLegBlock(){
   const kneeTaper = 0.88;
   const calfBoost = 1.05;
 
-  const waistBallAlpha = bodyFacing >= 4 ? 0.92 : 0.42;
+//  const waistBallAlpha = bodyFacing >= 4 ? 0.92 : 0.42;
+const waistCenterBaseColor =
+  (pantiesColor && pantiesColor !== 'none')
+    ? pantiesColor
+    : shadeColor(skinColor, 5);
 
+const waistCenterColor =
+  (outerBottomColor && outerBottomColor !== 'none')
+    ? shadeColor(waistCenterBaseColor, -18)
+    : waistCenterBaseColor;
+
+const waistBallAlpha = 0.8;
 drawWaistCenterBall(
   ctx,
   pelvis,
@@ -1810,7 +1876,7 @@ updateSelectedPointInfo(scenePoints);
 
 setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
-function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0) {
+function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0, outerBottomColor = null) {
   if (!P || !rawPoints) return;
 
   const shoulderR = P.ID05;
@@ -1860,9 +1926,20 @@ function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0) {
     spineR = { x: spineMid.x + side2D.x * half, y: spineMid.y + side2D.y * half };
   }
 
-  const bodyHipR = { x: pelvis.x + (hipR.x - pelvis.x)*1.8, y: hipR.y + 20 };
-  const bodyHipL = { x: pelvis.x + (hipL.x - pelvis.x)*1.8, y: hipL.y + 20 };
+const hasOuterBottom = outerBottomColor && outerBottomColor !== 'none';
 
+const lowerLift = hasOuterBottom ? 20 : -2;
+
+
+const bodyHipR = {
+  x: pelvis.x + (hipR.x - pelvis.x)*1.8,
+  y: hipR.y + lowerLift
+};
+
+const bodyHipL = {
+  x: pelvis.x + (hipL.x - pelvis.x)*1.8,
+  y: hipL.y + lowerLift
+};
   // ================ ここから形だけ作成（塗らない） ================
   ctx.beginPath();
   ctx.moveTo(shoulderR.x, shoulderR.y);
