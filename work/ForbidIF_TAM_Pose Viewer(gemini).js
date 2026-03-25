@@ -10,7 +10,7 @@
 
 (function (){
  'use strict';
-
+console.log('[POSE] SCRIPT START');
  const PANEL_ID = 'gemini-pose-min-panel';
  const CANVAS_ID = 'gemini-pose-min-canvas';
 let rootState = {
@@ -47,7 +47,7 @@ let stripPoseJsonOnSend = true;
 let globalPointerHandlersInstalled = false;
 let sendInterceptorInstalled = false;
 let poseExtra = null;
-let hoveredPointId = null;
+let hoveredTarget = null;
 const ACTION_BUTTONS = [
  { key: 'push',   icon: '👆', help: '押す' },
  { key: 'lick',   icon: '👅', help: '舐める' },
@@ -146,14 +146,17 @@ let poseSceneMeta = null;
 let fixedFitScale = null;
 let lastPoseMetaBlock = '';
 let lastPoseExtraBlock = '';
+
 let lastProjectedPoints = null;
-let selectedPointId = null;
+let lastSelectableTargets = [];
+let selectedTarget = null;
 let mouseDownButton = -1;
 let dragStartX = 0;
 let dragStartY = 0;
 let didDragSinceMouseDown = false;
-let pendingSelectPointId = null;
+let pendingSelectTarget = null;
 let pendingSelectShift = false;
+
 const POINT_LABELS = {
  ID01: 'HEAD',
  ID02: 'CHEST',
@@ -859,6 +862,7 @@ function getMetaBasis(metaPart, fallbackForward, fallbackUp){
 }
 
 function drawPose(){
+ //    console.log('[POSE] drawPose start');
  const panel = getOrCreatePanel();
  const canvas = panel.querySelector('#' + CANVAS_ID);
  if(!canvas) return;
@@ -907,38 +911,30 @@ const faceColorBase = shadeColor(skinColor, 6);
 //    肩=肌 / 腕=肌 / 胴体=innerTop / 胸(左右)=innerTop / 胸中央=肌
 // 3) outerTopなし + innerTopなし + braあり
 //    肩=肌 / 腕=肌 / 胴体=肌 / 胸(左右)=bra / 胸中央=肌
-
+// ===== 上半身の色決め（希望通りに修正） =====
 const hasOuterTop = hasColor(outerTopColor);
 const hasInnerTop = hasColor(innerTopColor);
-const hasBra = hasColor(braColor);
+const hasBra      = hasColor(braColor);
 
-// 肩
-const shoulderColor =
-  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
+// 肩・腕：outerTopがあれば優先（単独でも効くように）
+const shoulderColor = hasOuterTop ? outerTopColor : skinColor;
+const armColor      = hasOuterTop ? outerTopColor : skinColor;
 
-// 腕
-const armColor =
-  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
+// 胴体（胸より下）：innerTopがあればそれ、なければ肌色（outerTopは影響しない）
+const torsoBaseColor = hasInnerTop ? innerTopColor : skinColor;
+const torsoColor     = shadeColor(torsoBaseColor, -3);
 
-// 胴体
-const torsoBaseColor =
-  hasInnerTop ? innerTopColor : skinColor;
-
-const torsoColor = shadeColor(torsoBaseColor, -3);
-
-// 胸（左右）
+// 胸（左右）：innerTop → bra → 肌色の優先順位（outerTopは影響しない）
 const breastColor =
   hasInnerTop ? innerTopColor :
   hasBra ? braColor :
   skinColor;
 
-// 胸中央
-const breastCenterColor =
-  (hasOuterTop && hasInnerTop) ? outerTopColor : skinColor;
+// 胸中央：outerTopがあればそれ、なければ肌色（上着っぽく見せる）
+const breastCenterColor = hasOuterTop ? outerTopColor : skinColor;
 
-// 手
+// 手はそのまま
 const handColor = skinColor;
-
 // ===== 下半身 =====
 // 胴下部分 = outerBottom → 肌
 // 腰ボール = panties → 白
@@ -981,7 +977,106 @@ const scenePoints = getPosePointsWithSceneOffset(pose.points || {});
 drawWorldFloor(ctx, scenePoints, canvas.width, canvas.height);
 
 const P = computeLayout(scenePoints, canvas.width, canvas.height);
+//    console.log('[POSE] projected P =', P);
 lastProjectedPoints = P;
+
+const layoutMetrics = getLayoutMetrics(scenePoints, canvas.width, canvas.height);
+const selectableTargets = [];
+
+// joint を登録
+for(const id of Object.keys(P || {})){
+  if(id.startsWith('__')) continue;
+
+  const pt = P[id];
+  if(!pt) continue;
+
+  selectableTargets.push(
+    makeSelectableTarget(
+      'joint',
+      id,
+      pt.x,
+      pt.y,
+      10
+    )
+  );
+}
+
+// box を登録
+const boxesForPick = poseExtra?.boxes || [];
+boxesForPick.forEach((box, index) => {
+  const w = Math.max(0.01, Number(box?.w) || 1);
+  const h = Math.max(0.01, Number(box?.h) || 1);
+  const d = Math.max(0.01, Number(box?.d) || 1);
+
+  const worldCenter = {
+    x: Number(box?.x) || 0,
+    y: (Number(box?.y) || 0) + h * 0.5,
+    z: (Number(box?.z) || 0) - d * 0.5
+  };
+
+  const center2D = projectPointToScreen(
+    worldCenter,
+    canvas.width,
+    canvas.height,
+    layoutMetrics
+  );
+
+  selectableTargets.push(
+    makeSelectableTarget(
+      'box',
+      box?.name || `box_${index}`,
+      center2D.x,
+      center2D.y,
+      12,
+      {
+        index,
+        name: box?.name || `box_${index}`,
+        source: box
+      }
+    )
+  );
+});
+
+// line を登録
+const linesForPick = poseExtra?.lines || [];
+linesForPick.forEach((line, index) => {
+  const a = scenePoints?.[line?.startId];
+  const b = scenePoints?.[line?.endId];
+  if(!a || !b) return;
+
+  const mid3D = {
+    x: (a.x + b.x) * 0.5,
+    y: (a.y + b.y) * 0.5,
+    z: (a.z + b.z) * 0.5
+  };
+
+  const mid2D = projectPointToScreen(
+    mid3D,
+    canvas.width,
+    canvas.height,
+    layoutMetrics
+  );
+
+  selectableTargets.push(
+    makeSelectableTarget(
+      'line',
+      line?.name || `line_${index}`,
+      mid2D.x,
+      mid2D.y,
+      10,
+      {
+        index,
+        name: line?.name || `line_${index}`,
+        startId: line?.startId,
+        endId: line?.endId,
+        source: line
+      }
+    )
+  );
+});
+
+lastSelectableTargets = selectableTargets;
+
  const head = P.ID04;
  const neck = P.ID03;
  const chest = P.ID02;
@@ -1032,7 +1127,7 @@ const poseBasis = getMetaBasis(
  );
 
  const bodyFacingInfo = getBodyFacingFromMetaOrPose(scenePoints, poseSceneMeta, INTERNAL_CAMERA);
- const headFacingInfo = getHeadFacingFromMetaOrPose(scenePoints, poseSceneMeta, INTERNAL_CAMERA);
+const headFacingInfo = getHeadFacingFromPose(scenePoints, INTERNAL_CAMERA);
 
  const bodyFacing = bodyFacingInfo.facing;
  const headFacing = headFacingInfo.facing;
@@ -1191,50 +1286,54 @@ drawCapsule(ctx, earL, hairEndL, 6, hairColor);
 drawCapsule(ctx, earR, hairEndR, 6, hairColor);
 
 }
-function drawTorsoBlock(){
 
-  // ===== 胴の形を一度パスとして作る =====
+function drawTorsoBlock(){
   ctx.save();
   ctx.beginPath();
-drawBodySurface(ctx, P, scenePoints, bodyBasis, waistWidth, null);
+  drawBodySurface(ctx, P, scenePoints, bodyBasis, waistWidth);
   ctx.clip();
 
+  const splitCenter = {
+    x: lerp(P.ID02.x, P.ID10.x, 0.7),
+    y: lerp(P.ID02.y, P.ID10.y, 0.7)
+  };
 
-const splitCenter = {
-  x: lerp(P.ID02.x, P.ID10.x, 0.7),
-  y: lerp(P.ID02.y, P.ID10.y, 0.7)
-};
+  let up2D = null;
 
-let up2D = null;
+  if(bodyBasis?.up){
+    const upView = rotatePoint(bodyBasis.up, getViewCamera(INTERNAL_CAMERA));
+    const upLen = Math.hypot(upView.x, upView.y);
 
-if(bodyBasis?.up){
-  const upView = rotatePoint(bodyBasis.up, getViewCamera(INTERNAL_CAMERA));
-  const upLen = Math.hypot(upView.x, upView.y);
+    if(upLen > 0.0001){
+      up2D = {
+        x: upView.x / upLen,
+        y: -upView.y / upLen
+      };
+    }
+  }
 
-  if(upLen > 0.0001){
+  if(!up2D){
+    const chestToPelvisX = P.ID02.x - P.ID10.x;
+    const chestToPelvisY = P.ID02.y - P.ID10.y;
+    const fallbackLen = Math.hypot(chestToPelvisX, chestToPelvisY) || 1;
+
     up2D = {
-      x: upView.x / upLen,
-      y: -upView.y / upLen
+      x: chestToPelvisX / fallbackLen,
+      y: chestToPelvisY / fallbackLen
     };
   }
-}
 
-// up が画面上で潰れる角度用の保険
-if(!up2D){
-  const chestToPelvisX = P.ID02.x - P.ID10.x;
-  const chestToPelvisY = P.ID02.y - P.ID10.y;
-  const fallbackLen = Math.hypot(chestToPelvisX, chestToPelvisY) || 1;
+  const sideX = -up2D.y;
+  const sideY = up2D.x;
 
-  up2D = {
-    x: chestToPelvisX / fallbackLen,
-    y: chestToPelvisY / fallbackLen
-  };
-}
 
-const sideX = -up2D.y;
-const sideY = up2D.x;
+    const isMostlyBack = bodyFacing >= 4;
 
-// 胸側
+const upperTorsoColor =
+  (isMostlyBack && outerTopColor)
+    ? outerTopColor
+    : (innerTopColor || skinColor);
+
 fillHalfPlane(
   ctx,
   splitCenter,
@@ -1242,23 +1341,22 @@ fillHalfPlane(
   sideY,
   up2D.x,
   up2D.y,
-  torsoColor
+  shadeColor(upperTorsoColor, -3)
 );
 
-// 骨盤側
-fillHalfPlane(
-  ctx,
-  splitCenter,
-  sideX,
-  sideY,
-  -up2D.x,
-  -up2D.y,
-  lowerBodyColor
-);
+
+  fillHalfPlane(
+    ctx,
+    splitCenter,
+    sideX,
+    sideY,
+    -up2D.x,
+    -up2D.y,
+    lowerBodyColor
+  );
+
   ctx.restore();
 
-
-  // 肩
   drawShoulderPeak(
     ctx,
     lShoulderDraw,
@@ -1641,7 +1739,7 @@ let boxToDraw = box;
   drawParts.push({
     name: `box_${index}`,
     depth: depthToUse,
-    draw: () => drawSingleBox(ctx, box, scenePoints, canvas.width, canvas.height)
+draw: () => drawSingleBox(ctx, boxToDraw, scenePoints, canvas.width, canvas.height)
   });
 });
 
@@ -1712,191 +1810,75 @@ updateSelectedPointInfo(scenePoints);
 
 setStatus(`status: ready | meta ${poseSceneMeta ? 'on' : 'off'} | body=${bodyFacing} head=${headFacing}`);
 }
+function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0) {
+  if (!P || !rawPoints) return;
 
-function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0, fillColor = '#888'){
- if(!P || !rawPoints) return;
+  const shoulderR = P.ID05;
+  const shoulderL = P.ID06;
+  const spine     = P.ID01;
+  const pelvis    = P.ID10;
+  const hipR      = P.ID12;
+  const hipL      = P.ID13;
 
- const shoulderR = P.ID05;
- const shoulderL = P.ID06;
- const spine     = P.ID01;
- const pelvis    = P.ID10;
- const hipR      = P.ID12;
- const hipL      = P.ID13;
+  if (!shoulderR || !shoulderL || !spine || !pelvis || !hipR || !hipL) return;
 
- if(!shoulderR || !shoulderL || !spine || !pelvis || !hipR || !hipL) return;
+  const rawHipR = rawPoints.ID12;
+  const rawHipL = rawPoints.ID13;
 
- const rawHipR = rawPoints.ID12;
- const rawHipL = rawPoints.ID13;
+  const panel = document.getElementById(PANEL_ID);
+  const canvas = panel?.querySelector('#' + CANVAS_ID);
+  const cw = canvas?.width || 500;
+  const ch = canvas?.height || 500;
 
- const pelvisWidth3D = (rawHipR && rawHipL)
-  ? dist3D(rawHipR, rawHipL)
-  : 0.32;
+  const { fitScale } = getLayoutMetrics(rawPoints, cw, ch);
+  const currentScale = fitScale * (INTERNAL_CAMERA.scale || 1);
 
- const panel = document.getElementById(PANEL_ID);
- const canvas = panel?.querySelector('#' + CANVAS_ID);
- const cw = canvas?.width || 500;
- const ch = canvas?.height || 500;
+  const rawSpine = rawPoints.ID01;
+  const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
+  const halfWidth3D = 0.18;
 
- const { fitScale } = getLayoutMetrics(rawPoints, cw, ch);
- const currentScale = fitScale * (INTERNAL_CAMERA.scale || 1);
+  const candA = { x: rawSpine.x + right.x * halfWidth3D, y: rawSpine.y + right.y * halfWidth3D, z: rawSpine.z + right.z * halfWidth3D };
+  const candB = { x: rawSpine.x - right.x * halfWidth3D, y: rawSpine.y - right.y * halfWidth3D, z: rawSpine.z - right.z * halfWidth3D };
 
-const pelvisExpand = 1.0;
- const minWidthPx = 10;
+  const distAtoL = dist3D(candA, rawHipL);
+  const spineL3 = distAtoL <= dist3D(candA, rawHipR) ? candA : candB;
+  const spineR3 = distAtoL <= dist3D(candA, rawHipR) ? candB : candA;
 
- const width = Math.max(
-  minWidthPx,
-  pelvisWidth3D * pelvisExpand * currentScale
- );
+  const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
+  let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
+  let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
 
-const rawSpine = rawPoints.ID01;
+  const torsoMinScreenWidth = 14;
+  const spineMid = { x: (spineL.x + spineR.x)*0.5, y: (spineL.y + spineR.y)*0.5 };
+  const torsoAxisLen = Math.hypot(pelvis.x - spineMid.x, pelvis.y - spineMid.y) || 1;
+  let side2D = { x: -(pelvis.y - spineMid.y)/torsoAxisLen, y: (pelvis.x - spineMid.x)/torsoAxisLen };
 
-const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
+  const currentW = Math.hypot(spineR.x - spineL.x, spineR.y - spineL.y);
+  if (currentW < torsoMinScreenWidth) {
+    const half = torsoMinScreenWidth * 0.5;
+    spineL = { x: spineMid.x - side2D.x * half, y: spineMid.y - side2D.y * half };
+    spineR = { x: spineMid.x + side2D.x * half, y: spineMid.y + side2D.y * half };
+  }
 
-const halfWidth3D = 0.18;
+  const bodyHipR = { x: pelvis.x + (hipR.x - pelvis.x)*1.8, y: hipR.y + 20 };
+  const bodyHipL = { x: pelvis.x + (hipL.x - pelvis.x)*1.8, y: hipL.y + 20 };
 
-const candA = {
- x: rawSpine.x + right.x * halfWidth3D,
- y: rawSpine.y + right.y * halfWidth3D,
- z: rawSpine.z + right.z * halfWidth3D
-};
+  // ================ ここから形だけ作成（塗らない） ================
+  ctx.beginPath();
+  ctx.moveTo(shoulderR.x, shoulderR.y);
+  ctx.lineTo(shoulderL.x, shoulderL.y);
+  ctx.quadraticCurveTo(shoulderL.x*0.6 + spineL.x*0.4, shoulderL.y*0.6 + spineL.y*0.4, spineL.x, spineL.y);
+  ctx.quadraticCurveTo(spineL.x*0.4 + bodyHipL.x*0.6, spineL.y*0.5 + bodyHipL.y*0.5, bodyHipL.x, bodyHipL.y);
+  ctx.lineTo(bodyHipR.x, bodyHipR.y);
+  ctx.quadraticCurveTo(spineR.x*0.4 + bodyHipR.x*0.6, spineR.y*0.5 + bodyHipR.y*0.5, spineR.x, spineR.y);
+  ctx.quadraticCurveTo(shoulderR.x*0.6 + spineR.x*0.4, shoulderR.y*0.6 + spineR.y*0.4, shoulderR.x, shoulderR.y);
+  ctx.closePath();
 
-const candB = {
- x: rawSpine.x - right.x * halfWidth3D,
- y: rawSpine.y - right.y * halfWidth3D,
- z: rawSpine.z - right.z * halfWidth3D
-};
-
-const distAtoL = dist3D(candA, rawHipL);
-const distAtoR = dist3D(candA, rawHipR);
-
-const spineL3 = distAtoL <= distAtoR ? candA : candB;
-const spineR3 = distAtoL <= distAtoR ? candB : candA;
-
-const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
-
-let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
-let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
-
-// ===== 真横で胴の厚みが潰れるときの2D補正 =====
-const torsoMinScreenWidth = 14;
-
-const spineMid = {
- x: (spineL.x + spineR.x) * 0.5,
- y: (spineL.y + spineR.y) * 0.5
-};
-
-const torsoAxis = {
- x: pelvis.x - spineMid.x,
- y: pelvis.y - spineMid.y
-};
-
-const torsoAxisLen = Math.hypot(torsoAxis.x, torsoAxis.y) || 1;
-
-// 胴の縦方向に直角な2D方向
-let torsoSide2D = {
- x: -torsoAxis.y / torsoAxisLen,
- y:  torsoAxis.x / torsoAxisLen
-};
-
-// もし縦軸が潰れていたら保険で画面横方向
-if(!Number.isFinite(torsoSide2D.x) || !Number.isFinite(torsoSide2D.y)){
- torsoSide2D = { x: 1, y: 0 };
+  // ストロークだけ残す（輪郭）
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }
-
-const currentTorsoWidth = Math.hypot(
- spineR.x - spineL.x,
- spineR.y - spineL.y
-);
-
-if(currentTorsoWidth < torsoMinScreenWidth){
- const halfFix = torsoMinScreenWidth * 0.5;
-
- spineL = {
-  x: spineMid.x - torsoSide2D.x * halfFix,
-  y: spineMid.y - torsoSide2D.y * halfFix
- };
-
- spineR = {
-  x: spineMid.x + torsoSide2D.x * halfFix,
-  y: spineMid.y + torsoSide2D.y * halfFix
- };
-}
-
-const bodyHipWidthScale = 1.8 * waistWidth;
-const bodyBottomExtend = 20;
-
-const bodyHipR = {
- x: pelvis.x + (hipR.x - pelvis.x) * bodyHipWidthScale,
- y: hipR.y + bodyBottomExtend
-};
-
-const bodyHipL = {
- x: pelvis.x + (hipL.x - pelvis.x) * bodyHipWidthScale,
- y: hipL.y + bodyBottomExtend
-};
-
- const ctrlShoulderL = {
-  x: shoulderL.x + (spineL.x - shoulderL.x) * 0.5,
-  y: shoulderL.y + (spineL.y - shoulderL.y) * 0.5
- };
- const hipCurveOut = 1.35;
-
- const ctrlHipL = {
-  x: spineL.x + (bodyHipL.x - spineL.x) * hipCurveOut,
-  y: spineL.y + (bodyHipL.y - spineL.y) * 0.5
- };
-
- const ctrlHipR = {
-  x: spineR.x + (bodyHipR.x - spineR.x) * hipCurveOut,
-  y: spineR.y + (bodyHipR.y - spineR.y) * 0.5
- };
-
- const ctrlShoulderR = {
-  x: shoulderR.x + (spineR.x - shoulderR.x) * 0.5,
-  y: shoulderR.y + (spineR.y - shoulderR.y) * 0.5
- };
-
- ctx.beginPath();
-
- ctx.moveTo(shoulderR.x, shoulderR.y);
- ctx.lineTo(shoulderL.x, shoulderL.y);
-
- ctx.quadraticCurveTo(
-  ctrlShoulderL.x, ctrlShoulderL.y,
-  spineL.x, spineL.y
- );
-
- ctx.quadraticCurveTo(
-  ctrlHipL.x, ctrlHipL.y,
-  bodyHipL.x, bodyHipL.y
- );
-
- ctx.lineTo(bodyHipR.x, bodyHipR.y);
-
- ctx.quadraticCurveTo(
-  ctrlHipR.x, ctrlHipR.y,
-  spineR.x, spineR.y
- );
-
- ctx.quadraticCurveTo(
-  ctrlShoulderR.x, ctrlShoulderR.y,
-  shoulderR.x, shoulderR.y
- );
-
- ctx.closePath();
-
-if(fillColor){
-  ctx.fillStyle = fillColor;
-  ctx.fill();
-}
-
-ctx.fillStyle = 'red';
-
-ctx.fillStyle = '#fff';
-ctx.font = '10px monospace';
-
-}
-
 
 function projectPointToScreen(p, width, height, layoutMetrics){
  const r = projectPoint(p);
@@ -1909,6 +1891,58 @@ function projectPointToScreen(p, width, height, layoutMetrics){
   x: width / 2 + tx + (r.x - layoutMetrics.centerX) * scale,
   y: height / 2 + ty - (r.y - layoutMetrics.centerY) * scale
  };
+}
+function makeSelectableTarget(kind, id, x, y, radius = 10, meta = {}){
+  return {
+    kind,
+    id,
+    x,
+    y,
+    radius,
+    meta
+  };
+}
+
+function findNearestSelectableTarget(mx, my, targets, maxDist = 10){
+  if(!Array.isArray(targets) || !targets.length) return null;
+
+  let best = null;
+  let bestDist = Infinity;
+
+  for(const t of targets){
+    if(!t) continue;
+    if(!Number.isFinite(t.x) || !Number.isFinite(t.y)) continue;
+
+    const dx = t.x - mx;
+    const dy = t.y - my;
+    const d = Math.hypot(dx, dy);
+
+    const hitR = Number.isFinite(t.radius) ? t.radius : maxDist;
+    if(d <= hitR && d < bestDist){
+      best = t;
+      bestDist = d;
+    }
+  }
+
+  return best;
+}
+
+function getTargetLabel(target, rawPoints){
+  if(!target) return '';
+
+  if(target.kind === 'joint'){
+    return rawPoints?.[target.id]?.name || target.id;
+  }
+
+  if(target.kind === 'box'){
+    return target.name || target.id || 'box';
+  }
+
+  if(target.kind === 'line'){
+    return target.name || target.id || 'line';
+  }
+
+  return target.id || '';
 }
 function getGroundScreenTransform(posePoints, canvasW, canvasH){
   const { fitScale } = getLayoutMetrics(
@@ -2029,7 +2063,7 @@ if(extraText){
    INTERNAL_CAMERA.pitch = 0;
    fixedFitScale = null;
   }
-
+console.log('[POSE] calling drawPose');
   drawPose();
 
   const p = pose.points?.ID14;
@@ -2226,11 +2260,11 @@ canvas.addEventListener('mousedown', (e) => {
  const mx = e.clientX - rect.left;
  const my = e.clientY - rect.top;
 
- pendingSelectPointId = null;
+ pendingSelectTarget = null;
  pendingSelectShift = !!e.shiftKey;
 
- if(e.button === 0 && !e.shiftKey && typeof findNearestPointId === 'function'){
-  pendingSelectPointId = findNearestPointId(mx, my, lastProjectedPoints, 12);
+ if(e.button === 0 && !e.shiftKey){
+  pendingSelectTarget = findNearestSelectableTarget(mx, my, lastSelectableTargets, 12);
   isDragging = true;
   isPanning = false;
   return;
@@ -2517,27 +2551,26 @@ function installGlobalPointerHandlers(){
 
   lastMouseX = e.clientX;
   lastMouseY = e.clientY;
+if(!isDragging && !isPanning && !isPanelDragging && lastSelectableTargets){
+  const panel = document.getElementById(PANEL_ID);
+  const canvas = panel?.querySelector('#' + CANVAS_ID);
 
-  if(!isDragging && !isPanning && !isPanelDragging && lastProjectedPoints){
-   const panel = document.getElementById(PANEL_ID);
-   const canvas = panel?.querySelector('#' + CANVAS_ID);
-
-   if(canvas){
+  if(canvas){
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
     if(mx < 0 || my < 0 || mx > rect.width || my > rect.height){
-     hoveredPointId = null;
+      hoveredTarget = null;
     }else{
-     hoveredPointId = findNearestPointId(mx, my, lastProjectedPoints, 10);
+      hoveredTarget = findNearestSelectableTarget(mx, my, lastSelectableTargets, 10);
     }
 
-    if(!selectedPointId){
-     updateSelectedPointInfo(getPosePointsWithSceneOffset(pose.points || {}));
+    if(!selectedTarget){
+      updateSelectedPointInfo(getPosePointsWithSceneOffset(pose.points || {}));
     }
-   }
   }
+}
 
   if(isPanelDragging){
    const panel = document.getElementById(PANEL_ID);
@@ -2568,26 +2601,38 @@ function installGlobalPointerHandlers(){
    return;
   }
  });
-
 document.addEventListener('mouseup', () => {
  if(
   mouseDownButton === 0 &&
   !pendingSelectShift &&
   !didDragSinceMouseDown
  ){
-  if(pendingSelectPointId !== null && pendingSelectPointId === selectedPointId){
-   selectedPointId = null;
+  const isSameTarget =
+    pendingSelectTarget &&
+    selectedTarget &&
+    pendingSelectTarget.kind === selectedTarget.kind &&
+    pendingSelectTarget.id === selectedTarget.id;
+
+  if(isSameTarget){
+    selectedTarget = null;
   }else{
-   selectedPointId = pendingSelectPointId !== null ? pendingSelectPointId : null;
+    selectedTarget = pendingSelectTarget ? pendingSelectTarget : null;
   }
 
-  if(selectedPointId){
-    setStatus(`status: selected ${selectedPointId} ${pose.points?.[selectedPointId]?.name || ''}`);
+  if(selectedTarget){
+    const label = getTargetLabel(
+      selectedTarget,
+      getPosePointsWithSceneOffset(pose.points || {})
+    );
 
-    actionHighlights.push({
-     id: selectedPointId,
-     time: Date.now()
-    });
+    setStatus(`status: selected ${selectedTarget.kind}:${selectedTarget.id} ${label}`);
+
+    if(selectedTarget.kind === 'joint'){
+      actionHighlights.push({
+        id: selectedTarget.id,
+        time: Date.now()
+      });
+    }
 
     drawPose();
     setTimeout(() => drawPose(), 100);
@@ -2598,7 +2643,7 @@ document.addEventListener('mouseup', () => {
     setTimeout(() => drawPose(), 2200);
     setTimeout(() => drawPose(), 3000);
 
-    sendSelectedAction(selectedPointId);
+    sendSelectedAction(selectedTarget.id);
    }else{
     setStatus('status: selected none');
     drawPose();
@@ -2610,9 +2655,11 @@ document.addEventListener('mouseup', () => {
   isPanelDragging = false;
 
   mouseDownButton = -1;
-  pendingSelectPointId = null;
-  pendingSelectShift = false;
-  didDragSinceMouseDown = false;
+
+
+pendingSelectTarget = null;
+pendingSelectShift = false;
+didDragSinceMouseDown = false;
  });
 }
 function findGeminiComposer(){
@@ -2688,8 +2735,8 @@ if(sendBtn && !sendBtn.disabled){
  clearInterval(timer);
  sendBtn.click();
 
- selectedPointId = null;
- drawPose();
+selectedTarget = null;
+drawPose();
 
  setStatus(`status: sent ${text}`);
  return;
@@ -3970,8 +4017,8 @@ function drawPointDots(ctx, projected, rawPoints){
    color = 'rgba(255,235,150,0.95)';
   }
 
-  if(id === selectedPointId){
-   r = 10;
+if(selectedTarget?.kind === 'joint' && id === selectedTarget.id){
+  r = 10;
    color = 'rgba(0,224,255,0.98)';
   }
 
@@ -3983,15 +4030,20 @@ ctx.fillStyle = color;
 ctx.fill();
 ctx.restore();
 
-  if(id === hoveredPointId && id !== selectedPointId){
-   ctx.beginPath();
-   ctx.arc(pt.x, pt.y, r + 4, 0, Math.PI * 2);
-   ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-   ctx.lineWidth = 2;
-   ctx.stroke();
-  }
- }
+if(
+  hoveredTarget?.kind === 'joint' &&
+  id === hoveredTarget.id &&
+  !(selectedTarget?.kind === 'joint' && id === selectedTarget.id)
+){
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, r + 4, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }
+
+} // for(const id of ids) を閉じる
+} // function drawPointDots を閉じる
 
 function updateRoot(rawPose, prevState, dt){
   const pts = rawPose.points || {};
@@ -4239,7 +4291,6 @@ const name = rawPoints?.[id]?.name || '';
  if(!Number.isFinite(v)) return '-';
  return v.toFixed(3);
 }
-
 function updateSelectedPointInfo(rawPoints){
  const el = document.getElementById('pose-min-selected-info');
  if(!el) return;
@@ -4248,9 +4299,9 @@ function updateSelectedPointInfo(rawPoints){
   el.removeChild(el.firstChild);
  }
 
- const activeId = selectedPointId || hoveredPointId;
+ const activeTarget = selectedTarget || hoveredTarget;
 
- if(!activeId || !rawPoints?.[activeId]){
+ if(!activeTarget){
   const span = document.createElement('span');
   span.style.color = '#777';
   span.textContent = 'selected: none';
@@ -4258,45 +4309,73 @@ function updateSelectedPointInfo(rawPoints){
   return;
  }
 
- const p = rawPoints[activeId];
- const name = p.name || '';
+ if(activeTarget.kind === 'joint'){
+  const p = rawPoints?.[activeTarget.id];
+  if(!p) return;
 
- const line1 = document.createElement('div');
- line1.style.color = selectedPointId ? '#fff3a0' : '#8fdcff';
+  const line1 = document.createElement('div');
+  line1.style.color = selectedTarget ? '#fff3a0' : '#8fdcff';
+  line1.textContent = `${activeTarget.kind}:${activeTarget.id} ${p.name || ''}`;
 
- const b = document.createElement('b');
- b.textContent = activeId;
- line1.appendChild(b);
+  const line2 = document.createElement('div');
+  line2.style.color = '#ddd';
+  line2.textContent =
+    `x: ${formatPointCoord(p.x)}　y: ${formatPointCoord(p.y)}　z: ${formatPointCoord(p.z)}`;
 
- const stateText = document.createTextNode(selectedPointId ? ' selected ' : ' hover ');
- line1.appendChild(stateText);
+  el.appendChild(line1);
+  el.appendChild(line2);
+  return;
+ }
 
- const nameText = document.createTextNode(name);
- line1.appendChild(nameText);
+ if(activeTarget.kind === 'box'){
+  const box = activeTarget.source || {};
 
- const line2 = document.createElement('div');
- line2.style.color = '#ddd';
- line2.textContent =
-  `x: ${formatPointCoord(p.x)}　y: ${formatPointCoord(p.y)}　z: ${formatPointCoord(p.z)}`;
+  const line1 = document.createElement('div');
+  line1.style.color = selectedTarget ? '#fff3a0' : '#8fdcff';
+  line1.textContent = `${activeTarget.kind}:${activeTarget.id}`;
 
- el.appendChild(line1);
- el.appendChild(line2);
+  const line2 = document.createElement('div');
+  line2.style.color = '#ddd';
+  line2.textContent =
+    `x: ${formatPointCoord(Number(box.x) || 0)}　y: ${formatPointCoord(Number(box.y) || 0)}　z: ${formatPointCoord(Number(box.z) || 0)}`;
+
+  el.appendChild(line1);
+  el.appendChild(line2);
+  return;
+ }
+
+ if(activeTarget.kind === 'line'){
+  const line = activeTarget.source || {};
+
+  const line1 = document.createElement('div');
+  line1.style.color = selectedTarget ? '#fff3a0' : '#8fdcff';
+  line1.textContent = `${activeTarget.kind}:${activeTarget.id}`;
+
+  const line2 = document.createElement('div');
+  line2.style.color = '#ddd';
+  line2.textContent = `${line.startId || '-'} → ${line.endId || '-'}`;
+
+  el.appendChild(line1);
+  el.appendChild(line2);
+  return;
+ }
 }
 
 function drawSelectedPointOverlay(ctx, projected, rawPoints){
- if(!selectedPointId) return;
+ if(selectedTarget?.kind !== 'joint') return;
 
- const p2 = projected?.[selectedPointId];
- const p3 = rawPoints?.[selectedPointId];
+ const pointId = selectedTarget.id;
+ const p2 = projected?.[pointId];
+ const p3 = rawPoints?.[pointId];
  if(!p2 || !p3) return;
 
- const label = `${selectedPointId} ${p3.name || ''}`;
+ const label = `${pointId} ${p3.name || ''}`;
  const coord = `x:${formatPointCoord(p3.x)} y:${formatPointCoord(p3.y)} z:${formatPointCoord(p3.z)}`;
 
  ctx.save();
 
  ctx.beginPath();
-ctx.arc(p2.x, p2.y, 16, 0, Math.PI * 2);
+ ctx.arc(p2.x, p2.y, 16, 0, Math.PI * 2);
  ctx.strokeStyle = 'rgba(255,230,80,0.95)';
  ctx.lineWidth = 2;
  ctx.stroke();
