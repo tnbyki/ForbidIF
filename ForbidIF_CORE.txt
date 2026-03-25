@@ -2301,20 +2301,21 @@ large  = より大きい前方突出と外側・下側拡張
 - appearance.skinColor : 肌色
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ body
+■ body.hairStyle
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- ポーズではなく、体の基本的な特徴を指定する
-- 体型や髪の長さなど、個体差の表現に使う
-- body.breastScale : 胸の大きさ（倍率、1.0 が基準）
-- body.waistWidth  : 腰まわりの幅（倍率、1.0 が基準）
-- body.hairLength  : 髪の長さ（viewer 実装に従う値）
+- 髪型を指定する
+- viewer は hairStyle の値に応じて髪の形状を切り替える
+- 未指定の場合は "middle" を既定値として扱う
 
-例：
-- breastScale : 1.2
-- waistWidth  : 1.0
-- hairLength  : 1.0
+【値】
+- "short"  : ショート
+- "middle" : ミディアム
+- "long"   : ロング
+- "pony"   : ポニーテール
+- "twin"   : ツインテール
 
+- 未知の値は viewer 側で "middle" にフォールバックしてよい
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ clothes
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -2356,13 +2357,7 @@ large  = より大きい前方突出と外側・下側拡張
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 例
-{
-  "name": "climax_injection",
-  "start": { "x": 0.00, "y": 0.35, "z": 0.40 },
-  "end":   { "x": 0.00, "y": 0.45, "z": 0.55 },
-  "color": "#ffffff",
-  "width": 0.02
-}
+
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ boxes
@@ -2406,36 +2401,52 @@ large  = より大きい前方突出と外側・下側拡張
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 <POSE_EXTRA>
+
 {
-  "scene": {
-    "position": {"x": 0.0, "y": 0.0, "z": 0.0},
-    "forward": {"x": 0.0, "y": 0.0, "z": 1.0},
-    "up": {"x": 0.0, "y": 1.0, "z": 0.0}
-  },
-
-  "placement": {
-    "groundOffset": {"x": 0.0, "y": -0.92, "z": 0.0}
-  },
-
+  "bgColor": "#87ceeb",
   "groundColor": "#6fa84f",
 
+  "appearance": {
+    "hairColor": "#2b2b2b",
+    "skinColor": "#d9a07a"
+  },
+  "body": {
+    "breastSize": 90,
+    "waistWidth": 1.0,
+    "hairLength": "middle"
+  },
+  "clothes": {
+    "outerTop": "#224488",
+    "innerTop": "#dddddd",
+    "outerBottom": "#666666",
+    "bra": "#000000",
+    "panties": "#000000",
+    "shoes": "#222222",
+    "tights": "#111111"
+  },
+  "lines": [
+   {
+    "name": "climax_injection",
+    "start": { "x": 0.00, "y": 0.35, "z": 0.40 },
+    "end":   { "x": 0.00, "y": 0.45, "z": 0.55 },
+    "color": "#ffffff",
+    "width": 0.02
+   }
+  ],
   "boxes": [
     {
-      "name": "bench",
-      "space": "scene",
-      "x": 0.0,
-      "y": 0.45,
-      "z": 0.0,
-      "w": 2.0,
-      "h": 0.4,
-      "d": 0.6,
-      "color": "#444444"
+      "name": "box01",
+      "x": 0.80,
+      "y": -0.80,
+      "z": 0.20,
+      "w": 0.50,
+      "h": 0.80,
+      "d": 0.50,
+      "color": "#666666"
     }
   ]
 }
 </POSE_EXTRA>
-
-
 EOF
 /* [User Guide] 末尾はここまで、先頭からここまでコピーしてAIに送信してください */
 
