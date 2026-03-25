@@ -2330,9 +2330,39 @@ large  = より大きい前方突出と外側・下側拡張
 ■ lines
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-- 補助線・軸・棒などの体追従要素
-- startId / endId は骨格IDを指定する
-- lines は原則として root 基準で配置する
+- lines は 3D空間上の幅付き線分を表す
+- 基本は start / end に xyz を直接持つ（root/pose 空間）
+- width はワールド基準の太さとする（画面pxではない）
+- viewer は座標変換と投影のみ行い、意味解釈や補正は行わない
+
+- 簡易記法として startId / endId も許可する
+- start / end が存在する場合はそれを優先する
+- startId / endId は骨格ID参照用の省略表現とする
+
+- start / end / startId / endId のいずれも解決できない場合、その line は描画しない
+- 未知フィールドは viewer 側で無視してよい
+
+【座標ルール】
+- start / end は pose と同じローカル座標系で扱う
+- scene.position / groundOffset / camera 変換は body と同じ処理に乗る
+
+【太さルール】
+- width はスケールに応じて画面上の太さへ変換する
+- width の既定値は viewer 側で持ってよい
+
+【フォールバック】
+- start が無く startId がある場合 → startId を使用
+- end が無く endId がある場合 → endId を使用
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+例
+{
+  "name": "climax_injection",
+  "start": { "x": 0.00, "y": 0.35, "z": 0.40 },
+  "end":   { "x": 0.00, "y": 0.45, "z": 0.55 },
+  "color": "#ffffff",
+  "width": 0.02
+}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ boxes
