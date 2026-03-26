@@ -2219,61 +2219,6 @@ full   = 明確な前方突出と下方ふくらみ
 large  = より大きい前方突出と外側・下側拡張
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_EXTRA
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-<POSE_EXTRA>
-{
-  "bgColor": "#87ceeb",
-  "groundColor": "#6fa84f",
-
-  "scene": {
-    "position": {"x": 0.00, "y": 0.00, "z": 0.00},
-    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
-    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
-  },
-
-  "placement": {
-    "groundOffset": {"x": 0.00, "y": 0.00, "z": 0.00}
-  },
-
-  "appearance": {
-    "hairColor": "#2b2b2b",
-    "skinColor": "#d9a07a"
-  },
-
-  "body": {
-    "breastScale": 1.0,
-    "waistWidth": 1.0,
-    "hairLength": 1.0
-  },
-
-  "clothes": {
-    "outerTop": "#224488",
-    "innerTop": "#dddddd",
-    "outerBottom": "#666666",
-    "bra": "#000000",
-    "panties": "#000000",
-    "shoes": "#222222",
-    "tights": "#111111"
-  },
-
-  "boxes": [
-    {
-      "name": "box01",
-      "space": "scene",
-      "x": 0.80,
-      "y": -0.80,
-      "z": 0.20,
-      "w": 0.50,
-      "h": 0.80,
-      "d": 0.50,
-      "color": "#666666"
-    }
-  ]
-}
-</POSE_EXTRA>
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_EXTRA ルール
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
