@@ -1589,13 +1589,21 @@ function drawLegBlock(){
   const rHeelDraw = spreadSidePoint(rHeel, 1, legWidth * 1.60, view);
   const lHeelDraw = spreadSidePoint(lHeel, -1, legWidth * 1.60, view);
 
-  // 太もも・足の色を clothes.tights / shoes で上書き（なければ肌色）
-  const thighColor = hasColor(clothes.tights) ? clothes.tights : skinColor;
-  const footColor  = hasColor(clothes.shoes)  ? clothes.shoes  : skinColor;
+// 太もも・膝下・足の色
+const thighColor = hasColor(clothes.tights)
+  ? clothes.tights
+  : skinColor;
 
-  const hipColor = skinColor;               // ヒップは肌色のまま
-  const lowerLegColor = shadeColor(skinColor, -4);  // ふくらはぎは肌色の暗め（変更なし）
+const lowerLegColor = hasColor(clothes.lowerLeg)
+  ? clothes.lowerLeg
+  : thighColor;
 
+const footColor = hasColor(clothes.shoes)
+  ? clothes.shoes
+  : skinColor;
+
+const hipColor = skinColor; // ヒップは肌色のまま
+ 
   const thighWidthBoost = 1.3;
   const kneeTaper = 0.88;
   const calfBoost = 1.05;
