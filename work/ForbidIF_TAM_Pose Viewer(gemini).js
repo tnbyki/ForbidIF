@@ -11,8 +11,10 @@
 (function (){
  'use strict';
 console.log('[POSE] SCRIPT START');
- const PANEL_ID = 'gemini-pose-min-panel';
- const CANVAS_ID = 'gemini-pose-min-canvas';
+let poseSourceNode = null;
+let lastPoseNodeText = '';
+const PANEL_ID = 'gemini-pose-min-panel';
+const CANVAS_ID = 'gemini-pose-min-canvas';
 let rootState = {
   scenePosition: { x: 0, y: 0, z: 0 },
   sceneVelocity: { x: 0, y: 0, z: 0 },
@@ -192,6 +194,27 @@ const POINT_LABELS = {
  ID21: 'GENITAL',
  ID22: 'ANUS'
 };
+function findLatestPoseSourceNode(){
+  const root = document.querySelector('main') || document.body;
+
+  const nodes = root.querySelectorAll('article, [data-message-id], [class*="message"], [class*="model-response"], [class*="response"]');
+
+  for(let i = nodes.length - 1; i >= 0; i--){
+    const el = nodes[i];
+    const text = el.textContent || '';
+
+    if(
+      text.includes('<POSE_JSON_START>') ||
+      text.includes('<POSE_EXTRA>') ||
+      text.includes('<POSE_SCENE_META_START>')
+    ){
+      return el;
+    }
+  }
+
+  return null;
+}
+
 function getAppearanceColors(extra) {
   const appearance = extra?.appearance || {};
 
@@ -316,11 +339,12 @@ function extractLatestPoseExtraBlock(text){
  block = block.slice(jsonStart, jsonEnd + 1);
  return sanitizePoseJsonText(block);
 }
- function updateSyncButtonByMeta(){
+function updateSyncButtonByMeta(){
  const btn = document.getElementById('pose-min-sync-btn');
  if(!btn) return;
 
- const text = document.body?.textContent || '';
+ const node = findLatestPoseSourceNode();
+ const text = node?.textContent || '';
 
  if(hasPoseSceneMetaBlock(text)){
   btn.style.background = '#8b1a1a';
@@ -330,7 +354,6 @@ function extractLatestPoseExtraBlock(text){
   btn.style.border = '1px solid #444';
  }
 }
-  setInterval(updateSyncButtonByMeta, 200);
 
 function ensureCameraDefaults(){
  if(typeof INTERNAL_CAMERA.yaw !== 'number') INTERNAL_CAMERA.yaw = 0;
@@ -1862,7 +1885,19 @@ const hairColor =
   drawHeadBlock();
  }
 });
-
+drawParts.push({
+  name: 'lines',
+  depth: headDepth + 0.5,
+  draw: () => drawLines(
+    ctx,
+    P,
+    poseExtra?.lines || [],
+    currentScale,
+    scenePoints,
+    canvas.width,
+    canvas.height
+  )
+});
  drawParts.sort((a, b) => a.depth - b.depth);
 
  for(const part of drawParts){
@@ -1870,7 +1905,8 @@ const hairColor =
  }
 
 drawPointDots(ctx, P, scenePoints);
-  drawActionHighlights(ctx, P);
+drawObjectAnchors(ctx, canvas.width, canvas.height, scenePoints);
+drawActionHighlights(ctx, P);
 drawPointLabels(ctx, P, scenePoints);
 updateSelectedPointInfo(scenePoints);
 
@@ -2052,11 +2088,16 @@ function getGroundScreenTransform(posePoints, canvasW, canvasH){
   };
 }
 async function syncPose(){
+console.log('[POSE] syncPose called');
  setSyncButtonLoading(true);
  await new Promise(r => setTimeout(r, 300));
 
- const text = document.body?.textContent || '';
- const jsonText = extractLatestPoseJsonBlock(text);
+const node = findLatestPoseSourceNode();
+if(!node) return;
+
+const text = node.textContent || '';
+const jsonText = extractLatestPoseJsonBlock(text);
+
  const metaText = extractLatestPoseSceneMetaBlock(text);
  const extraText = extractLatestPoseExtraBlock(text);
 
@@ -2142,7 +2183,8 @@ if(extraText){
   }
 console.log('[POSE] calling drawPose');
   drawPose();
-
+poseSourceNode = node;
+lastPoseNodeText = text;
   const p = pose.points?.ID14;
   setStatus(
    `status: sync ok knee=${p?.x?.toFixed?.(2)},${p?.y?.toFixed?.(2)},${p?.z?.toFixed?.(2)} grounded=${poseSceneMeta?.scene?.isGrounded ? '1' : '0'} jump=${poseSceneMeta?.scene?.isJumping ? '1' : '0'}`
@@ -2156,7 +2198,19 @@ console.log('[POSE] calling drawPose');
 }
 
 function checkAndAutoSyncPose(){
- const text = document.body?.textContent || '';
+ const node = findLatestPoseSourceNode();
+ if(!node) return;
+
+ const text = node.textContent || '';
+
+if(
+  node === poseSourceNode &&
+  text === lastPoseNodeText &&
+  text.includes('<POSE_JSON_START>')
+){
+  return;
+}
+
  const block = extractLatestPoseJsonBlock(text);
  const metaBlock = extractLatestPoseSceneMetaBlock(text);
  const extraBlock = extractLatestPoseExtraBlock(text);
@@ -2193,14 +2247,15 @@ function startAutoSyncObserver(){
   removePoseTimer = setTimeout(() => {
    if(!stripPoseJsonOnSend) return;
 
-   const text = document.body?.textContent || '';
+const node = findLatestPoseSourceNode();
+const text = node?.textContent || '';
 if(
  !text.includes('<POSE_JSON_START>') &&
  !text.includes('<POSE_SCENE_META_START>') &&
  !text.includes('<POSE_EXTRA>')
 ) return;
 
-   removePoseJsonBlocksFromDom(document.body);
+removePoseJsonBlocksFromDom(node || document.body);
    setStatus('status: pose json removed from page');
   }, 700);
  });
@@ -4121,6 +4176,63 @@ if(
 
 } // for(const id of ids) を閉じる
 } // function drawPointDots を閉じる
+function drawObjectAnchors(ctx, canvasWidth, canvasHeight, rawPoints){
+  if(!poseExtra) return;
+
+  const layoutMetrics = getLayoutMetrics(rawPoints, canvasWidth, canvasHeight);
+
+  // ===== line start / end =====
+  const lines = poseExtra?.lines || [];
+  for(const line of lines){
+
+    const start3D =
+      line?.start && Number.isFinite(line.start.x)
+        ? applyScenePositionToPoint(line.start)
+        : rawPoints?.[line?.startId];
+
+    const end3D =
+      line?.end && Number.isFinite(line.end.x)
+        ? applyScenePositionToPoint(line.end)
+        : rawPoints?.[line?.endId];
+
+    if(start3D){
+      const p = projectPointToScreen(start3D, canvasWidth, canvasHeight, layoutMetrics);
+      ctx.fillStyle = 'rgba(0,255,150,0.9)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if(end3D){
+      const p = projectPointToScreen(end3D, canvasWidth, canvasHeight, layoutMetrics);
+      ctx.fillStyle = 'rgba(0,200,255,0.9)';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ===== box anchor =====
+  const boxes = poseExtra?.boxes || [];
+  for(const box of boxes){
+
+    const w = Math.max(0.01, Number(box?.w) || 1);
+    const d = Math.max(0.01, Number(box?.d) || 1);
+
+    const center3D = {
+      x: Number(box?.x) || 0,
+      y: (Number(box?.y) || 0) + (Number(box?.h) || 1) * 0.5,
+      z: (Number(box?.z) || 0) - d * 0.5
+    };
+
+    const p = projectPointToScreen(center3D, canvasWidth, canvasHeight, layoutMetrics);
+
+    ctx.fillStyle = 'rgba(255,180,0,0.9)';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
 
 function updateRoot(rawPose, prevState, dt){
   const pts = rawPose.points || {};
