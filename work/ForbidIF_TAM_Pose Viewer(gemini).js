@@ -1603,7 +1603,7 @@ const footColor = hasColor(clothes.shoes)
   : skinColor;
 
 const hipColor = skinColor; // ヒップは肌色のまま
- 
+
   const thighWidthBoost = 1.3;
   const kneeTaper = 0.88;
   const calfBoost = 1.05;
