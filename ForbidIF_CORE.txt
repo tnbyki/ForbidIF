@@ -2404,22 +2404,32 @@ large  = より大きい前方突出と外側・下側拡張
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 例
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
 <POSE_EXTRA>
-
 {
   "bgColor": "#87ceeb",
   "groundColor": "#6fa84f",
+
+  "scene": {
+    "position": {"x": 0.00, "y": 0.00, "z": 0.00},
+    "forward": {"x": 0.00, "y": 0.00, "z": 1.00},
+    "up": {"x": 0.00, "y": 1.00, "z": 0.00}
+  },
+
+  "placement": {
+    "groundOffset": {"x": 0.00, "y": 0.00, "z": 0.00}
+  },
 
   "appearance": {
     "hairColor": "#2b2b2b",
     "skinColor": "#d9a07a"
   },
+
   "body": {
-    "breastSize": 90,
+    "breastScale": 1.0,
     "waistWidth": 1.0,
     "hairLength": "middle"
   },
+
   "clothes": {
     "outerTop": "#224488",
     "innerTop": "#dddddd",
@@ -2429,18 +2439,21 @@ large  = より大きい前方突出と外側・下側拡張
     "shoes": "#222222",
     "tights": "#111111"
   },
+
   "lines": [
-   {
-    "name": "climax_injection",
-    "start": { "x": 0.00, "y": 0.35, "z": 0.40 },
-    "end":   { "x": 0.00, "y": 0.45, "z": 0.55 },
-    "color": "#ffffff",
-    "width": 0.02
-   }
+    {
+      "name": "climax_injection",
+      "start": { "x": 0.00, "y": 0.35, "z": 0.40 },
+      "end":   { "x": 0.00, "y": 0.45, "z": 0.55 },
+      "color": "#ffffff",
+      "width": 0.02
+    }
   ],
+
   "boxes": [
     {
       "name": "box01",
+      "space": "scene",
       "x": 0.80,
       "y": -0.80,
       "z": 0.20,
