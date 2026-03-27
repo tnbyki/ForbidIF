@@ -1,99 +1,101 @@
 // ==UserScript==
-// @name         Gemini Number Bar Compact
+// @name         Gemini Number Bar Stable
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      2.2
 // @match        https://gemini.google.com/*
 // @grant        none
+// @noframes
 // ==/UserScript==
 
 (function () {
-'use strict';
+  'use strict';
 
-const INPUT_SELECTOR='[contenteditable="true"]';
+  const INPUT_SELECTOR = '[contenteditable="true"]';
 
-function findInput(){
+  function findInput() {
     return document.querySelector(INPUT_SELECTOR);
-}
+  }
 
-function insertDigit(d){
-
-    const el=findInput();
-    if(!el) return;
+  function insertText(t) {
+    const el = findInput();
+    if (!el) return;
 
     el.focus();
+    document.execCommand('insertText', false, t);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 
-    document.execCommand('insertText',false,d);
+  function pressEnter() {
+    const el = findInput();
+    if (!el) return;
 
-    el.dispatchEvent(new Event('input',{bubbles:true}));
-
-}
-
-function pressEnter(){
-
-    const el=findInput();
-    if(!el) return;
-
-    el.dispatchEvent(new KeyboardEvent('keydown',{
-        key:'Enter',
-        code:'Enter',
-        bubbles:true
+    el.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Enter',
+      code: 'Enter',
+      bubbles: true
     }));
-}
+  }
 
-function send(d){
+  function send(d) {
+    insertText(d);
+    setTimeout(pressEnter, 120);
+  }
 
-    insertDigit(d);
+  function createBar() {
+    if (document.getElementById('gemini-bar')) return;
 
-    setTimeout(pressEnter,150);
+    const bar = document.createElement('div');
+    bar.id = 'gemini-bar';
 
-}
+    Object.assign(bar.style, {
+      position: 'fixed',
+      bottom: '20px',
+      right: '180px',
+      display: 'flex',
+      gap: '6px',
+      padding: '6px',
+      background: 'rgba(0,0,0,0.85)',
+      borderRadius: '8px',
+      zIndex: '2147483646',
+      fontFamily: 'monospace'
+    });
 
-function createBar(){
+    const nums = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-    if(document.getElementById("gemini-bar")) return;
+    nums.forEach(n => {
+      const btn = document.createElement('button');
+      btn.textContent = n;
 
-    const bar=document.createElement("div");
+      Object.assign(btn.style, {
+        width: '28px',
+        height: '28px',
+        border: '1px solid #666',
+        background: '#111',
+        color: '#fff',
+        borderRadius: '6px',
+        cursor: 'pointer',
+        fontSize: '13px'
+      });
 
-    bar.id="gemini-bar";
-
-    bar.style.position="fixed";
-    bar.style.bottom="20px";
-    bar.style.right="110px";
-    bar.style.display="flex";
-    bar.style.gap="6px";
-    bar.style.padding="6px";
-    bar.style.background="rgba(0,0,0,0.8)";
-    bar.style.borderRadius="8px";
-    bar.style.zIndex="999999";
-
-    const nums=['0','1','2','3','4','5','6','7','8','9'];
-
-    nums.forEach(n=>{
-
-        const btn=document.createElement("button");
-
-        btn.textContent=n;
-
-        btn.style.width="40px";
-        btn.style.height="24px";
-        btn.style.fontSize="14px";
-        btn.style.borderRadius="6px";
-        btn.style.border="1px solid #444";
-        btn.style.background="#111";
-        btn.style.color="#fff";
-        btn.style.cursor="pointer";
-
-        btn.onclick=()=>send(n);
-
-        bar.appendChild(btn);
-
+      btn.onclick = () => send(n);
+      bar.appendChild(btn);
     });
 
     document.body.appendChild(bar);
+  }
 
-}
+  function boot() {
+    createBar();
+  }
 
-window.addEventListener("load",createBar);
-setTimeout(createBar,1000);
+  boot();
 
+  const obs = new MutationObserver(() => {
+    createBar();
+  });
+
+  obs.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
 })();
