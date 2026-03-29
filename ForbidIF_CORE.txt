@@ -1303,6 +1303,45 @@ ID21 = forward 側
 ID22 = 逆側  
 forward 反転時は連動反転
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ POSE_SCENE_META
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+POSE_JSON とは別に、必要な場合のみ以下を出力する。
+
+- scene.position
+- scene.forward
+- scene.up
+- body.root
+- body.forward
+- body.up
+- head.root
+- head.forward
+- head.up
+
+- body.forward は胴体の前方向
+- head.forward は顔の前方向
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 方向優先ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+体位・向き指定がある場合、
+まず POSE_SCENE_META の body.forward / head.forward を確定し、
+その後に points を最小変形すること。
+
+向き指定を、腕や脚の雰囲気変更だけで代用してはならない。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 前後補助点ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ID21（Genital）は body.forward 側に置く。
+ID22（Anus）は body.forward の逆側に置く。
+
+body.forward が反転した場合、
+ID21 / ID22 の前後関係もそれに合わせること。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_SCENE_META / POSE_EXTRA FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 <POSE_SCENE_META_START>
