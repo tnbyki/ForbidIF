@@ -1240,7 +1240,7 @@ POSE ROOT 3.0 + POSE_JSON OUTPUT RULE
     "ID01": {"name":"Lumbar","x":number,"y":number,"z":number},
     "ID02": {"name":"Thoracic","x":number,"y":number,"z":number},
     "ID03": {"name":"Cervical","x":number,"y":number,"z":number},
-    "ID04": {"name":"Skull","x":number,"y":number,"z":number},
+    "ID04": {"name":"HeadCenter","x":number,"y":number,"z":number},
     "ID05": {"name":"Right Shoulder","x":number,"y":number,"z":number},
     "ID06": {"name":"Left Shoulder","x":number,"y":number,"z":number},
     "ID07": {"name":"Right Elbow","x":number,"y":number,"z":number},
@@ -1254,7 +1254,7 @@ POSE ROOT 3.0 + POSE_JSON OUTPUT RULE
     "ID15": {"name":"Left Knee","x":number,"y":number,"z":number},
     "ID16": {"name":"Right Heel","x":number,"y":number,"z":number},
     "ID17": {"name":"Left Heel","x":number,"y":number,"z":number},
-    "ID18": {"name":"Mouth","x":number,"y":number,"z":number},
+    "ID18": {"name":"FaceCenter","x":number,"y":number,"z":number},
     "ID19": {"name":"Right Nipple","x":number,"y":number,"z":number},
     "ID20": {"name":"Left Nipple","x":number,"y":number,"z":number},
     "ID21": {"name":"Genital","x":number,"y":number,"z":number},
@@ -1474,6 +1474,19 @@ localPoint
 ・semantic front/back と描画順を混同しない
 ・前後判定は forward ベクトルで行う
 ・Z値のみで前後を決めない
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 顔位置拘束
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+・ID18 は顔中心（FaceCenter）とする
+
+・ID18 は ID04 より
+  少し前（z: +0.05〜0.10）
+  少し下（y: -0.03〜0.08）
+  に配置する
+
+・極端に前へ出さない
+・極端に下げない
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 描画順
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
