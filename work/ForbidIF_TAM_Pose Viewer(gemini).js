@@ -919,7 +919,17 @@ const hairColor =
 
 // ===== ヘルパ =====
 function hasColor(c){
-  return !!c && c !== 'none';
+  if(!c) return false;
+  if(typeof c !== 'string') return false;
+
+  const v = c.trim();
+
+  if(v === '' || v.toLowerCase() === 'none') return false;
+
+  // ★ ここ追加：#で始まるものだけOK
+  if(!v.startsWith('#')) return false;
+
+  return true;
 }
 function pickColor(...colors){
   for(const c of colors){
@@ -1157,6 +1167,138 @@ const hipL = P.ID13;
  const genital = P.ID21;
  const anus = P.ID22;
 
+ // === POSE_EXTRAのTRACK情報を左上に表示 ===
+const trackEl = document.getElementById('pose-min-track-info');
+if (trackEl) {
+  const track = poseExtra?.TRACK || '';
+  trackEl.textContent = track ? `TRACK: ${track}` : '';
+}
+///////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////
+// === 服の名前を表示（クリックで送信できる丸ボタン付き・安全版）===
+// === 服の名前を表示（クリックでラベル入力 → 自動送信まで）===
+const clothesEl = document.getElementById('pose-min-clothes-info');
+if (clothesEl && poseExtra) {
+      clothesEl.style.marginTop = '8px';  // ←追加
+  while (clothesEl.firstChild) {
+    clothesEl.removeChild(clothesEl.firstChild);
+  }
+
+  const clothesData = poseExtra.clothes || {};
+
+  const clothesList = [
+    { key: 'outerTopName',    label: 'Outer Top' },
+    { key: 'innerTopName',    label: 'Inner Top' },
+    { key: 'braName',         label: 'Bra' },
+    { key: 'outerBottomName', label: 'Outer Bottom' },
+    { key: 'innerBottomName', label: 'Inner Bottom' },
+    { key: 'pantiesName',     label: 'Panties' },
+    { key: 'tightsName',      label: 'Tights' },
+    { key: 'lowerLegName',    label: 'Lower Leg' },
+    { key: 'shoesName',       label: 'Shoes' }
+  ];
+
+  clothesList.forEach(item => {
+    const name = clothesData[item.key];
+    if (name && typeof name === 'string' && name.trim() !== '' && name.toLowerCase() !== 'none') {
+
+      const div = document.createElement('div');
+      div.style.marginBottom = '3px';
+      div.style.display = 'flex';
+      div.style.alignItems = 'center';
+
+      const circleBtn = document.createElement('div');
+      circleBtn.style.width = '11px';
+      circleBtn.style.height = '11px';
+      circleBtn.style.borderRadius = '50%';
+      circleBtn.style.backgroundColor = '#ffdd88';
+      circleBtn.style.marginRight = '8px';
+      circleBtn.style.cursor = 'pointer';
+      circleBtn.style.border = '2px solid #222';
+      circleBtn.style.flexShrink = '0';
+      circleBtn.title = `${item.label} を送信`;
+
+circleBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+
+  const actionText = buildActionTextForClothes(item.label);
+
+        // Geminiの入力欄を探す
+        let composer = document.querySelector('textarea');
+        if (!composer) composer = document.querySelector('div[contenteditable="true"]');
+        if (!composer) {
+          const rich = document.querySelector('rich-textarea');
+          if (rich && rich.shadowRoot) {
+            composer = rich.shadowRoot.querySelector('textarea, div[contenteditable="true"]');
+          }
+        }
+
+        if (composer) {
+          // テキストを入れる
+          if (composer.tagName === 'TEXTAREA') {
+            composer.value = actionText;
+          } else {
+            composer.textContent = actionText;
+          }
+
+          composer.focus();
+
+          // 少し待ってからEnter送信（Gemini対応）
+          setTimeout(() => {
+            const enterEvent = new KeyboardEvent('keydown', {
+              key: 'Enter',
+              code: 'Enter',
+              bubbles: true,
+              cancelable: true
+            });
+            composer.dispatchEvent(enterEvent);
+            console.log('[Pose] Sent and submitted:', actionText);
+          }, 100);
+
+        } else {
+          console.log('[Pose] Composer not found');
+        }
+      });
+
+      // ホバー効果
+      circleBtn.addEventListener('mouseover', () => {
+        circleBtn.style.backgroundColor = '#ffeebb';
+        circleBtn.style.transform = 'scale(1.2)';
+      });
+      circleBtn.addEventListener('mouseout', () => {
+        circleBtn.style.backgroundColor = '#ffdd88';
+        circleBtn.style.transform = 'scale(1)';
+      });
+
+const iconMap = {
+  outerTopName: '🧥',
+  innerTopName: '👚',
+  braName: '👙',
+  outerBottomName: '👗',
+  innerBottomName: '🩳',
+  pantiesName: '🩲',
+  tightsName: '🧦',
+  lowerLegName: '👖',
+  shoesName: '👠'
+};
+
+const textSpan = document.createElement('span');
+textSpan.textContent = `${iconMap[item.key] || '●'}：${name}`;
+textSpan.style.color = '#ffdd88';
+
+div.appendChild(circleBtn);
+div.appendChild(textSpan);
+
+
+      clothesEl.appendChild(div);
+    }
+  });
+}
+///////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////
+
+
  if(!head || !neck || !chest || !pelvis || !rHip || !lHip){
   setStatus('status: draw skipped (missing key points)');
   return;
@@ -1248,27 +1390,30 @@ function drawHeadBlock(){
 
   // === 1. 一番最初に首の線（ID03 → ID04）を描く（これで顔や髪に隠れにくくする）===
   // === ID03 → ID04の線を少し後ろにずらして描く ===
+  // === ID03 → ID04の線（視点によって太さを変える）===
   if (P.ID03 && P.ID04) {
     ctx.save();
+
+    // 現在の横からの強さを取得（sideStrengthが1.0に近いほど真横）
+    const sideStrength = view?.sideStrength || 0;
+
+    // 横から見たときは太さを約半分に（調整可能）
+    let neckLineWidth = Math.max(24, headRadius * 0.52);        // 正面・斜めの太さ
+    if (sideStrength > 0.65) {
+      neckLineWidth = neckLineWidth * 0.3;                     // 横から見たときは約半分
+    }
+
     ctx.strokeStyle = handColor;
-    ctx.lineWidth = Math.max(22, headRadius * 0.50);
-
-    const start = { x: P.ID03.x, y: P.ID03.y };
-
-    // ID04を少し後ろにずらす（後ろに引く）
-    const end = {
-      x: P.ID04.x * 0.92 + P.ID03.x * 0.08,   // 少し後ろに寄せる
-      y: P.ID04.y * 0.92 + P.ID03.y * 0.08    // 高さも少し補正
-    };
-
+    ctx.lineWidth = neckLineWidth;
     ctx.lineCap = "round";
+
     ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
+    ctx.moveTo(P.ID03.x, P.ID03.y);
+    ctx.lineTo(P.ID04.x, P.ID04.y);
     ctx.stroke();
+
     ctx.restore();
   }
-
   // === 2. 頭の向き計算 ===
   const metaHead = poseSceneMeta?.head;
   let f = metaHead?.forward || { x: 0, y: 0, z: 1 };
@@ -1363,7 +1508,19 @@ function drawHeadBlock(){
   drawCapsule(ctx, earL, hairEndL, 6, hairColor);
   drawCapsule(ctx, earR, hairEndR, 6, hairColor);
 }
+function buildActionTextForClothes(partLabel){
+  const strengthPrefix = STRENGTH_PRESETS[strengthMode]?.label || '';
 
+  const actionLabels = [...activeActionKeys]
+    .map(key => ACTION_LABELS[key])
+    .filter(Boolean);
+
+  if(!actionLabels.length){
+    return partLabel;
+  }
+
+  return actionLabels.map(label => `${strengthPrefix}${label} ${partLabel}`).join(' / ');
+}
 function drawTorsoBlock(){
   ctx.save();
   ctx.beginPath();
@@ -1411,6 +1568,7 @@ const upperTorsoColor =
     ? outerTopColor
     : (innerTopColor || skinColor);
 
+//
 fillHalfPlane(
   ctx,
   splitCenter,
@@ -2420,7 +2578,7 @@ headerRow.style.cursor = 'move';
 headerRow.style.userSelect = 'none';
 
   const title = document.createElement('div');
-  title.textContent = 'POSE VIEWER';
+  title.textContent = '';// POSE VIWER
   title.style.fontWeight = '700';
   title.style.color = '#fff';
 
@@ -2611,6 +2769,34 @@ selectedInfo.style.color = '#bbb';
 selectedInfo.style.lineHeight = '1.35';
 selectedInfo.style.minHeight = '34px';
 selectedInfo.textContent = 'selected: none';
+
+// === トラック情報表示（左上）===
+const trackInfo = document.createElement('div');
+trackInfo.id = 'pose-min-track-info';
+trackInfo.style.position = 'absolute';
+trackInfo.style.top = '10px';
+trackInfo.style.left = '10px';
+trackInfo.style.color = '#00ffcc';
+trackInfo.style.fontSize = '13px';
+trackInfo.style.fontWeight = 'bold';
+trackInfo.style.textShadow = '0 0 4px rgba(0,0,0,0.8)';
+trackInfo.style.zIndex = '10';
+bodyWrap.appendChild(trackInfo);
+
+// === 服の名前表示エリア（TRACKの下）===
+const clothesInfo = document.createElement('div');
+clothesInfo.id = 'pose-min-clothes-info';
+clothesInfo.style.position = 'absolute';
+clothesInfo.style.top = '32px';           // TRACKの下に配置
+clothesInfo.style.left = '10px';
+clothesInfo.style.color = '#ffffff';
+clothesInfo.style.fontSize = '12px';
+clothesInfo.style.lineHeight = '1.4';
+clothesInfo.style.textShadow = '1px 1px 0 #222222';   // 斜め下に濃いグレー影
+clothesInfo.style.zIndex = '10';
+bodyWrap.appendChild(clothesInfo);
+
+
 bodyWrap.appendChild(selectedInfo);
 
 const meta = document.createElement('div');
