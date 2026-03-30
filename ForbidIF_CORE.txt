@@ -1287,10 +1287,8 @@ POSE ROOT 3.0 + POSE_JSON OUTPUT RULE
     "ID20": {"name":"Left Nipple","x":number,"y":number,"z":number},
     "ID21": {"name":"Genital","x":number,"y":number,"z":number},
     "ID22": {"name":"Anus","x":number,"y":number,"z":number},
-    "ID23": {"name":"Right Breast Outer","x":number,"y":number,"z":number},
-    "ID24": {"name":"Left Breast Outer","x":number,"y":number,"z":number},
-    "ID25": {"name":"Right Breast Lower","x":number,"y":number,"z":number},
-    "ID26": {"name":"Left Breast Lower","x":number,"y":number,"z":number},
+    "ID23": {"name":"RightBreastCenter","x":number,"y":number,"z":number},
+    "ID24": {"name":"LeftBreastCenter","x":number,"y":number,"z":number},
     "ID27": {"name":"Breast Center","x":number,"y":number,"z":number}
   }
 }
