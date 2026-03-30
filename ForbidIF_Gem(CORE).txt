@@ -265,6 +265,7 @@ ID21とID22のZ差を、最低でも0.15ユニット確保するまで文章を�
 <POSE_JSON_END>
 <POSE_EXTRA>
 {
+  "TRACK": "T-0001",
   "bgColor": "#87ceeb",
   "groundColor": "#6fa84f",
   "scene": {
@@ -287,14 +288,22 @@ ID21とID22のZ差を、最低でも0.15ユニット確保するまで文章を�
   },
 
   "clothes": {
+    "outerTopName": "outerTopName",
     "outerTop": "#224488",
+    "innerTopName": "innerTopName",
     "innerTop": "#dddddd",
+    "outerBottomName": "outerBottomName",
     "outerBottom": "#666666",
+    "braName": "braName",
     "bra": "#000000",
+    "pantiesName": "pantiesName",
     "panties": "#000000",
-    "shoes": "#222222",
-    "lowerLeg": "#111111",
+    "tightsName": "tightsName"
     "tights": "#111111"
+    "lowerLegName": "lowerLegName",
+    "lowerLeg": "#111111",
+    "shoesName": "shoesName",
+    "shoes": "#222222",
   },
 
   "lines": [
