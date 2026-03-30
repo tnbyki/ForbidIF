@@ -1392,6 +1392,7 @@ ID21 / ID22 の前後関係もそれに合わせること。
 
 <POSE_EXTRA>
 {
+  "TRACK": "T-0001",
   "bgColor": "#RRGGBB",
   "groundColor": "#RRGGBB",
 
@@ -1417,14 +1418,22 @@ ID21 / ID22 の前後関係もそれに合わせること。
   },
 
   "clothes": {
-    "outerTop": "#RRGGBB",
-    "innerTop": "#RRGGBB",
-    "outerBottom": "#RRGGBB",
-    "bra": "#RRGGBB",
-    "panties": "#RRGGBB",
-    "shoes": "#RRGGBB",
-    "lowerLeg": "#RRGGBB",
-    "tights": "#RRGGBB"
+    "outerTopName": "outerTopName",
+    "outerTop": "#224488",
+    "innerTopName": "innerTopName",
+    "innerTop": "#dddddd",
+    "outerBottomName": "outerBottomName",
+    "outerBottom": "#666666",
+    "braName": "braName",
+    "bra": "#000000",
+    "pantiesName": "pantiesName",
+    "panties": "#000000",
+    "tightsName": "tightsName"
+    "tights": "#111111"
+    "lowerLegName": "lowerLegName",
+    "lowerLeg": "#111111",
+    "shoesName": "shoesName",
+    "shoes": "#222222",
   },
 
   "lines": [
