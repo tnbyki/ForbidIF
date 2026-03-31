@@ -118,41 +118,42 @@ const INTERNAL_CAMERA = {
 let pose = {
  frame: 1,
  root: 'ID10',
- points: {
-  ID00: { name: 'ROOT', x: 0.00, y: 0.00, z: 0.00 },
-  ID01: { name: 'Lumbar', x: 0.00, y: 0.45, z: 0.00 },
-  ID02: { name: 'Thoracic', x: 0.00, y: 0.95, z: 0.00 },
-  ID03: { name: 'Cervical', x: 0.00, y: 1.25, z: 0.00 },
-  ID04: { name: 'HeadRoot', x: 0.00, y: 1.55, z: 0.02 },
-  ID05: { name: 'Right Shoulder', x: 0.28, y: 0.95, z: 0.00 },
-  ID06: { name: 'Left Shoulder', x: -0.28, y: 0.95, z: 0.00 },
-  ID07: { name: 'Right Elbow', x: 0.58, y: 0.95, z: 0.00 },
-  ID08: { name: 'Left Elbow', x: -0.58, y: 0.95, z: 0.00 },
-  ID09: { name: 'Right Wrist', x: 0.88, y: 0.95, z: 0.00 },
-  ID10: { name: 'Pelvis', x: 0.00, y: 0.00, z: 0.00 },
-  ID11: { name: 'Left Wrist', x: -0.88, y: 0.95, z: 0.00 },
-  ID12: { name: 'Right Hip', x: 0.16, y: -0.05, z: 0.00 },
-  ID13: { name: 'Left Hip', x: -0.16, y: -0.05, z: 0.00 },
-  ID14: { name: 'Right Knee', x: 0.16, y: -0.72, z: 0.00 },
-  ID15: { name: 'Left Knee', x: -0.16, y: -0.72, z: 0.00 },
-  ID16: { name: 'Right Heel', x: 0.16, y: -1.35, z: 0.00 },
-  ID17: { name: 'Left Heel', x: -0.16, y: -1.35, z: 0.00 },
-  ID18: { name: 'FaceCenter', x: 0.00, y: 1.38, z: 0.10 },
-  ID19: { name: 'Right Nipple', x: 0.15, y: 0.78, z: 0.12 },
-  ID20: { name: 'Left Nipple', x: -0.15, y: 0.78, z: 0.12 },
-  ID21: { name: 'Genital', x: 0.00, y: -0.18, z: 0.10 },
-  ID22: { name: 'Anus', x: 0.00, y: -0.12, z: -0.10 },
-  ID23: { name: 'Right Outer', x: 0.12, y: 0.72, z: 0.16 },
-  ID24: { name: 'Left Outer', x: -0.12, y: 0.72, z: 0.16 },
-  ID27: { name: 'Bust Center', x: 0.00, y: 0.76, z: 0.14 }
- }
+points: {
+  ID00: { name: 'ROOT', x: 0, y: -0.9, z: 0 },
+  ID01: { name: 'Lumbar', x: 0.05, y: 0.22, z: 0.05 },
+  ID02: { name: 'Thoracic', x: 0.08, y: 0.4, z: 0.1 },
+  ID03: { name: 'Cervical', x: 0.05, y: 0.52, z: 0.08 },
+  ID04: { name: 'HeadRoot', x: 0.1, y: 0.68, z: 0.06 },
+  ID05: { name: 'Right Shoulder', x: 0.2, y: 0.43, z: 0.05 },
+  ID06: { name: 'Left Shoulder', x: -0.12, y: 0.43, z: 0.1 },
+  ID07: { name: 'Right Elbow', x: 0.35, y: 0.3, z: 0.0 },
+  ID08: { name: 'Left Elbow', x: -0.2, y: 0.25, z: 0.0 },
+  ID09: { name: 'Right Wrist', x: 0.28, y: 0.15, z: 0.2 },
+  ID10: { name: 'Pelvis', x: 0, y: 0, z: 0 },
+  ID11: { name: 'Left Wrist', x: -0.12, y: 0.05, z: 0.25 },
+  ID12: { name: 'Right Hip', x: 0.08, y: -0.05, z: 0.02 },
+  ID13: { name: 'Left Hip', x: -0.08, y: -0.05, z: 0.02 },
+  ID14: { name: 'Right Knee', x: 0.1, y: -0.48, z: 0.05 },
+  ID15: { name: 'Left Knee', x: -0.08, y: -0.5, z: 0.08 },
+  ID16: { name: 'Right Heel', x: 0.12, y: -0.9, z: 0.05 },
+  ID17: { name: 'Left Heel', x: -0.12, y: -0.9, z: 0.1 },
+  ID18: { name: 'FaceCenter', x: 0.1, y: 0.65, z: 0.14 },
+  ID19: { name: 'Right Nipple', x: 0.12, y: 0.35, z: 0.12 },
+  ID20: { name: 'Left Nipple', x: -0.05, y: 0.35, z: 0.15 },
+  ID21: { name: 'Genital', x: 0.05, y: -0.12, z: 0.08 },
+  ID22: { name: 'Anus', x: 0, y: -0.12, z: -0.03 },
+  ID23: { name: 'Right Outer', x: 0.12, y: 0.35, z: 0.1 },
+  ID24: { name: 'Left Outer', x: -0.05, y: 0.35, z: 0.12 },
+  ID27: { name: 'Bust Center', x: 0.05, y: 0.35, z: 0.1 }
+}
 };
 let actionHighlights = [];
 
- let lastPoseBlock = '';
- let autoSyncObserverStarted = false;
- let autoSyncTimer = null;
- let removePoseTimer = null;
+let lastPoseBlock = '';
+let lastTrackText = '';
+let autoSyncObserverStarted = false;
+let autoSyncTimer = null;
+let removePoseTimer = null;
 
 let forceFrontView = false;
 let poseSceneMeta = null;
@@ -438,12 +439,12 @@ function setSyncButtonLoading(isLoading){
 btn.style.background = '#1a2f66';
 btn.style.border = '1px solid #2e4a99';
   btn.style.color = '#ffffff';
-  btn.textContent = 'SYNC';
+  btn.textContent = '♻️再表示';
  }else{
   btn.style.background = '#111';
   btn.style.border = '1px solid #444';
   btn.style.color = '#ffffff';
-  btn.textContent = 'SYNC';
+  btn.textContent = '♻️再表示';
  }
 }
 function rotatePoint(p, cam){
@@ -793,43 +794,49 @@ function getRootFacingFromBasis(points, cam){
  };
 }
 function getFacingFromForwardVec(forward, cam){
- if(
-  !forward ||
-  !Number.isFinite(forward.x) ||
-  !Number.isFinite(forward.y) ||
-  !Number.isFinite(forward.z)
- ){
+  if(
+    !forward ||
+    !Number.isFinite(forward.x) ||
+    !Number.isFinite(forward.y) ||
+    !Number.isFinite(forward.z)
+  ){
+    return {
+      facing: getFacingClassFromCamera(getViewCamera(cam)),
+      score: 0
+    };
+  }
+
+  const nf = vecNormalize(forward);
+  const viewCam = getViewCamera(cam);
+
+  // ★★★ ここが核心 ★★★
+  // Metaのforward.z が何であれ、必ず正の値として扱う（常に正面方向に強制）
+  const forcedZ = Math.abs(nf.z);   // ← 常にプラスにする
+  const forcedForward = { x: nf.x, y: nf.y, z: forcedZ };
+
+  const f = rotatePoint(forcedForward, viewCam);
+
+  const forwardZ = f.z;   // ここは常に正寄りになる
+  const sideX = Math.abs(f.x);
+
+  let facing = 3;
+
+  if(forwardZ > 0.55 && sideX < 0.45){
+    facing = 1;   // 正面
+  } else if(forwardZ > 0.18){
+    facing = 2;   // 斜め正面
+  } else if(forwardZ < -0.55 && sideX < 0.45){
+    facing = 5;   // 後ろ
+  } else if(forwardZ < -0.18){
+    facing = 4;   // 斜め後ろ
+  } else {
+    facing = 3;   // 真横
+  }
+
   return {
-   facing: getFacingClassFromCamera(getViewCamera(cam)),
-   score: 0
+    facing,
+    score: forwardZ
   };
- }
-
- const nf = vecNormalize(forward);
- const viewCam = getViewCamera(cam);
- const f = rotatePoint(nf, viewCam);
-
- const forwardZ = f.z;
- const sideX = Math.abs(f.x);
-
- let facing = 3;
-
- if(forwardZ > 0.55 && sideX < 0.45){
-  facing = 1;
- } else if(forwardZ > 0.18){
-  facing = 2;
- } else if(forwardZ < -0.55 && sideX < 0.45){
-  facing = 5;
- } else if(forwardZ < -0.18){
-  facing = 4;
- }else{
-  facing = 3;
- }
-
- return {
-  facing,
-  score: forwardZ
- };
 }
 
 function getBodyFacingFromMetaOrPose(points, meta, cam){
@@ -1055,6 +1062,7 @@ for(const id of Object.keys(P || {})){
     )
   );
 }
+// ===== 腰左右ポイント（追加） =====
 
 // box を登録
 const boxesForPick = poseExtra?.boxes || [];
@@ -1217,48 +1225,47 @@ if (clothesEl && poseExtra) {
       circleBtn.style.border = '2px solid #222';
       circleBtn.style.flexShrink = '0';
       circleBtn.title = `${item.label} を送信`;
-
 circleBtn.addEventListener('click', (e) => {
   e.stopPropagation();
 
-  const actionText = buildActionTextForClothes(item.label);
+  const actionText = buildActionTextForClothes(name);
 
-        // Geminiの入力欄を探す
-        let composer = document.querySelector('textarea');
-        if (!composer) composer = document.querySelector('div[contenteditable="true"]');
-        if (!composer) {
-          const rich = document.querySelector('rich-textarea');
-          if (rich && rich.shadowRoot) {
-            composer = rich.shadowRoot.querySelector('textarea, div[contenteditable="true"]');
-          }
-        }
+  let composer = document.querySelector('textarea');
+  if (!composer) composer = document.querySelector('div[contenteditable="true"]');
+  if (!composer) {
+    const rich = document.querySelector('rich-textarea');
+    if (rich && rich.shadowRoot) {
+      composer = rich.shadowRoot.querySelector('textarea, div[contenteditable="true"]');
+    }
+  }
 
-        if (composer) {
-          // テキストを入れる
-          if (composer.tagName === 'TEXTAREA') {
-            composer.value = actionText;
-          } else {
-            composer.textContent = actionText;
-          }
+  if (composer) {
+    if (composer.tagName === 'TEXTAREA') {
+      const plain = (composer.value || '').trim();
+      composer.value = plain ? `${plain} ${actionText}` : actionText;
+    } else {
+      const plain = (composer.innerText || composer.textContent || '').trim();
+      composer.textContent = plain ? `${plain} ${actionText}` : actionText;
+    }
 
-          composer.focus();
+    composer.focus();
+    composer.dispatchEvent(new InputEvent('input', { bubbles: true }));
 
-          // 少し待ってからEnter送信（Gemini対応）
-          setTimeout(() => {
-            const enterEvent = new KeyboardEvent('keydown', {
-              key: 'Enter',
-              code: 'Enter',
-              bubbles: true,
-              cancelable: true
-            });
-            composer.dispatchEvent(enterEvent);
-            console.log('[Pose] Sent and submitted:', actionText);
-          }, 100);
-
-        } else {
-          console.log('[Pose] Composer not found');
-        }
+    setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
       });
+      composer.dispatchEvent(enterEvent);
+      console.log('[Pose] Sent and submitted LINE:', actionText);
+    }, 100);
+  } else {
+    console.log('[Pose] Composer not found');
+  }
+});
+
 
       // ホバー効果
       circleBtn.addEventListener('mouseover', () => {
@@ -1293,6 +1300,127 @@ div.appendChild(textSpan);
       clothesEl.appendChild(div);
     }
   });
+    // === BOXS を追加表示 ===
+const boxesData = Array.isArray(poseExtra.boxes) ? poseExtra.boxes : [];
+boxesData.forEach((box, index) => {
+  const name = (box?.name || `box_${index}`).trim();
+  if(!name) return;
+
+  const div = document.createElement('div');
+  div.style.marginBottom = '2px';
+  div.style.display = 'flex';
+  div.style.alignItems = 'center';
+
+  const circleBtn = document.createElement('div');
+  circleBtn.style.width = '11px';
+  circleBtn.style.height = '11px';
+  circleBtn.style.borderRadius = '50%';
+  circleBtn.style.backgroundColor = '#ffdd88';
+  circleBtn.style.marginRight = '8px';
+  circleBtn.style.cursor = 'pointer';
+  circleBtn.style.border = '2px solid #222';
+  circleBtn.style.flexShrink = '0';
+  circleBtn.title = `BOXS ${name} を送信`;
+
+circleBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+
+  const actionText = buildActionTextForClothes(name);
+
+  let composer = document.querySelector('textarea');
+  if (!composer) composer = document.querySelector('div[contenteditable="true"]');
+  if (!composer) {
+    const rich = document.querySelector('rich-textarea');
+    if (rich && rich.shadowRoot) {
+      composer = rich.shadowRoot.querySelector('textarea, div[contenteditable="true"]');
+    }
+  }
+
+  if (composer) {
+    if (composer.tagName === 'TEXTAREA') {
+      const plain = (composer.value || '').trim();
+      composer.value = plain ? `${plain} ${actionText}` : actionText;
+    } else {
+      const plain = (composer.innerText || composer.textContent || '').trim();
+      composer.textContent = plain ? `${plain} ${actionText}` : actionText;
+    }
+
+    composer.focus();
+    composer.dispatchEvent(new InputEvent('input', { bubbles: true }));
+
+    setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      });
+      composer.dispatchEvent(enterEvent);
+      console.log('[Pose] Sent and submitted BOX:', actionText);
+    }, 100);
+  } else {
+    console.log('[Pose] Composer not found');
+  }
+});
+
+  circleBtn.addEventListener('mouseover', () => {
+    circleBtn.style.backgroundColor = '#ffeebb';
+    circleBtn.style.transform = 'scale(1.2)';
+  });
+  circleBtn.addEventListener('mouseout', () => {
+    circleBtn.style.backgroundColor = '#ffdd88';
+    circleBtn.style.transform = 'scale(1)';
+  });
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = `📦：${name}`;
+  textSpan.style.color = '#ffdd88';
+
+  div.appendChild(circleBtn);
+  div.appendChild(textSpan);
+  clothesEl.appendChild(div);
+});
+
+// === LINES を追加表示 ===
+const linesData = Array.isArray(poseExtra.lines) ? poseExtra.lines : [];
+linesData.forEach((line, index) => {
+  const name = (line?.name || `line_${index}`).trim();
+  if(!name) return;
+
+  const div = document.createElement('div');
+  div.style.marginBottom = '2px';
+  div.style.display = 'flex';
+  div.style.alignItems = 'center';
+
+  const circleBtn = document.createElement('div');
+  circleBtn.style.width = '11px';
+  circleBtn.style.height = '11px';
+  circleBtn.style.borderRadius = '50%';
+  circleBtn.style.backgroundColor = '#ffdd88';
+  circleBtn.style.marginRight = '8px';
+  circleBtn.style.cursor = 'pointer';
+  circleBtn.style.border = '2px solid #222';
+  circleBtn.style.flexShrink = '0';
+  circleBtn.title = `LINES ${name} を送信`;
+
+
+  circleBtn.addEventListener('mouseover', () => {
+    circleBtn.style.backgroundColor = '#ffeebb';
+    circleBtn.style.transform = 'scale(1.2)';
+  });
+  circleBtn.addEventListener('mouseout', () => {
+    circleBtn.style.backgroundColor = '#ffdd88';
+    circleBtn.style.transform = 'scale(1)';
+  });
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = `🪡：${name}`;
+  textSpan.style.color = '#ffdd88';
+
+  div.appendChild(circleBtn);
+  div.appendChild(textSpan);
+  clothesEl.appendChild(div);
+});
 }
 ///////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////
@@ -1415,14 +1543,14 @@ function drawHeadBlock(){
     ctx.restore();
   }
   // === 2. 頭の向き計算 ===
-  const metaHead = poseSceneMeta?.head;
-  let f = metaHead?.forward || { x: 0, y: 0, z: 1 };
+const normalize = (v) => {
+  const l = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / l, y: v.y / l, z: v.z / l };
+};
 
-  const normalize = (v) => {
-    const l = Math.hypot(v.x, v.y, v.z) || 1;
-    return { x: v.x / l, y: v.y / l, z: v.z / l };
-  };
-  f = normalize(f);
+// body と同じ forward 判定を使う
+let f = getBodyForwardForDepth();
+f = normalize(f);
 
   const headCenter = {
     x: skullTop.x,
@@ -1653,7 +1781,7 @@ fillHalfPlane(
   }
 }
     function fillHalfPlane(ctx, center, sideX, sideY, dirX, dirY, color){
-  const FAR = 4000;
+  const FAR = 1000;
 
   const p1 = {
     x: center.x + sideX * FAR,
@@ -2177,7 +2305,8 @@ function drawBodySurface(ctx, P, rawPoints, bodyBasis, waistWidth = 1.0, outerBo
 
 const rawSpine = rawPoints.ID01;
 const right = bodyBasis?.right || { x: 1, y: 0, z: 0 };
-const halfWidth3D = 0.16;
+const waistWidthRaw = poseExtra?.body?.waistWidth ?? 1.0;
+const halfWidth3D = 0.16 * waistWidthRaw;
 
 const candA = {
  x: rawSpine.x + right.x * halfWidth3D,
@@ -2190,15 +2319,20 @@ const candB = {
  y: rawSpine.y - right.y * halfWidth3D,
  z: rawSpine.z - right.z * halfWidth3D
 };
-  const distAtoL = dist3D(candA, rawHipL);
-  const spineL3 = distAtoL <= dist3D(candA, rawHipR) ? candA : candB;
-  const spineR3 = distAtoL <= dist3D(candA, rawHipR) ? candB : candA;
+const distAtoL = dist3D(candA, rawHipL);
+const spineL3 = distAtoL <= dist3D(candA, rawHipR) ? candA : candB;
+const spineR3 = distAtoL <= dist3D(candA, rawHipR) ? candB : candA;
 
-  const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
-  let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
-  let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
+const layoutMetrics = getLayoutMetrics(rawPoints, cw, ch);
+let spineL = projectPointToScreen(spineL3, cw, ch, layoutMetrics);
+let spineR = projectPointToScreen(spineR3, cw, ch, layoutMetrics);
 
-  const torsoMinScreenWidth = 14;
+// ===== デバッグ表示：くびれ左右ポイント =====
+drawCircle(ctx, spineL, 5, '#00ffff');
+drawCircle(ctx, spineR, 5, '#00ffff');
+
+const torsoMinScreenWidth = 14;
+
   const spineMid = { x: (spineL.x + spineR.x)*0.5, y: (spineL.y + spineR.y)*0.5 };
   const torsoAxisLen = Math.hypot(pelvis.x - spineMid.x, pelvis.y - spineMid.y) || 1;
   let side2D = { x: -(pelvis.y - spineMid.y)/torsoAxisLen, y: (pelvis.x - spineMid.x)/torsoAxisLen };
@@ -2346,11 +2480,18 @@ if(!node) return;
 const text = node.textContent || '';
 const jsonText = extractLatestPoseJsonBlock(text);
 
- const metaText = extractLatestPoseSceneMetaBlock(text);
- const extraText = extractLatestPoseExtraBlock(text);
+const metaText = extractLatestPoseSceneMetaBlock(text);
+const extraText = extractLatestPoseExtraBlock(text);
+const trackText = extractTrackText(text);
 
- let parsed = null;
- let parsedMeta = null;
+let parsed = null;
+let parsedMeta = null;
+
+// 同じTRACKを再適用しない
+if(trackText && trackText === lastTrackText && node === poseSourceNode){
+  setSyncButtonLoading(false);
+  return;
+}
 
 if(extraText){
  try {
@@ -2455,9 +2596,15 @@ function checkAndAutoSyncPose(){
 
  const metaBlock = extractLatestPoseSceneMetaBlock(text);
  const extraBlock = extractLatestPoseExtraBlock(text);
+ const trackText = extractTrackText(text);
 
  // まずは全部そろうまで待つ
  if(!metaBlock || !extraBlock){
+  return;
+ }
+
+ // TRACK が取れていて、しかも前回と同じなら何もしない
+ if(trackText && trackText === lastTrackText){
   return;
  }
 
@@ -2473,11 +2620,15 @@ function checkAndAutoSyncPose(){
  lastPoseBlock = block;
  lastPoseMetaBlock = metaBlock;
  lastPoseExtraBlock = extraBlock;
-console.log('[POSE] autoSync diff', {
-  poseChanged: block !== lastPoseBlock,
-  metaChanged: metaBlock !== lastPoseMetaBlock,
-  extraChanged: extraBlock !== lastPoseExtraBlock
-});
+ lastTrackText = trackText;
+
+ console.log('[POSE] autoSync diff', {
+  track: trackText,
+  poseChanged: true,
+  metaChanged: true,
+  extraChanged: true
+ });
+
  syncPose();
 }
 function startAutoSyncObserver(){
@@ -2840,8 +2991,8 @@ forceFrontText.textContent = 'FORCE VIEW';
 viewOptionRow.appendChild(forceFrontCheckbox);
 viewOptionRow.appendChild(forceFrontText);
 
-const resetBtn = makeButton('RESET', () => resetCamera());
-const syncBtn = makeButton('SYNC', () => syncPose(), 'pose-min-sync-btn');
+const resetBtn = makeButton('🚀初期設定', () => sendResetPrompt(), 'pose-min-reset-btn');
+const syncBtn = makeButton('♻️再表示', () => sendSyncPrompt(), 'pose-min-sync-btn');
 
 const stripBtn = makeButton('', () => {
  stripPoseJsonOnSend = !stripPoseJsonOnSend;
@@ -3071,6 +3222,84 @@ pendingSelectShift = false;
 didDragSinceMouseDown = false;
  });
 }
+function sendResetPrompt(){
+  setSyncButtonLoading(true);
+
+  const actionText = "毎ターン、💾POSE VIEWER の後に <POSE_JSON> / <POSE_SCENE_META> / <POSE_EXTRA> を必ず出力。省略禁止。";
+
+  let composer = document.querySelector('textarea');
+  if (!composer) composer = document.querySelector('div[contenteditable="true"]');
+  if (!composer) {
+    const rich = document.querySelector('rich-textarea');
+    if (rich && rich.shadowRoot) {
+      composer = rich.shadowRoot.querySelector('textarea, div[contenteditable=\"true\"]');
+    }
+  }
+
+  if (composer) {
+    if (composer.tagName === 'TEXTAREA') {
+      composer.value = actionText;
+    } else {
+      composer.textContent = actionText;
+    }
+
+    composer.focus();
+
+    setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      });
+      composer.dispatchEvent(enterEvent);
+
+      setSyncButtonLoading(false);
+    }, 100);
+  } else {
+    setSyncButtonLoading(false);
+  }
+}
+function sendSyncPrompt(){
+  setSyncButtonLoading(true);
+
+  const actionText = "POSE_JSON破綻。抽象JSON禁止。ターン進行せず、ID整合とキャラクター維持で再出力。";
+
+  let composer = document.querySelector('textarea');
+  if (!composer) composer = document.querySelector('div[contenteditable="true"]');
+  if (!composer) {
+    const rich = document.querySelector('rich-textarea');
+    if (rich && rich.shadowRoot) {
+      composer = rich.shadowRoot.querySelector('textarea, div[contenteditable="true"]');
+    }
+  }
+
+  if (composer) {
+    if (composer.tagName === 'TEXTAREA') {
+      composer.value = actionText;
+    } else {
+      composer.textContent = actionText;
+    }
+
+    composer.focus();
+
+    setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        code: 'Enter',
+        bubbles: true,
+        cancelable: true
+      });
+      composer.dispatchEvent(enterEvent);
+
+      console.log('[Pose] SYNC prompt sent');
+      setSyncButtonLoading(false);
+    }, 100);
+  } else {
+    console.log('[Pose] Composer not found');
+    setSyncButtonLoading(false);
+  }
+}
 function findGeminiComposer(){
  const candidates = [
   document.querySelector('div[contenteditable="true"][role="textbox"]'),
@@ -3128,7 +3357,7 @@ function sendTextToGemini(text){
  composer.focus();
 
  const plain = (composer.innerText || composer.textContent || '').trim();
- const nextText = plain ? `${plain}\n${text}` : text;
+const nextText = plain ? `${plain} ${text}` : text;
 
  composer.innerText = nextText;
  composer.dispatchEvent(new InputEvent('input', { bubbles: true }));
@@ -4634,15 +4863,15 @@ function roundVec(v){
  };
 }
 function getHeadFacingFromMetaOrPose(points, meta, cam){
- const metaForward = meta?.head?.forward;
+ const bodyForward = getBodyForwardForDepth();
 
  if(
-  metaForward &&
-  Number.isFinite(metaForward.x) &&
-  Number.isFinite(metaForward.y) &&
-  Number.isFinite(metaForward.z)
+  bodyForward &&
+  Number.isFinite(bodyForward.x) &&
+  Number.isFinite(bodyForward.y) &&
+  Number.isFinite(bodyForward.z)
  ){
-  const nf = vecNormalize(metaForward);
+  const nf = vecNormalize(bodyForward);
   const info = getFacingFromForwardVec(nf, cam);
 
   const viewCam = getViewCamera(cam);
@@ -4653,7 +4882,7 @@ function getHeadFacingFromMetaOrPose(points, meta, cam){
    lr: rf.x >= 0 ? 1 : -1,
    frontness: clamp((rf.z + 1) * 0.5, 0, 1),
    sideness: clamp(Math.abs(rf.x), 0, 1),
-   source: 'meta'
+   source: 'body'
   };
  }
 
@@ -4682,6 +4911,93 @@ function getBodyViewInfo(cam){
  };
 }
 function getBodyForwardForDepth(){
+ const points = getPosePointsWithSceneOffset(pose.points || {});
+
+ // ===== 乳首方向を最優先して前を決める（XZ平面のみ） =====
+ const chest = points?.ID02;
+ const nR = points?.ID19;
+ const nL = points?.ID20;
+
+ if(chest && nR && nL){
+  const nippleCenter = {
+   x: (nR.x + nL.x) * 0.5,
+   y: (nR.y + nL.y) * 0.5,
+   z: (nR.z + nL.z) * 0.5
+  };
+
+  const dir = {
+   x: nippleCenter.x - chest.x,
+   y: 0,
+   z: nippleCenter.z - chest.z
+  };
+
+  const len = Math.hypot(dir.x, dir.z);
+  if(len > 0.00001){
+   return {
+    x: dir.x / len,
+    y: 0,
+    z: dir.z / len
+   };
+  }
+ }
+
+ // ===== fallback 1: 胸中心群（ID23/24/27） =====
+ const bR = points?.ID23;
+ const bL = points?.ID24;
+ const bC = points?.ID27;
+
+ if(chest){
+  const frontCandidates = [bR, bL, bC].filter(Boolean);
+
+  if(frontCandidates.length){
+   const center = frontCandidates.reduce((acc, p) => ({
+    x: acc.x + p.x,
+    y: acc.y + p.y,
+    z: acc.z + p.z
+   }), { x: 0, y: 0, z: 0 });
+
+   center.x /= frontCandidates.length;
+   center.y /= frontCandidates.length;
+   center.z /= frontCandidates.length;
+
+   const dir = {
+    x: center.x - chest.x,
+    y: 0,
+    z: center.z - chest.z
+   };
+
+   const len = Math.hypot(dir.x, dir.z);
+   if(len > 0.00001){
+    return {
+     x: dir.x / len,
+     y: 0,
+     z: dir.z / len
+    };
+   }
+  }
+ }
+
+ // ===== fallback 2: genital / anus =====
+ const genital = points?.ID21;
+ const anus = points?.ID22;
+ if(genital && anus){
+  const dir = {
+   x: genital.x - anus.x,
+   y: 0,
+   z: genital.z - anus.z
+  };
+
+  const len = Math.hypot(dir.x, dir.z);
+  if(len > 0.00001){
+   return {
+    x: dir.x / len,
+    y: 0,
+    z: dir.z / len
+   };
+  }
+ }
+
+ // ===== fallback 3: meta.forward =====
  const f = poseSceneMeta?.body?.forward;
  if(
   f &&
@@ -4689,11 +5005,32 @@ function getBodyForwardForDepth(){
   Number.isFinite(f.y) &&
   Number.isFinite(f.z)
  ){
-  return vecNormalize(f);
+  const flat = { x: f.x, y: 0, z: f.z };
+  const len = Math.hypot(flat.x, flat.z);
+  if(len > 0.00001){
+   return {
+    x: flat.x / len,
+    y: 0,
+    z: flat.z / len
+   };
+  }
  }
 
- const basis = buildRootBasis(getPosePointsWithSceneOffset(pose.points || {}));
- return basis?.forward || { x: 0, y: 0, z: 1 };
+ // ===== fallback 4: 骨盤基準 =====
+ const basis = buildRootBasis(points);
+ if(basis?.forward){
+  const flat = { x: basis.forward.x, y: 0, z: basis.forward.z };
+  const len = Math.hypot(flat.x, flat.z);
+  if(len > 0.00001){
+   return {
+    x: flat.x / len,
+    y: 0,
+    z: flat.z / len
+   };
+  }
+ }
+
+ return { x: 0, y: 0, z: 1 };
 }
 function drawPointLabels(ctx, projected, rawPoints){
  if(!projected) return;
@@ -4938,7 +5275,17 @@ function startHighlightAnimation(){
  highlightAnimationFrame = requestAnimationFrame(tick);
 }
 
+function extractTrackText(text){
+  if(!text) return '';
 
+  const m = text.match(/TRACK\s*:\s*([^\s<\]]+)/i);
+  if(m) return m[1].trim();
+
+  const m2 = text.match(/\[TRACK\s+([^\]]+)\]/i);
+  if(m2) return m2[1].trim();
+
+  return '';
+}
 function buildFallbackOutput(rawPose, prevState){
  return {
   out: {
