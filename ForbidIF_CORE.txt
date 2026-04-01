@@ -1362,6 +1362,12 @@ clothes には、その時点で実際に着用しているもののみを記載
 ただし、その衣装の内側に別の下着を着用している場合は、
 内側の下着を bra / panties とし、
 水着・ビキニアーマー側は outerTop / outerBottom として扱う。
+
+ロングスカートは outerBottom として扱う。
+脚がスカートにより隠れる場合でも、
+tights および lowerLeg は省略せず、
+outerBottom と同色で定義する。
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_SCENE_META / POSE_EXTRA FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
