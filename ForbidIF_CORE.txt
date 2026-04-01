@@ -1330,24 +1330,6 @@ ID21,22 → ID10
 ID21 = forward 側  
 ID22 = 逆側  
 forward 反転時は連動反転
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-■ POSE_SCENE_META
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-POSE_JSON とは別に、必要な場合のみ以下を出力する。
-
-- scene.position
-- scene.forward
-- scene.up
-- body.root
-- body.forward
-- body.up
-- head.root
-- head.forward
-- head.up
-
-- body.forward は胴体の前方向
-- head.forward は顔の前方向
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 方向優先ルール
@@ -1368,7 +1350,18 @@ ID22（Anus）は body.forward の逆側に置く。
 
 body.forward が反転した場合、
 ID21 / ID22 の前後関係もそれに合わせること。
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+■ 衣装ルール
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+clothes には、その時点で実際に着用しているもののみを記載する。
+脱いだ衣装は削除し、none は使わない。
 
+水着・ビキニアーマー・布面積の少ない上下セット衣装は、
+それ自体を bra / panties として扱う。
+
+ただし、その衣装の内側に別の下着を着用している場合は、
+内側の下着を bra / panties とし、
+水着・ビキニアーマー側は outerTop / outerBottom として扱う。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ POSE_SCENE_META / POSE_EXTRA FORMAT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1430,7 +1423,7 @@ ID21 / ID22 の前後関係もそれに合わせること。
     "bra": "#000000",
     "pantiesName": "pantiesName",
     "panties": "#000000",
-    "tightsName": "tightsName"
+    "tightsName": "tightsName",
     "tights": "#111111"
     "lowerLegName": "lowerLegName",
     "lowerLeg": "#111111",
