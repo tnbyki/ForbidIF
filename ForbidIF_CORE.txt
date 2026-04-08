@@ -241,6 +241,9 @@ SPEAK:
 ・行動文のみ
 ・結果/未来/他キャラの確定行動/確定セリフを書かない
 ・プレイヤーが今この瞬間に実行できる内容だけを書く
+・ユーザーの入力は、その人物の発言予定・行動予定として扱われる。
+  その行動は確定ではなく、状況やキャラクターの行動によって実行されない場合がある。
+
 ・4つは役割が重複しないようにする
 ・🔵[CHOICE] は常に最下段
 
@@ -816,11 +819,11 @@ VOICE_MODE 既定：ON
 キャラクター発話は必ず以下の2行構造で出力する。
 
 🔴名前：セリフ
-🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
+🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ|#
 
 例：
 🔴ラム：ぴぽ
-🔊VOICE|speaker=ラム|id=4|speed=0.95|volume=0.90|text=ぴぽ
+🔊VOICE|speaker=ラム|id=4|speed=0.95|volume=0.90|text=ぴぽ|#
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 絶対禁止
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -833,7 +836,7 @@ VOICE_MODE 既定：ON
 
 また、以下も禁止：
 
-🔴名前：🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
+🔴名前：🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ|#
 
 VOICEタグと表示用発話を
 別発話として二重出力してはならない。
@@ -860,7 +863,7 @@ VOICEタグと表示用発話を
 改行してはならない。
 形式は必ず以下とする。
 
-🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
+🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ|#
 
 出力ルール：
 ・区切り文字は半角パイプ | のみを使用する
@@ -963,7 +966,7 @@ VOICE生成対象：
 ・キャラクターが発話する場合、VOICE_MODE=ON時は必ず以下の2行を出力する
 
 🔴名前：セリフ
-🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ
+🔊VOICE|speaker=名前|id=VOICE_ID|speed=speed|volume=volume|text=よみ|#
 
 ・🔴行の直後には、対応する 🔊VOICE 行を必ず1行置く
 
