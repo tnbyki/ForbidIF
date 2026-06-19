@@ -1,6 +1,3 @@
-// LIE_DOCKING_YAW_FLIP_BUILD 2026-06-20: Flips Lie Docking front/back preference after yaw lock selection.
-// LIE_DOCKING_YAW_LOCK_BUILD 2026-06-20: In Lie pose, locks Docking yaw to target root same/opposite direction instead of Labia/red-line angle.
-// LIE_PUSH_AUTO_FIX_BUILD 2026-06-20: Allows PUSH/PUSH Auto during Lie pose and uses Lie-compensated push depth for auto trigger.
 // STANDING_KEEP_LEG_IK_LOG_TRIM_BUILD 2026-06-19: Keeps leg IK during standing docking and trims normal PUSH logs behind Debug View.
 // HUD_IGNORE_ANGLE_GATE_BUILD 2026-06-19: Keeps control GenDepth angle-gated but lets the right HUD bar display raw depth through the angle gate.
 // ANGLE_GATE_NO_BASE_LIFT_BUILD 2026-06-19: Keeps yellow P2 fallback but disables dynamic P Base lift when live G Depth angle is outside the 45 degree gate.
@@ -332,8 +329,6 @@ public class TargetLinePerson : MVRScript
     bool dynamicYellowEndFrozen;
     bool lastGenDepthSampleKnown;
     float lastGenDepthRawDepth;
-    float lastGenDepthPushEffectiveDepth;
-    bool lastGenDepthPushLieCompensated;
     float lastGenDepthLateral;
     float lastGenDepthBodyDistance;
     float lastGenDepthPercent;
@@ -350,9 +345,6 @@ public class TargetLinePerson : MVRScript
     float appliedUpperTiltAngle;
     bool hasAppliedUpperTilt;
     bool rideLieActive;
-    bool lieDockingYawLockActive;
-    Vector3 lieDockingYawLockForward;
-    bool lieDockingYawLockOpposite;
 
     Coroutine avoidCaptureRoutine;
     Coroutine delayedLineLockRoutine;
@@ -2200,9 +2192,6 @@ public class TargetLinePerson : MVRScript
         upperBodyLowerBaseCaptured = false;
         lastAppliedUpperBodyLower = 0f;
         rideLieActive = false;
-        lieDockingYawLockActive = false;
-        lieDockingYawLockForward = Vector3.zero;
-        lieDockingYawLockOpposite = false;
         pAngleAtYellowP3Applied = false;
         pDynamicBaseYApplied = false;
         lastDynamicPBaseOffset = Vector3.zero;
@@ -2507,9 +2496,6 @@ public class TargetLinePerson : MVRScript
         nowDockingLineFitActive = false;
         nowDockingKeepCurrentPlacement = false;
         nowDockingLineFitPBaseY = 0f;
-        lieDockingYawLockActive = false;
-        lieDockingYawLockForward = Vector3.zero;
-        lieDockingYawLockOpposite = false;
 
         captured = true;
         distance.valNoCallback = 1.0f;
@@ -2570,7 +2556,6 @@ if (!ApplyAutoLieOnRidePoseIfNeeded())
     ReleaseRideLieIfNeeded();
     ApplySitGroundPoseIfNeeded();
 }
-ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
 
         if (avoidCaptureRoutine != null)
         {
@@ -6249,136 +6234,6 @@ void OverrideCapturedDirectionForRidePose()
     capturedLineDir = dir;
 }
 
-void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool reverseCurrentSide)
-{
-    if (!rideLieActive && !IsOwnLiePoseForYellowGuide())
-    {
-        return;
-    }
-
-    Atom targetAtom = FindAtom(targetPersonChooser.val);
-    if (targetAtom == null)
-    {
-        return;
-    }
-
-    Vector3 targetForward = GetTargetRootForward(targetAtom, capturedDir);
-    targetForward.y = 0f;
-
-    if (targetForward.sqrMagnitude < 0.0001f && capturedDir.sqrMagnitude >= 0.0001f)
-    {
-        targetForward = capturedDir;
-        targetForward.y = 0f;
-    }
-
-    if (targetForward.sqrMagnitude < 0.0001f)
-    {
-        return;
-    }
-
-    targetForward.Normalize();
-
-    bool opposite = hardMode;
-    float currentSideDot = 0f;
-    string selectMode = hardMode ? "reverse-smart" : "smart";
-
-    if (chooseCurrentSide)
-    {
-        FreeControllerV3 ownHip = GetOwnHip();
-        Vector3 toOwn = Vector3.zero;
-
-        if (ownHip != null)
-        {
-            toOwn = ownHip.transform.position - capturedOrigin;
-            toOwn.y = 0f;
-        }
-
-        if (toOwn.sqrMagnitude >= 0.0001f)
-        {
-            currentSideDot = Vector3.Dot(toOwn.normalized, targetForward);
-            // Lie同方向は、相手root.forwardの後ろ側に自分hipを置く。
-            // 前側にいる場合は正反対向きにする。
-            opposite = currentSideDot > 0f;
-        }
-        else if (containingAtom != null && containingAtom.mainController != null)
-        {
-            Vector3 ownForward = containingAtom.mainController.transform.forward;
-            ownForward.y = 0f;
-            if (ownForward.sqrMagnitude >= 0.0001f)
-            {
-                currentSideDot = Vector3.Dot(ownForward.normalized, targetForward);
-                opposite = currentSideDot < 0f;
-            }
-        }
-
-        if (reverseCurrentSide)
-        {
-            opposite = !opposite;
-        }
-
-        selectMode = reverseCurrentSide ? "now-reverse-current-side" : "now-current-side";
-    }
-
-    // Preference flip: keep the stable same/opposite 2-choice lock,
-    // but use the other front/back side for Lie docking.
-    opposite = !opposite;
-
-    Vector3 desiredRootForward = opposite ? -targetForward : targetForward;
-    desiredRootForward.y = 0f;
-
-    if (desiredRootForward.sqrMagnitude < 0.0001f)
-    {
-        return;
-    }
-
-    desiredRootForward.Normalize();
-
-    lieDockingYawLockActive = true;
-    lieDockingYawLockForward = desiredRootForward;
-    lieDockingYawLockOpposite = opposite;
-
-    // In normal standing docking, capturedDir is the position direction from target to own hip,
-    // while root yaw faces back toward the target.  For Lie, keep that relationship stable:
-    // root yaw = same/opposite target root yaw, position line = the opposite side of that yaw.
-    capturedDir = -desiredRootForward;
-
-    if (capturedLineDir.sqrMagnitude < 0.0001f)
-    {
-        capturedLineDir = capturedDir;
-    }
-
-    if (chooseCurrentSide)
-    {
-        FreeControllerV3 ownHip = GetOwnHip();
-        float lieFitSideDot = 1f;
-
-        if (ownHip != null)
-        {
-            Vector3 toOwn = ownHip.transform.position - capturedOrigin;
-            toOwn.y = 0f;
-
-            if (toOwn.sqrMagnitude >= 0.0001f)
-            {
-                lieFitSideDot = Vector3.Dot(toOwn.normalized, capturedDir.normalized);
-            }
-        }
-
-        FitNowDockingDistanceToCurrentLine(lieFitSideDot);
-    }
-
-    DebugLog(
-        "[TargetLinePerson] LIE DOCKING YAW LOCK" +
-        " / mode=" + selectMode +
-        " / yaw=" + (opposite ? "opposite" : "same") +
-        " / frontBackFlip=1" +
-        " / currentSideDot=" + currentSideDot.ToString("F3") +
-        " / targetForward=(" + FormatVector3(targetForward) + ")" +
-        " / rootForward=(" + FormatVector3(lieDockingYawLockForward) + ")" +
-        " / capturedDir=(" + FormatVector3(capturedDir) + ")" +
-        " / lineDir=(" + FormatVector3(capturedLineDir) + ")"
-    );
-}
-
 bool IsTargetRideLikePose()
 {
     Atom targetAtom = FindAtom(targetPersonChooser.val);
@@ -6812,12 +6667,6 @@ bool IsTargetRideLikePose()
 
     void FaceCapturedOriginFromOwnHip(FreeControllerV3 ownHip)
     {
-        if (lieDockingYawLockActive && lieDockingYawLockForward.sqrMagnitude >= 0.0001f)
-        {
-            FaceDirection(lieDockingYawLockForward);
-            return;
-        }
-
         if (ownHip == null || containingAtom == null || containingAtom.mainController == null)
         {
             return;
@@ -8007,8 +7856,6 @@ bool IsTargetRideLikePose()
     {
         lastGenDepthSampleKnown = true;
         lastGenDepthRawDepth = rawDepth;
-        lastGenDepthPushLieCompensated = IsPushAutoLieDepthCompensationActive();
-        lastGenDepthPushEffectiveDepth = lastGenDepthPushLieCompensated ? Mathf.Abs(rawDepth) : rawDepth;
         lastGenDepthLateral = lateralDistance;
         lastGenDepthBodyDistance = bodyDistance;
         lastGenDepthPercent = percent;
@@ -9535,15 +9382,10 @@ bool IsTargetRideLikePose()
             lastGenDepthBodyDistance > GetGenBodyGateMaxDistance();
     }
 
-    bool IsPushAutoLieDepthCompensationActive()
-    {
-        return rideLieActive || IsOwnLiePoseForYellowGuide();
-    }
-
     bool IsPushAutoGDepthEnterCandidate()
     {
         return lastGenDepthSampleKnown &&
-            lastGenDepthPushEffectiveDepth >= PushAutoGDepthEnterRawDepth &&
+            lastGenDepthRawDepth >= PushAutoGDepthEnterRawDepth &&
             lastGenDepthLateral <= PushAutoGDepthEnterLateralMax &&
             !IsPushAutoGDepthBodyGated();
     }
@@ -9555,7 +9397,7 @@ bool IsTargetRideLikePose()
             return true;
         }
 
-        bool tipShallow = lastGenDepthPushEffectiveDepth < PushAutoGDepthExitRawDepth;
+        bool tipShallow = lastGenDepthRawDepth < PushAutoGDepthExitRawDepth;
         float currentDistance = distance != null ? distance.val : pushAutoGDepthStartDistance;
         bool distanceIncreased = currentDistance > pushAutoGDepthStartDistance + PushAutoGDepthExitDistanceDelta;
 
@@ -9566,8 +9408,6 @@ bool IsTargetRideLikePose()
     {
         return " / autoMode=" + GetPushAutoMode() +
             " / rawDepth=" + (lastGenDepthSampleKnown ? lastGenDepthRawDepth.ToString("F3") : "n/a") +
-            " / pushDepth=" + (lastGenDepthSampleKnown ? lastGenDepthPushEffectiveDepth.ToString("F3") : "n/a") +
-            " / lieDepth=" + (lastGenDepthSampleKnown ? (lastGenDepthPushLieCompensated ? "1" : "0") : "n/a") +
             " / lateral=" + (lastGenDepthSampleKnown ? lastGenDepthLateral.ToString("F3") : "n/a") +
             " / distance=" + (distance != null ? distance.val.ToString("F3") : "n/a") +
             " / startDistance=" + pushAutoGDepthStartDistance.ToString("F3") +
@@ -9777,6 +9617,16 @@ bool IsTargetRideLikePose()
             yield break;
         }
 
+        if (IsPControlBlockedByLiePose())
+        {
+            pushReleasePIkOnDone = false;
+            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=lie-pose-active");
+            pushPRoutine = null;
+            pushAutoLoopActive = false;
+            UpdatePushButtonUi();
+            yield break;
+        }
+
         if (isAvoidMoving)
         {
             pushReleasePIkOnDone = false;
@@ -9825,8 +9675,6 @@ bool IsTargetRideLikePose()
 
         Vector3 tipFromOrigin = penisTip.transform.position - origin;
         float rawDepth = Vector3.Dot(tipFromOrigin, dir);
-        bool pushLieDepth = IsPushAutoLieDepthCompensationActive();
-        float pushDepth = pushLieDepth ? Mathf.Abs(rawDepth) : rawDepth;
         Vector3 closestOnAxis = origin + dir * rawDepth;
         float lateral = Vector3.Distance(penisTip.transform.position, closestOnAxis);
 
@@ -9846,8 +9694,6 @@ bool IsTargetRideLikePose()
             " / add=" + GetPushPAddDistance().ToString("F3") +
             " / maxMove=" + GetPushPMaxMoveDistance().ToString("F3") +
             " / rawDepth=" + rawDepth.ToString("F3") +
-            " / pushDepth=" + pushDepth.ToString("F3") +
-            " / lieDepth=" + (pushLieDepth ? "1" : "0") +
             " / lateral=" + lateral.ToString("F3") +
             " / origin=(" + FormatVector3(origin) + ")" +
             " / dir=(" + FormatVector3(dir) + ")"
