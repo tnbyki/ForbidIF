@@ -1,3 +1,13 @@
+// MOUTH_PUSH_Y_SCALE_050_BUILD 2026-06-21: Relaxes mouth vertical damping from 0.25 to 0.50 so the line returns closer to mouthPhysicsMeshPredictionPoint.forward.
+// MOUTH_PUSH_AUTO_BUILD 2026-06-21: Enables PUSH/Auto PUSH for mouth with a dedicated mouth inside line and no mouth yellow fallback.
+// ANUS_NO_YELLOW_FALLBACK_AXIS_FIX_BUILD 2026-06-21: Keeps Anus P follow on the live anus axis instead of falling back to Yellow Guide, and derives Anus inside direction from the current red-line direction.
+// ANUS_MARKER_THIN_RIGHT_STABLE_DIR_BUILD 2026-06-21: Nudges Anus */circle marker slightly right, thins its lines, and stabilizes Anus depth direction using own root/hip approach side instead of P controllers.
+// ANUS_MARKER_MICRO_RIGHT_BUILD 2026-06-21: Nudges the Anus HUD star/circle marker a tiny bit right while keeping size and circle behavior unchanged.
+// ANUS_MARKER_2THIRD_RIGHT_CIRCLE_FLIP_BUILD 2026-06-21: Restores Anus HUD marker size from half to about two-thirds, nudges it slightly right, and flips circle draw order vertically.
+// ANUS_STAR_HALF_LEFT_UP_CIRCLE_BUILD 2026-06-21: Moves Anus HUD marker one marker left/up, halves size again, and switches * to circle when fully open.
+// ANUS_STAR_SMALLER_RIGHT_BUILD 2026-06-21: Shrinks Anus HUD star so new max equals previous min and nudges the star slightly right.
+// ANUS_DEPTH_DIRECTION_STAR_BUILD 2026-06-21: Auto-flips Anus depth/P-follow direction so own P stays on the approach side, and adds a growing asterisk marker under the Anus HUD bar.
+// ANUS_DEPTH_HUD_AND_P_FOLLOW_BUILD 2026-06-21: Adds Anus depth HUD to the right of Gen HUD and uses Anus inside-line P follow near target.
 // G_CONTACT_DOT_MICRO_LEFT_DOWN_2_BUILD 2026-06-21: Micro-adjusts the always-visible G contact dot slightly further left and down from v155.
 // G_CONTACT_DOT_INITIAL_RED_RANGE_BUILD 2026-06-21: Shows the P Tip/G HUD dot from the start, nudges it half-dot right/down, and keeps it red only during the existing P Tip on G contact range.
 // G_CONTACT_DOT_HALF_COLOR_BUILD 2026-06-21: Halves the P Tip/G HUD dot, nudges it slightly lower, and changes proximity by light-to-deep pink color without hiding alpha.
@@ -6,6 +16,10 @@
 // G_CONTACT_DOT_SHIFT_WIDE_COLOR_BUILD 2026-06-21: Shifts the always-visible G contact dot slightly right overall and widens the pale-pink to deep-pink proximity color range.
 // G_CONTACT_DOT_ALWAYS_RED_BUILD 2026-06-21: Keeps the G contact dot visible, shifts it left/down, and colors it from pale pink to red on contact.
 // P_TIP_G_CONTACT_HUD_DOT_BUILD 2026-06-21: Shows a pink contact dot under the Gen Depth HUD bar while P Tip is on G.
+// ANUS_DEPTH_HUD_AND_P_FOLLOW_BUILD 2026-06-21: Adds Anus depth HUD to the right of Gen HUD and uses Anus inside-line P follow near target.
+// ANUS_NO_100_LEFT_GEN_COLOR_BUILD 2026-06-21: Removes anus 100% horizontal marker, shifts anus HUD left by one bar width, and applies the clearer pink depth color ramp to Gen fill.
+// ANUS_PUSH_AUTO_ENABLED_BUILD 2026-06-21: Enables PUSH and PUSH Auto for anus target by using the current genital/anus inside line and keeps G-contact dot logs genital-only.
+// MOUTH_PUSH_AUTO_BUILD 2026-06-21: Enables PUSH/Auto PUSH for mouth with a dedicated mouth inside line and no mouth yellow fallback.
 // P_TIP_G_CONTACT_LOG_BUILD 2026-06-21: Allows PUSH Auto from P Tip on G contact without root-distance gating and logs on/off even when Debug View is off.
 // LIE_SAFE_DISTANCE_PUSH_GUIDE_BUILD 2026-06-21: Moves Lie docking to a safer 1.30 distance and lets near-zero G contact guide PUSH inward.
 // LIE_NEAR_NOW_DOCKING_STABLE_BUILD 2026-06-21: Keeps body yaw unchanged for Lie Now Docking at near-zero distance and only micro-adjusts XZ.
@@ -506,6 +520,26 @@ public class TargetLinePerson : MVRScript
     const float GenDepthHudGContactColorLateralRangeScale = 2.20f;
     const float GenDepthHudGContactColorBackDepthRangeScale = 4.00f;
     const float GenDepthHudGContactColorCurvePower = 0.55f;
+    const float AnusDepthHudXOffset = 0.045f;
+    const float AnusDepthHudWholeLeftBarScale = 1.00f; // v163: move entire anus HUD left by one anus bar width
+    const float AnusDepthHudBarWidthScale = 0.78f;
+    const float AnusDepthHudMarkerWidthScale = 1.05f;
+    const float AnusDepthHudMarkerYPercent = 1.00f;
+    const float AnusDepthHudStarBelowScale = 0.35f; // v160: one marker-height up from v159
+    const float AnusDepthHudStarForwardOffset = 0.017f;
+    const float AnusDepthHudStarClosedSizeScale = 0.20f; // v161: about 2/3 of v159 idle star
+    const float AnusDepthHudStarOpenSizeScale = 0.41f; // v161: about 2/3 of v159 maximum
+    const float AnusDepthHudStarOpenStartPercent = 0.010f;
+    const float AnusDepthHudStarOpenEndPercent = 0.150f;
+    const float AnusDepthHudStarPulseSpeed = 8.0f;
+    const float AnusDepthHudStarPulseStrength = 0.07f;
+    const float AnusDepthHudStarRightScale = -0.47f; // v164: tiny right nudge from v162
+    const float AnusDepthPFollowBackDepth = -0.300f; // v165: keep Anus axis follow before contact instead of falling back to yellow
+    const float AnusDepthPFollowLateralMax = 0.180f; // v165: wider Anus axis capture zone; genital remains unchanged
+    const float MouthDepthPFollowBackDepth = -0.250f; // v167: keep Mouth axis follow before contact instead of falling back to yellow
+    const float MouthDepthPFollowLateralMax = 0.160f; // v167: wider Mouth axis capture zone; genital remains unchanged
+    const float MouthInsideVerticalScale = 0.50f; // v168: relax mouth vertical damping from 0.25 toward original forward
+    const float AnusDepthDirectionFlipDeadZone = 0.030f; // legacy v164 constant; Anus axis no longer flips from own/P side
 
     GameObject forwardLineObj;
     GameObject moveLineObj;
@@ -518,6 +552,10 @@ public class TargetLinePerson : MVRScript
     GameObject genDepthHudBottomMarkerObj;
     GameObject genDepthHudPeakObj;
     GameObject genDepthHudGContactDotObj;
+    GameObject anusDepthHudBackObj;
+    GameObject anusDepthHudFillObj;
+    GameObject anusDepthHudMarkerObj;
+    GameObject anusDepthHudStarObj;
 
     LineRenderer forwardLine;
     LineRenderer moveLine;
@@ -531,12 +569,17 @@ public class TargetLinePerson : MVRScript
     Material genDepthHudMarkerMaterial;
     Material genDepthHudPeakMaterial;
     Material genDepthHudGContactDotMaterial;
+    Material anusDepthHudBackMaterial;
+    Material anusDepthHudFillMaterial;
+    Material anusDepthHudMarkerMaterial;
+    Material anusDepthHudStarMaterial;
     Material[] genDepthBurstMaterials;
     float genDepthPeakPercent;
     float genDepthPeakUntil;
     float genDepthHudLowerVisualOpenT;
     float genDepthHudLowerVisualOpenVelocity;
     float genDepthInsertedMaxPercent;
+    float anusDepthInsertedMaxPercent;
     float previousGenDepthPercent;
     float nextZeroBurstTime;
     float nextMaxBurstTime;
@@ -547,6 +590,11 @@ public class TargetLinePerson : MVRScript
     float cachedHudDepth;
     float cachedHudLength;
     float cachedHudPercent;
+    bool cachedAnusHudDepthKnown;
+    bool cachedAnusHudHasDepth;
+    float cachedAnusHudDepth;
+    float cachedAnusHudLength;
+    float cachedAnusHudPercent;
     bool genDepthHudActiveKnown;
     bool genDepthHudActive;
     float lastGenDepthProbeLogTime = -999f;
@@ -1097,7 +1145,7 @@ public class TargetLinePerson : MVRScript
 
         RegisterExternalActions();
 
-        SuperController.LogMessage("[TargetLinePerson] Ready / v156 g contact dot micro left down 2 / v155 g contact dot micro left down");
+        SuperController.LogMessage("[TargetLinePerson] Ready / v167 mouth push auto enabled / v166 anus push auto enabled / v165 anus axis fix");
     }
 
     void RegisterExternalActions()
@@ -3040,7 +3088,7 @@ else
 
         if (targetMode == "mouth")
         {
-            mouthLine = FindChildTransform(targetAtom, "mouthPhysicsMeshPredictionPoint");
+            mouthLine = FindMouthTargetTransform(targetAtom);
             if (mouthLine == null)
             {
                 SuperController.LogMessage("[TargetLinePerson] Docking target probe / target=mouth / mouthPhysicsMeshPredictionPoint=MISSING / hipFallback=REMOVED / docking=SKIP");
@@ -3070,8 +3118,8 @@ else
         }
         else if (anusLine != null)
         {
-            forward = -GetTargetRootForward(targetAtom, lineDir);
-            dockingDirSource = "targetRoot.-forward";
+            forward = -GetAnusInsideDirection(targetAtom, anusLine);
+            dockingDirSource = "anus targetRoot.-forward";
         }
         forward.y = 0f;
 
@@ -3160,7 +3208,7 @@ else
         }
         else if (targetMode == "mouth")
         {
-            mouthLine = FindChildTransform(targetAtom, "mouthPhysicsMeshPredictionPoint");
+            mouthLine = FindMouthTargetTransform(targetAtom);
             if (mouthLine == null)
             {
                 return;
@@ -3412,6 +3460,94 @@ else
         return fallback;
     }
 
+    Vector3 GetAnusInsideDirection(Atom targetAtom, Transform anusLine)
+    {
+        Vector3 fallback = anusLine != null ? anusLine.forward : Vector3.forward;
+        Vector3 dir = GetTargetRootForward(targetAtom, fallback);
+        if (dir.sqrMagnitude < 0.0001f && anusLine != null)
+        {
+            dir = anusLine.forward;
+        }
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            dir = Vector3.forward;
+        }
+        dir.Normalize();
+        return dir;
+    }
+
+    Transform FindMouthTargetTransform(Atom atom)
+    {
+        return FindChildTransform(atom, "mouthPhysicsMeshPredictionPoint");
+    }
+
+    Vector3 ApplyMouthVerticalDamp(Vector3 dir)
+    {
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return dir;
+        }
+
+        dir.y *= MouthInsideVerticalScale;
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return dir;
+        }
+
+        return dir.normalized;
+    }
+
+    Vector3 GetMouthApproachDirection(Atom targetAtom, Transform mouthLine)
+    {
+        Vector3 fallback = mouthLine != null ? mouthLine.forward : Vector3.forward;
+        Vector3 dir = fallback;
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            dir = GetTargetRootForward(targetAtom, Vector3.forward);
+        }
+
+        dir = ApplyMouthVerticalDamp(dir);
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            dir = Vector3.forward;
+        }
+
+        return dir.normalized;
+    }
+
+    Vector3 GetMouthInsideDirectionForDepth(Atom targetAtom, Transform mouthLine)
+    {
+        // Like genital/anus, PUSH depth goes opposite of the approach/red line.
+        // Mouth prediction points often tilt downward, so damp Y before using it.
+        Vector3 redLineDir = Vector3.zero;
+        if (GetTargetModeName() == "mouth" && hasDynamicRedLineDisplay && dynamicRedLineDir.sqrMagnitude >= 0.0001f)
+        {
+            redLineDir = dynamicRedLineDir;
+        }
+        else if (GetTargetModeName() == "mouth" && capturedLineDir.sqrMagnitude >= 0.0001f)
+        {
+            redLineDir = capturedLineDir;
+        }
+
+        if (redLineDir.sqrMagnitude >= 0.0001f)
+        {
+            Vector3 dampedRed = ApplyMouthVerticalDamp(redLineDir);
+            if (dampedRed.sqrMagnitude >= 0.0001f)
+            {
+                return -dampedRed.normalized;
+            }
+        }
+
+        Vector3 approach = GetMouthApproachDirection(targetAtom, mouthLine);
+        if (approach.sqrMagnitude < 0.0001f)
+        {
+            return approach;
+        }
+
+        return -approach.normalized;
+    }
+
     string GetDockingTargetFoundText(Transform genitalLine, Transform anusLine, Transform mouthLine)
     {
         if (genitalLine != null)
@@ -3484,12 +3620,12 @@ else
 
         if (anusLine != null)
         {
-            return -GetTargetRootForward(targetAtom, anusLine.forward);
+            return -GetAnusInsideDirection(targetAtom, anusLine);
         }
 
         if (mouthLine != null)
         {
-            return mouthLine.forward;
+            return GetMouthApproachDirection(targetAtom, mouthLine);
         }
 
         if (target == null)
@@ -4397,6 +4533,23 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
             return;
         }
 
+        string currentDepthTargetMode = GetTargetModeName();
+        if (currentDepthTargetMode == "anus" && TryHasLiveAnusInsideLine())
+        {
+            // v165: Do not let Anus mode fall through to the generic Yellow Guide shape near the target.
+            // The Yellow Guide is built for genital docking and can rotate P in the opposite direction for anus.
+            ResetPAngleAtYellowP3IfApplied("anus depth line not in wide capture zone / no yellow fallback");
+            return;
+        }
+
+        if (currentDepthTargetMode == "mouth" && TryHasLiveMouthInsideLine())
+        {
+            // v167: Mouth uses its own inside line. The generic Yellow Guide can aim slightly downward
+            // from mouthPhysicsMeshPredictionPoint and can push/rotate P away from the intended mouth axis.
+            ResetPAngleAtYellowP3IfApplied("mouth depth line not in wide capture zone / no yellow fallback");
+            return;
+        }
+
         float liveGDepthAngle;
         bool suppressBaseLiftByAngle = IsLiveGDepthAngleBlocked(out liveGDepthAngle);
         float baseYLift = GetDynamicPBaseYLiftFromYellowProgress(progress);
@@ -4592,7 +4745,8 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         Vector3 origin;
         Vector3 dir;
         float length;
-        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        string depthTargetMode;
+        if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
         {
             gDepthPFollowApplied = false;
             return false;
@@ -4613,7 +4767,8 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
             if (gDepthPFollowApplied || !lastGDepthAngleGateBlocked)
             {
                 DebugLog(
-                    "[TargetLinePerson] G Depth P Follow gate" +
+                    "[TargetLinePerson] Depth P Follow gate" +
+                    " / target=" + depthTargetMode +
                     " / reason=angle" +
                     " / angle=" + gDepthAngle.ToString("F1") +
                     " / limit=45.0" +
@@ -4628,7 +4783,8 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         if (lastGDepthAngleGateBlocked)
         {
             DebugLog(
-                "[TargetLinePerson] G Depth P Follow gate clear" +
+                "[TargetLinePerson] Depth P Follow gate clear" +
+                " / target=" + depthTargetMode +
                 " / angle=" + gDepthAngle.ToString("F1") +
                 " / limit=45.0"
             );
@@ -4641,19 +4797,27 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         Vector3 closestOnAxis = origin + dir * rawDepth;
         float lateral = Vector3.Distance(tipPos, closestOnAxis);
 
+        bool isAnusDepthTarget = depthTargetMode == "anus";
+        bool isMouthDepthTarget = depthTargetMode == "mouth";
+        float backDepthLimit = isAnusDepthTarget ? AnusDepthPFollowBackDepth : (isMouthDepthTarget ? MouthDepthPFollowBackDepth : -0.080f);
+        float lateralLimit = isAnusDepthTarget ? AnusDepthPFollowLateralMax : (isMouthDepthTarget ? MouthDepthPFollowLateralMax : 0.080f);
         bool nearGDepthLine =
-            rawDepth > -0.080f &&
-            lateral < 0.080f;
+            rawDepth > backDepthLimit &&
+            lateral < lateralLimit;
 
         if (!nearGDepthLine)
         {
-            if (gDepthPFollowApplied)
+            if (gDepthPFollowApplied || ((isAnusDepthTarget || isMouthDepthTarget) && IsDebugViewEnabled()))
             {
                 DebugLog(
-                    "[TargetLinePerson] G Depth P Follow OFF" +
+                    "[TargetLinePerson] Depth P Follow OFF" +
+                    " / target=" + depthTargetMode +
                     " / reason=left-zone" +
                     " / rawDepth=" + rawDepth.ToString("F3") +
-                    " / lateral=" + lateral.ToString("F3")
+                    " / lateral=" + lateral.ToString("F3") +
+                    " / backLimit=" + backDepthLimit.ToString("F3") +
+                    " / lateralLimit=" + lateralLimit.ToString("F3") +
+                    ((isAnusDepthTarget || isMouthDepthTarget) ? " / fallback=yellow-disabled-until-outside-wide-zone" : "")
                 );
             }
             gDepthPFollowApplied = false;
@@ -4677,7 +4841,8 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         {
             lastGDepthPFollowLogTime = Time.time;
             DebugLog(
-                "[TargetLinePerson] G Depth P Follow applied" +
+                "[TargetLinePerson] Depth P Follow applied" +
+                " / target=" + depthTargetMode +
                 " / reason=" + reason +
                 " / angle=" + gDepthAngle.ToString("F1") +
                 " / rawDepth=" + rawDepth.ToString("F3") +
@@ -7202,6 +7367,10 @@ bool IsTargetRideLikePose()
         genDepthHudMarkerMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 1.0f, 1.0f, 0.95f));
         genDepthHudPeakMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.92f, 0.05f, 0.45f));
         genDepthHudGContactDotMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.45f, 0.84f, GenDepthHudGContactDotMinAlpha));
+        anusDepthHudBackMaterial = CreateGenDepthHudMaterial(new Color(0.42f, 0.05f, 0.22f, 0.82f));
+        anusDepthHudFillMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.32f, 0.58f, 0.92f));
+        anusDepthHudMarkerMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.78f, 0.90f, 0.95f));
+        anusDepthHudStarMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.58f, 0.78f, 0.96f));
         genDepthBurstMaterials = CreateGenDepthBurstMaterials();
 
         genDepthHudBackObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Back", genDepthHudBackMaterial);
@@ -7212,9 +7381,14 @@ bool IsTargetRideLikePose()
         genDepthHudBottomMarkerLine = genDepthHudBottomMarkerObj != null ? genDepthHudBottomMarkerObj.GetComponent<LineRenderer>() : null;
         genDepthHudPeakObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Peak", genDepthHudPeakMaterial);
         genDepthHudGContactDotObj = CreateGenDepthHudDotObject("TargetLinePerson_GenDepthHud_GContactDot", genDepthHudGContactDotMaterial);
+        anusDepthHudBackObj = CreateGenDepthHudBarObject("TargetLinePerson_AnusDepthHud_Back", anusDepthHudBackMaterial);
+        anusDepthHudFillObj = CreateGenDepthHudBarObject("TargetLinePerson_AnusDepthHud_Fill", anusDepthHudFillMaterial);
+        anusDepthHudMarkerObj = CreateGenDepthHudBarObject("TargetLinePerson_AnusDepthHud_100", anusDepthHudMarkerMaterial);
+        anusDepthHudStarObj = CreateAnusDepthHudStarObject("TargetLinePerson_AnusDepthHud_Star", anusDepthHudStarMaterial);
         genDepthPeakPercent = 0.0f;
         genDepthPeakUntil = 0.0f;
         previousGenDepthPercent = 0.0f;
+        anusDepthInsertedMaxPercent = 0.0f;
         nextZeroBurstTime = 0.0f;
         nextMaxBurstTime = 0.0f;
 
@@ -7231,6 +7405,10 @@ bool IsTargetRideLikePose()
         DestroyNamedObject("TargetLinePerson_GenDepthHud_0");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_Peak");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_GContactDot");
+        DestroyNamedObject("TargetLinePerson_AnusDepthHud_Back");
+        DestroyNamedObject("TargetLinePerson_AnusDepthHud_Fill");
+        DestroyNamedObject("TargetLinePerson_AnusDepthHud_100");
+        DestroyNamedObject("TargetLinePerson_AnusDepthHud_Star");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_Burst");
     }
 
@@ -7392,6 +7570,117 @@ bool IsTargetRideLikePose()
         return dot;
     }
 
+    GameObject CreateAnusDepthHudStarObject(string objectName, Material mat)
+    {
+        GameObject root = new GameObject(objectName);
+        root.name = objectName;
+
+        for (int i = 0; i < 3; i++)
+        {
+            GameObject child = new GameObject(objectName + "_Line" + i.ToString());
+            child.transform.SetParent(root.transform, false);
+            LineRenderer line = child.AddComponent<LineRenderer>();
+            line.useWorldSpace = true;
+            line.loop = false;
+            line.positionCount = 2;
+            line.numCapVertices = 6;
+            line.numCornerVertices = 2;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            if (mat != null)
+            {
+                line.material = new Material(mat);
+                line.startColor = mat.color;
+                line.endColor = mat.color;
+            }
+        }
+
+        root.SetActive(false);
+        return root;
+    }
+
+    void SetAnusDepthHudStar(Vector3 center, Vector3 right, Vector3 up, float radius, float width, Color color, bool circleMode)
+    {
+        if (anusDepthHudStarObj == null)
+        {
+            return;
+        }
+
+        if (circleMode)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                Transform child = anusDepthHudStarObj.transform.Find("TargetLinePerson_AnusDepthHud_Star_Line" + i.ToString());
+                if (child == null)
+                {
+                    continue;
+                }
+
+                child.gameObject.SetActive(i == 0);
+                LineRenderer line = child.GetComponent<LineRenderer>();
+                if (line == null || i != 0)
+                {
+                    continue;
+                }
+
+                line.positionCount = 48;
+                line.loop = true;
+                line.startWidth = width;
+                line.endWidth = width;
+                line.startColor = color;
+                line.endColor = color;
+                if (line.material != null)
+                {
+                    line.material.color = color;
+                }
+
+                for (int p = 0; p < line.positionCount; p++)
+                {
+                    float a = (Mathf.PI * 2.0f * p) / line.positionCount;
+                    Vector3 pos = center + right * (Mathf.Cos(a) * radius) + up * (-Mathf.Sin(a) * radius); // v161: vertical flip draw order
+                    line.SetPosition(p, pos);
+                }
+            }
+            return;
+        }
+
+        Vector3[] dirs = new Vector3[]
+        {
+            up,
+            (up + right).normalized,
+            (up - right).normalized
+        };
+
+        for (int i = 0; i < 3; i++)
+        {
+            Transform child = anusDepthHudStarObj.transform.Find("TargetLinePerson_AnusDepthHud_Star_Line" + i.ToString());
+            if (child == null)
+            {
+                continue;
+            }
+
+            child.gameObject.SetActive(true);
+            LineRenderer line = child.GetComponent<LineRenderer>();
+            if (line == null)
+            {
+                continue;
+            }
+
+            line.positionCount = 2;
+            line.loop = false;
+            line.startWidth = width;
+            line.endWidth = width;
+            line.startColor = color;
+            line.endColor = color;
+            if (line.material != null)
+            {
+                line.material.color = color;
+            }
+            line.SetPosition(0, center - dirs[i] * radius);
+            line.SetPosition(1, center + dirs[i] * radius);
+        }
+    }
+
     void SetGenDepthHudHeart(LineRenderer line, Vector3 center, Vector3 right, Vector3 up, float radius, float width, bool flipY, Color color)
     {
         if (line == null)
@@ -7496,13 +7785,22 @@ bool IsTargetRideLikePose()
         float hudPercent = percent;
         bool visible = showInsertDebug != null && showInsertDebug.val;
         bool hasHudDepth = hasDepth;
+        float anusHudDepth = 0.0f;
+        float anusHudLength = GetGenDepthMax();
+        float anusHudPercent = 0.0f;
+        bool hasAnusHudDepth = false;
         if (visible && (!cachedHudDepthKnown || Time.time - lastGenDepthHudSampleTime >= GenDepthHudSampleInterval))
         {
             cachedHudDepth = hudDepth;
             cachedHudLength = hudLength;
             cachedHudPercent = hudPercent;
             cachedHudHasDepth = TryGetLiveGenDepthForHud(out cachedHudDepth, out cachedHudLength, out cachedHudPercent);
+            cachedAnusHudDepth = anusHudDepth;
+            cachedAnusHudLength = anusHudLength;
+            cachedAnusHudPercent = anusHudPercent;
+            cachedAnusHudHasDepth = TryGetLiveAnusDepthForHud(out cachedAnusHudDepth, out cachedAnusHudLength, out cachedAnusHudPercent);
             cachedHudDepthKnown = true;
+            cachedAnusHudDepthKnown = true;
             lastGenDepthHudSampleTime = Time.time;
         }
         if (visible && cachedHudDepthKnown)
@@ -7511,6 +7809,13 @@ bool IsTargetRideLikePose()
             hudLength = cachedHudLength;
             hudPercent = cachedHudPercent;
             hasHudDepth = cachedHudHasDepth;
+        }
+        if (visible && cachedAnusHudDepthKnown)
+        {
+            anusHudDepth = cachedAnusHudDepth;
+            anusHudLength = cachedAnusHudLength;
+            anusHudPercent = cachedAnusHudPercent;
+            hasAnusHudDepth = cachedAnusHudHasDepth;
         }
         if (!hasDepth)
         {
@@ -7524,8 +7829,15 @@ bool IsTargetRideLikePose()
             hudLength = GetGenDepthMax();
             hudPercent = 0.0f;
         }
+        if (!hasAnusHudDepth)
+        {
+            anusHudDepth = 0.0f;
+            anusHudLength = GetGenDepthMax();
+            anusHudPercent = 0.0f;
+        }
 
         UpdateGenDepthHud(hudDepth, hudLength, hudPercent, visible);
+        UpdateAnusDepthHud(anusHudDepth, anusHudLength, anusHudPercent, visible);
         UpdateGenDepthUiText(hasDepth, percent);
         UpdateGenTgTriggers(hasDepth, percent);
     }
@@ -8236,6 +8548,200 @@ bool IsTargetRideLikePose()
         return true;
     }
 
+    bool TryGetLiveAnusDepthForHud(out float depth, out float length, out float percent)
+    {
+        depth = 0.0f;
+        length = GetGenDepthMax();
+        percent = 0.0f;
+
+        FreeControllerV3 tip = GetOwnPenisTip();
+        if (tip == null || tip.transform == null)
+        {
+            return false;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float insideLength;
+        if (!TryGetLiveAnusInsideLine(out origin, out dir, out insideLength))
+        {
+            return false;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        length = Mathf.Max(0.0001f, insideLength);
+        Vector3 dirNorm = dir.normalized;
+        Vector3 tipFromOrigin = tip.transform.position - origin;
+        float rawDepth = Vector3.Dot(tipFromOrigin, dirNorm);
+        Vector3 closestOnAxis = origin + dirNorm * rawDepth;
+        float lateralDistance = Vector3.Distance(tip.transform.position, closestOnAxis);
+
+        if (lateralDistance > GenDepthMaxLateralDistance)
+        {
+            depth = 0.0f;
+            percent = 0.0f;
+            return true;
+        }
+
+        float bodyDistance;
+        if (IsGenBodyGated(origin, out bodyDistance))
+        {
+            depth = 0.0f;
+            percent = 0.0f;
+            return true;
+        }
+
+        percent = Mathf.Clamp(rawDepth / length, 0.0f, GenDepthHudDisplayMaxPercent);
+        depth = Mathf.Clamp(rawDepth, 0.0f, length * GenDepthHudDisplayMaxPercent);
+        return true;
+    }
+
+    bool TryGetLiveCurrentPushDepth(out float depth, out float length, out float percent, out string targetMode)
+    {
+        targetMode = GetTargetModeName();
+
+        if (targetMode == "genital")
+        {
+            return TryGetLiveGenDepth(out depth, out length, out percent);
+        }
+
+        if (targetMode == "anus")
+        {
+            return TryGetLiveAnusDepthForPush(out depth, out length, out percent);
+        }
+
+        if (targetMode == "mouth")
+        {
+            return TryGetLiveMouthDepthForPush(out depth, out length, out percent);
+        }
+
+        depth = 0.0f;
+        length = GetGenDepthMax();
+        percent = 0.0f;
+        return false;
+    }
+
+    bool TryGetLiveAnusDepthForPush(out float depth, out float length, out float percent)
+    {
+        depth = 0.0f;
+        length = GetGenDepthMax();
+        percent = 0.0f;
+
+        FreeControllerV3 tip = GetOwnPenisTip();
+        if (tip == null || tip.transform == null)
+        {
+            return false;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float insideLength;
+        if (!TryGetLiveAnusInsideLine(out origin, out dir, out insideLength))
+        {
+            return false;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        length = Mathf.Max(0.0001f, insideLength);
+        Vector3 dirNorm = dir.normalized;
+        Vector3 tipFromOrigin = tip.transform.position - origin;
+        float rawDepth = Vector3.Dot(tipFromOrigin, dirNorm);
+        Vector3 closestOnAxis = origin + dirNorm * rawDepth;
+        float lateralDistance = Vector3.Distance(tip.transform.position, closestOnAxis);
+        float bodyDistance;
+
+        if (lateralDistance > GenDepthMaxLateralDistance)
+        {
+            depth = 0.0f;
+            percent = 0.0f;
+            RememberPushDepthSample(rawDepth, lateralDistance, -1.0f, percent);
+            return true;
+        }
+
+        if (IsGenBodyGated(origin, out bodyDistance))
+        {
+            depth = 0.0f;
+            percent = 0.0f;
+            RememberPushDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
+            ApplyGenBodyGatePReleaseIfNeeded(true);
+            return true;
+        }
+
+        percent = Mathf.Clamp(rawDepth / length, 0.0f, GenDepthHudDisplayMaxPercent);
+        depth = Mathf.Clamp(rawDepth, 0.0f, length * GenDepthHudDisplayMaxPercent);
+        RememberPushDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
+        ApplyGenBodyGatePReleaseIfNeeded(false);
+        return true;
+    }
+
+    bool TryGetLiveMouthDepthForPush(out float depth, out float length, out float percent)
+    {
+        depth = 0.0f;
+        length = GetGenDepthMax();
+        percent = 0.0f;
+
+        FreeControllerV3 tip = GetOwnPenisTip();
+        if (tip == null || tip.transform == null)
+        {
+            return false;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float insideLength;
+        if (!TryGetLiveMouthInsideLine(out origin, out dir, out insideLength))
+        {
+            return false;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        length = Mathf.Max(0.0001f, insideLength);
+        Vector3 dirNorm = dir.normalized;
+        Vector3 tipFromOrigin = tip.transform.position - origin;
+        float rawDepth = Vector3.Dot(tipFromOrigin, dirNorm);
+        Vector3 closestOnAxis = origin + dirNorm * rawDepth;
+        float lateralDistance = Vector3.Distance(tip.transform.position, closestOnAxis);
+
+        if (lateralDistance > GenDepthMaxLateralDistance)
+        {
+            depth = 0.0f;
+            percent = 0.0f;
+            RememberPushDepthSample(rawDepth, lateralDistance, -1.0f, percent);
+            return true;
+        }
+
+        // Mouth target is naturally far from the own hip/root, so the genital body gate would
+        // suppress Auto PUSH even when P Tip is correctly near the mouth axis. Keep mouth push
+        // governed by tip depth/lateral only.
+        percent = Mathf.Clamp(rawDepth / length, 0.0f, GenDepthHudDisplayMaxPercent);
+        depth = Mathf.Clamp(rawDepth, 0.0f, length * GenDepthHudDisplayMaxPercent);
+        RememberPushDepthSample(rawDepth, lateralDistance, -1.0f, percent);
+        return true;
+    }
+
+    void RememberPushDepthSample(float rawDepth, float lateralDistance, float bodyDistance, float percent)
+    {
+        lastGenDepthSampleKnown = true;
+        lastGenDepthRawDepth = rawDepth;
+        lastGenDepthPushLieCompensated = IsPushAutoLieDepthCompensationActive();
+        lastGenDepthPushEffectiveDepth = lastGenDepthPushLieCompensated ? Mathf.Abs(rawDepth) : rawDepth;
+        lastGenDepthLateral = lateralDistance;
+        lastGenDepthBodyDistance = bodyDistance;
+        lastGenDepthPercent = percent;
+    }
+
     void RememberGenDepthSample(float rawDepth, float lateralDistance, float bodyDistance, float percent)
     {
         lastGenDepthSampleKnown = true;
@@ -8489,6 +8995,189 @@ bool IsTargetRideLikePose()
         return true;
     }
 
+    bool TryGetLiveCurrentInsideLine(out Vector3 origin, out Vector3 dir, out float length, out string targetMode)
+    {
+        origin = Vector3.zero;
+        dir = Vector3.zero;
+        length = GetGenDepthMax();
+        targetMode = GetTargetModeName();
+
+        if (targetMode == "genital")
+        {
+            return TryGetLiveGenitalInsideLine(out origin, out dir, out length);
+        }
+
+        if (targetMode == "anus")
+        {
+            return TryGetLiveAnusInsideLine(out origin, out dir, out length);
+        }
+
+        if (targetMode == "mouth")
+        {
+            return TryGetLiveMouthInsideLine(out origin, out dir, out length);
+        }
+
+        return false;
+    }
+
+    bool TryHasLiveMouthInsideLine()
+    {
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        return TryGetLiveMouthInsideLine(out origin, out dir, out length);
+    }
+
+    bool TryHasLiveAnusInsideLine()
+    {
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        return TryGetLiveAnusInsideLine(out origin, out dir, out length);
+    }
+
+    bool TryGetLiveAnusInsideLine(out Vector3 origin, out Vector3 dir, out float length)
+    {
+        origin = Vector3.zero;
+        dir = Vector3.zero;
+        length = GetGenDepthMax();
+
+        if (targetControllerChooser == null || targetControllerChooser.val != "anus")
+        {
+            return false;
+        }
+
+        if (targetPersonChooser == null)
+        {
+            return false;
+        }
+
+        Atom targetAtom = FindAtom(targetPersonChooser.val);
+        if (targetAtom == null)
+        {
+            return false;
+        }
+
+        Transform anusLine = FindAnusTargetTransform(targetAtom);
+        if (anusLine == null)
+        {
+            return false;
+        }
+
+        origin = anusLine.position;
+        dir = GetAnusInsideDirectionForDepth(targetAtom, anusLine);
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        dir.Normalize();
+        return true;
+    }
+
+    bool TryGetLiveMouthInsideLine(out Vector3 origin, out Vector3 dir, out float length)
+    {
+        origin = Vector3.zero;
+        dir = Vector3.zero;
+        length = GetGenDepthMax();
+
+        if (targetControllerChooser == null || targetControllerChooser.val != "mouth")
+        {
+            return false;
+        }
+
+        if (targetPersonChooser == null)
+        {
+            return false;
+        }
+
+        Atom targetAtom = FindAtom(targetPersonChooser.val);
+        if (targetAtom == null)
+        {
+            return false;
+        }
+
+        Transform mouthLine = FindMouthTargetTransform(targetAtom);
+        if (mouthLine == null)
+        {
+            return false;
+        }
+
+        origin = mouthLine.position;
+        dir = GetMouthInsideDirectionForDepth(targetAtom, mouthLine);
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        dir.Normalize();
+        return true;
+    }
+
+    Vector3 GetAnusInsideDirectionForDepth(Atom targetAtom, Transform anusLine)
+    {
+        // v165: Anus depth/P-follow direction must be the exact opposite of the red approach line.
+        // The v164 approach-side auto flip could invert the depth axis when the body/P controls moved
+        // across the hole. That made the fallback Yellow Guide point P away from the anus.
+        Vector3 redLineDir = Vector3.zero;
+        if (hasDynamicRedLineDisplay && dynamicRedLineDir.sqrMagnitude >= 0.0001f)
+        {
+            redLineDir = dynamicRedLineDir;
+        }
+        else if (capturedLineDir.sqrMagnitude >= 0.0001f)
+        {
+            redLineDir = capturedLineDir;
+        }
+
+        if (redLineDir.sqrMagnitude >= 0.0001f)
+        {
+            return -redLineDir.normalized;
+        }
+
+        Vector3 dir = GetAnusInsideDirection(targetAtom, anusLine);
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return dir;
+        }
+
+        return dir.normalized;
+    }
+
+    bool TryGetOwnAnusDepthReferencePosition(out Vector3 position)
+    {
+        if (containingAtom != null && containingAtom.mainController != null && containingAtom.mainController.transform != null)
+        {
+            position = containingAtom.mainController.transform.position;
+            return true;
+        }
+
+        FreeControllerV3 hipCtrl = GetOwnHip();
+        if (hipCtrl != null && hipCtrl.transform != null)
+        {
+            position = hipCtrl.transform.position;
+            return true;
+        }
+
+        FreeControllerV3 baseCtrl = GetOwnPenisBase();
+        if (baseCtrl != null && baseCtrl.transform != null)
+        {
+            position = baseCtrl.transform.position;
+            return true;
+        }
+
+        FreeControllerV3 tipCtrl = GetOwnPenisTip();
+        if (tipCtrl != null && tipCtrl.transform != null)
+        {
+            position = tipCtrl.transform.position;
+            return true;
+        }
+
+        position = Vector3.zero;
+        return false;
+    }
+
     float GetGenDepthMax()
     {
         if (genDepthMax == null)
@@ -8566,7 +9255,12 @@ bool IsTargetRideLikePose()
             genDepthInsertedMaxPercent = 0.0f;
         }
         Color backColor = new Color(0.55f, 0.0f, 0.42f, 0.90f);
-        Color fillColor = new Color(1.0f, 0.68f, 0.50f, 0.90f);
+        float genFillColorT = Mathf.Clamp01(percent);
+        Color fillColor = Color.Lerp(
+            new Color(1.0f, 0.72f, 0.86f, 0.90f),
+            new Color(1.0f, 0.05f, 0.32f, 0.95f),
+            genFillColorT
+        );
         Color peakColor = new Color(1.0f, 0.92f, 0.05f, 0.45f);
         Color upperInsertedColor = new Color(1.0f, 0.05f, 0.42f, 0.95f);
         Color lowerInsertedColor = new Color(1.0f, 0.38f, 0.88f, 0.95f);
@@ -8634,6 +9328,77 @@ bool IsTargetRideLikePose()
         {
             genDepthHudPeakObj.SetActive(false);
         }
+    }
+
+    void UpdateAnusDepthHud(float depth, float length, float percent, bool visible)
+    {
+        bool active = visible && targetControllerChooser != null && targetControllerChooser.val == "anus";
+        Camera cam = Camera.main;
+        if (!active || cam == null || anusDepthHudBackObj == null || anusDepthHudFillObj == null || anusDepthHudMarkerObj == null || anusDepthHudStarObj == null)
+        {
+            SetAnusDepthHudActive(false);
+            anusDepthInsertedMaxPercent = 0.0f;
+            return;
+        }
+
+        Vector3 bottom = cam.ViewportToWorldPoint(new Vector3(GenDepthHudX + AnusDepthHudXOffset, GenDepthHudBottomY, GenDepthHudCameraDistance));
+        Vector3 top = cam.ViewportToWorldPoint(new Vector3(GenDepthHudX + AnusDepthHudXOffset, GenDepthHudTopY, GenDepthHudCameraDistance));
+        float barWidth = GenDepthHudBarWidth * AnusDepthHudBarWidthScale;
+        Vector3 anusHudLeftOffset = -cam.transform.right * (barWidth * AnusDepthHudWholeLeftBarScale);
+        bottom += anusHudLeftOffset;
+        top += anusHudLeftOffset;
+        float fullHeight = Vector3.Distance(bottom, top);
+        Vector3 upDir = (top - bottom).normalized;
+        float fillRatio = Mathf.Clamp(percent / GenDepthHudDisplayMaxPercent, 0.0f, 1.0f);
+        bool inserted = percent > 0.001f;
+        float fillHeight = inserted ? Mathf.Max(0.001f, fullHeight * fillRatio) : 0.0f;
+        Vector3 fillTop = bottom + upDir * fillHeight;
+
+        if (inserted && percent > anusDepthInsertedMaxPercent)
+        {
+            anusDepthInsertedMaxPercent = percent;
+        }
+        if (!inserted)
+        {
+            anusDepthInsertedMaxPercent = 0.0f;
+        }
+
+        Color backColor = new Color(0.42f, 0.05f, 0.22f, 0.82f);
+        Color fillColor = Color.Lerp(new Color(1.0f, 0.72f, 0.86f, 0.90f), new Color(1.0f, 0.05f, 0.32f, 0.95f), Mathf.Clamp01(percent));
+        SetGenDepthHudBarLine(anusDepthHudBackObj, bottom, top, barWidth, backColor);
+        if (inserted)
+        {
+            SetGenDepthHudBarLine(anusDepthHudFillObj, bottom, fillTop, barWidth * 0.72f, fillColor);
+        }
+
+        // v163: no anus 100% horizontal marker; the bar and */○ marker are enough.
+        if (anusDepthHudMarkerObj != null)
+        {
+            anusDepthHudMarkerObj.SetActive(false);
+        }
+
+        float starOpenT = Mathf.InverseLerp(AnusDepthHudStarOpenStartPercent, AnusDepthHudStarOpenEndPercent, Mathf.Clamp01(percent));
+        float starPulse = 1.0f + Mathf.Sin(Time.time * AnusDepthHudStarPulseSpeed) * AnusDepthHudStarPulseStrength * Mathf.Lerp(0.35f, 1.0f, starOpenT);
+        float starRadius = barWidth * Mathf.Lerp(AnusDepthHudStarClosedSizeScale, AnusDepthHudStarOpenSizeScale, starOpenT) * starPulse;
+        float starWidth = GenDepthHudBarDepth * Mathf.Lerp(0.70f, 1.25f, starOpenT);
+        Vector3 starCenter = bottom + cam.transform.right * (barWidth * AnusDepthHudStarRightScale) - upDir * (barWidth * AnusDepthHudStarBelowScale) - cam.transform.forward * AnusDepthHudStarForwardOffset;
+        Color starColor = Color.Lerp(new Color(1.0f, 0.70f, 0.84f, 0.92f), new Color(1.0f, 0.05f, 0.32f, 0.98f), Mathf.Clamp01(percent));
+        bool starCircleMode = starOpenT >= 0.995f;
+        SetAnusDepthHudStar(starCenter, cam.transform.right, upDir, starRadius, starWidth, starColor, starCircleMode);
+
+        SetAnusDepthHudActive(true);
+        if (anusDepthHudFillObj != null)
+        {
+            anusDepthHudFillObj.SetActive(inserted);
+        }
+    }
+
+    void SetAnusDepthHudActive(bool active)
+    {
+        if (anusDepthHudBackObj != null) anusDepthHudBackObj.SetActive(active);
+        if (anusDepthHudFillObj != null) anusDepthHudFillObj.SetActive(active);
+        if (anusDepthHudMarkerObj != null) anusDepthHudMarkerObj.SetActive(false);
+        if (anusDepthHudStarObj != null) anusDepthHudStarObj.SetActive(active);
     }
 
     void UpdateGenDepthHudGContactDot(Vector3 bottom, Vector3 upDir, Camera cam, bool active)
@@ -8854,6 +9619,10 @@ bool IsTargetRideLikePose()
         {
             genDepthHudGContactDotObj.SetActive(false);
         }
+        if (!active)
+        {
+            SetAnusDepthHudActive(false);
+        }
 
         if (genDepthHudActiveKnown && genDepthHudActive == active)
         {
@@ -9012,7 +9781,8 @@ bool IsTargetRideLikePose()
         Vector3 origin;
         Vector3 dir;
         float length;
-        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        string depthTargetMode;
+        if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
         {
             gDepthGuideLine.enabled = false;
             return;
@@ -9876,6 +10646,12 @@ bool IsTargetRideLikePose()
 
     bool IsPushAutoLieDepthCompensationActive()
     {
+        // Mouth PUSH should not inherit genital/anus lie compensation.
+        if (GetTargetModeName() == "mouth")
+        {
+            return false;
+        }
+
         return rideLieActive || IsOwnLiePoseForYellowGuide();
     }
 
@@ -9918,6 +10694,11 @@ bool IsTargetRideLikePose()
         return distanceIncreased || tipShallow;
     }
 
+    bool IsPushDepthTargetMode(string targetMode)
+    {
+        return targetMode == "genital" || targetMode == "anus" || targetMode == "mouth";
+    }
+
     string GetPushAutoGDepthLogTail()
     {
         return " / autoMode=" + GetPushAutoMode() +
@@ -9941,24 +10722,26 @@ bool IsTargetRideLikePose()
             return;
         }
 
-        if (targetControllerChooser != null && targetControllerChooser.val != "genital")
+        string pushTargetMode = GetTargetModeName();
+        if (!IsPushDepthTargetMode(pushTargetMode))
         {
             if (pushPRoutine != null && !pushStopRequested)
             {
                 pushStopRequested = true;
                 UpdatePushButtonUi();
-                DebugLog("[TargetLinePerson] PUSH auto trigger stop / reason=target-not-genital / target=" + targetControllerChooser.val);
+                DebugLog("[TargetLinePerson] PUSH auto trigger stop / reason=target-not-push-depth / target=" + pushTargetMode);
             }
-            ResetPushAutoGDepthTriggerState("target-not-genital");
+            ResetPushAutoGDepthTriggerState("target-not-push-depth");
             return;
         }
 
         float depth;
         float length;
         float percent;
-        if (!TryGetLiveGenDepth(out depth, out length, out percent))
+        string depthTargetMode;
+        if (!TryGetLiveCurrentPushDepth(out depth, out length, out percent, out depthTargetMode))
         {
-            ResetPushAutoGDepthTriggerState("no-g-depth");
+            ResetPushAutoGDepthTriggerState("no-push-depth");
             return;
         }
 
@@ -10143,10 +10926,11 @@ bool IsTargetRideLikePose()
             yield break;
         }
 
-        if (targetControllerChooser != null && targetControllerChooser.val != "genital")
+        string pushTargetMode = GetTargetModeName();
+        if (!IsPushDepthTargetMode(pushTargetMode))
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=target-not-genital / target=" + targetControllerChooser.val);
+            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=target-not-push-depth / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10156,10 +10940,11 @@ bool IsTargetRideLikePose()
         Vector3 origin;
         Vector3 dir;
         float length;
-        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        string depthTargetMode;
+        if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=no-g-depth-line");
+            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=no-push-depth-line / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10169,7 +10954,7 @@ bool IsTargetRideLikePose()
         if (dir.sqrMagnitude < 0.0001f)
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=bad-g-depth-dir");
+            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=bad-push-depth-dir / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10200,6 +10985,7 @@ bool IsTargetRideLikePose()
             "[TargetLinePerson] PUSH start" +
             " / mode=" + (pushAutoLoopActive ? "auto-loop" : "single") +
             " / autoMode=" + GetPushAutoMode() +
+            " / target=" + depthTargetMode +
             " / scale=" + GetPushDepthScale().ToString("F2") +
             " / add=" + GetPushPAddDistance().ToString("F3") +
             " / maxMove=" + GetPushPMaxMoveDistance().ToString("F3") +
@@ -10823,6 +11609,26 @@ bool IsTargetRideLikePose()
             Destroy(genDepthHudGContactDotObj);
         }
 
+        if (anusDepthHudBackObj != null)
+        {
+            Destroy(anusDepthHudBackObj);
+        }
+
+        if (anusDepthHudFillObj != null)
+        {
+            Destroy(anusDepthHudFillObj);
+        }
+
+        if (anusDepthHudMarkerObj != null)
+        {
+            Destroy(anusDepthHudMarkerObj);
+        }
+
+        if (anusDepthHudStarObj != null)
+        {
+            Destroy(anusDepthHudStarObj);
+        }
+
         if (genDepthHudBackMaterial != null)
         {
             Destroy(genDepthHudBackMaterial);
@@ -10846,6 +11652,26 @@ bool IsTargetRideLikePose()
         if (genDepthHudGContactDotMaterial != null)
         {
             Destroy(genDepthHudGContactDotMaterial);
+        }
+
+        if (anusDepthHudBackMaterial != null)
+        {
+            Destroy(anusDepthHudBackMaterial);
+        }
+
+        if (anusDepthHudFillMaterial != null)
+        {
+            Destroy(anusDepthHudFillMaterial);
+        }
+
+        if (anusDepthHudMarkerMaterial != null)
+        {
+            Destroy(anusDepthHudMarkerMaterial);
+        }
+
+        if (anusDepthHudStarMaterial != null)
+        {
+            Destroy(anusDepthHudStarMaterial);
         }
 
         ClearGenDepthBurstParticles();
