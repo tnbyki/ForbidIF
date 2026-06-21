@@ -1,7 +1,7 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0bq_wrist_button_arm_pose_lock
-// Date: 2026-06-20
+// Version: v4.0bu_hug_wrist_force_in_button
+// Date: 2026-06-21
 // Base: TargetGrabber_v4_0bp_wrist_button_preset_only.cs
 // Summary:
 // - Integrates verified v011 wrist button behavior into TargetGrabber.
@@ -10,6 +10,7 @@
 // - Keeps Hug Body handCenter far/inside correction fade-out when Hug Mode is OFF.
 // - Keeps Final Grab Width zero/default values clamped to 0.01 internally.
 // - Keeps v4.0bh Grab Hand Pull-To-Hand behavior and existing Hug Body axis/side fixes.
+// - Changes Hug Body wrist direction from fixed OUT to final-position IN/OUT scoring.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -18,7 +19,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0bq_wrist_button_arm_pose_lock
+// Version: v4.0bu_hug_wrist_force_in_button
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -85,6 +86,9 @@
 // v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
 // v4.0bq: Wrist buttons use captured arm poses: hand positions locked, hand rotations preset, elbows moved per mode.
 // v4.0br: Clears pending wrist hand locks on wrist button start / grab start / release / defaults to avoid stale 8-frame locks.
+// v4.0bs: For Hug Body, chooses Wrist IN/OUT after hand arrival by comparing final palm-facing score; near center falls back to IN.
+// v4.0bt: Compile fix: comment marker was missing in the summary header.
+// v4.0bu: For Hug Body final wrist, skips IN/OUT scoring and applies the Wrist In button preset rotation directly.
 //
 // 機能
 // ・Target Type排他選択（Atom / Person）
@@ -211,6 +215,7 @@ public class TargetGrabber : MVRScript
     private const float PENI_AUTO_Z_OFFSET = -0.03f;
     private const float HUG_BODY_HAND_WIDTH_CAP = 0.55f;
     private const float HUG_BODY_HAND_CENTER_OFFSET = 0.22f;
+    private const float HUG_BODY_WRIST_NEAR_CENTER_DISTANCE = 0.03f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
     private const float HEAD_TARGET_UP_OFFSET = 0.130f;
     private const float HEAD_TOP_FORWARD_OFFSET = 0.180f;
@@ -533,7 +538,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0bq_wrist_button_arm_pose_lock / v4.0bp-preset-only / v4.0bk-bias-fadeout / v4.0bi-final-width-min-001");
+        DebugLog("ready / v4.0bu_hug_wrist_force_in_button / hug-body-wrist-in-button-preset / v4.0bp-preset-only");
     }
 
     private void RegisterExternalActions()
@@ -6906,6 +6911,18 @@ public class TargetGrabber : MVRScript
         return baseRotation * Quaternion.Euler(0.0f, 0.0f, angle);
     }
 
+    private Quaternion GetWristButtonHandWorldRotation(bool actualRightHand, string mode, Quaternion fallbackRotation)
+    {
+        WristArmPose pose = GetWristButtonArmPose(mode);
+        Transform rootT = GetSelectedPersonPoseRootTransform();
+        if (pose == null || rootT == null)
+            return fallbackRotation;
+
+        Quaternion targetLocalRot = actualRightHand ? pose.RHand.LocalRot : pose.LHand.LocalRot;
+        targetLocalRot = NormalizeQuaternion(targetLocalRot);
+        return rootT.rotation * targetLocalRot;
+    }
+
     private Quaternion ApplyHugBodyDirectionalWristRotation(Quaternion baseRotation, Vector3 handPos, Vector3 startPosition, Vector3 center, bool pathRightSide, bool actualRightHand, bool frontSide)
     {
         // LogHandRotationDebug calls rotation calculation with Vector3.zero.
@@ -6914,24 +6931,30 @@ public class TargetGrabber : MVRScript
             return baseRotation;
 
         bool crossedPath = pathRightSide != actualRightHand;
-        string mode = "Out";
-        string applyMode = "Out";
+        Vector3 toCenter = center - handPos;
+        float targetDistance = toCenter.magnitude;
+        Quaternion fallbackInRotation = ApplyHandWristMode(baseRotation, actualRightHand, "In");
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, "In", fallbackInRotation);
 
         if (IsDebugEnabled())
         {
-            DebugLog("[WRIST HUG] hand=" + (actualRightHand ? "R" : "L") +
-                " mode=" + mode +
-                " apply=" + applyMode +
+            Vector3 finalEuler = finalRotation.eulerAngles;
+            DebugLog("[WRIST HUG FORCE IN] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=In" +
+                " apply=button-preset" +
                 " cross=" + Bool01(crossedPath) +
-                " fixed=1" +
                 " pathRight=" + Bool01(pathRightSide) +
                 " front=" + Bool01(frontSide) +
+                " dist=" + targetDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")" +
                 " start=" + FormatVector3(startPosition) +
                 " handPos=" + FormatVector3(handPos) +
                 " center=" + FormatVector3(center));
         }
 
-        return ApplyHandWristMode(baseRotation, actualRightHand, applyMode);
+        return finalRotation;
     }
 
     private void LogWristAutoAngleDebug(Vector3 handPos, Vector3 center, Vector3 targetDir, Vector3 palmAxis, Vector3 bendAxis, float angle, bool pathRightSide, bool actualRightHand, bool frontSide, bool hugBodyFlip)
