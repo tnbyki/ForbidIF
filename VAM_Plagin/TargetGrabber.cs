@@ -1,16 +1,14 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0bu_hug_wrist_force_in_button
+// Version: v4.0bx_hug_wrist_finalpos_pick
 // Date: 2026-06-21
-// Base: TargetGrabber_v4_0bp_wrist_button_preset_only.cs
+// Base: TargetGrabber_v4_0bw_hug_wrist_depth_target_pick.cs
 // Summary:
-// - Integrates verified v011 wrist button behavior into TargetGrabber.
-// - Wrist buttons keep current rHand/lHand positions locked, apply selected hand rotation presets,
-//   and move matching rElbow/lElbow controls to the captured arm pose.
+// - Fixes Hug Body wrist depth pick to use the actual final hand position only, not any earlier cached open-path target.
+// - Hug Body final wrist: actual final front/actor side = Wrist Out; near-center/back/unknown = Wrist In.
+// - Uses the same fixed wrist-button preset rotations for final Hug Body In/Out application.
 // - Keeps Hug Body handCenter far/inside correction fade-out when Hug Mode is OFF.
 // - Keeps Final Grab Width zero/default values clamped to 0.01 internally.
-// - Keeps v4.0bh Grab Hand Pull-To-Hand behavior and existing Hug Body axis/side fixes.
-// - Changes Hug Body wrist direction from fixed OUT to final-position IN/OUT scoring.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -19,7 +17,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0bu_hug_wrist_force_in_button
+// Version: v4.0bx_hug_wrist_finalpos_pick
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -86,6 +84,9 @@
 // v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
 // v4.0bq: Wrist buttons use captured arm poses: hand positions locked, hand rotations preset, elbows moved per mode.
 // v4.0br: Clears pending wrist hand locks on wrist button start / grab start / release / defaults to avoid stale 8-frame locks.
+// v4.0bx: Hug Body wrist picks Out only when the actual final hand position remains on the near/front side; near-center/back defaults to In.
+// v4.0bw: Hug Body wrist depth pick now stores the actual reach-limited hand target instead of unreachable desired.
+// v4.0bv: Hug Body wrist uses stored depth reference: near/actor side = Wrist Out, far/unknown = Wrist In.
 // v4.0bs: For Hug Body, chooses Wrist IN/OUT after hand arrival by comparing final palm-facing score; near center falls back to IN.
 // v4.0bt: Compile fix: comment marker was missing in the summary header.
 // v4.0bu: For Hug Body final wrist, skips IN/OUT scoring and applies the Wrist In button preset rotation directly.
@@ -216,6 +217,7 @@ public class TargetGrabber : MVRScript
     private const float HUG_BODY_HAND_WIDTH_CAP = 0.55f;
     private const float HUG_BODY_HAND_CENTER_OFFSET = 0.22f;
     private const float HUG_BODY_WRIST_NEAR_CENTER_DISTANCE = 0.03f;
+    private const float HUG_BODY_WRIST_DEPTH_THRESHOLD = 0.03f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
     private const float HEAD_TARGET_UP_OFFSET = 0.130f;
     private const float HEAD_TOP_FORWARD_OFFSET = 0.180f;
@@ -322,6 +324,7 @@ public class TargetGrabber : MVRScript
     private readonly List<FreeControllerV3> temporaryRelaxControls = new List<FreeControllerV3>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryHandRotationOffStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly Dictionary<FreeControllerV3, PendingWristHandLock> pendingWristHandLocks = new Dictionary<FreeControllerV3, PendingWristHandLock>();
+    private readonly Dictionary<FreeControllerV3, Vector3> hugBodyWristReferencePositions = new Dictionary<FreeControllerV3, Vector3>();
     private readonly List<FreeControllerV3> completedWristHandLocks = new List<FreeControllerV3>();
     private readonly List<FreeControllerV3> pendingSelfFollowTargets = new List<FreeControllerV3>();
     private readonly List<SelfFollowParentLink> activeSelfFollowParentLinks = new List<SelfFollowParentLink>();
@@ -538,7 +541,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0bu_hug_wrist_force_in_button / hug-body-wrist-in-button-preset / v4.0bp-preset-only");
+        DebugLog("ready / v4.0bx_hug_wrist_finalpos_pick / hug-body-finalpos-out-only / v4.0bp-preset-only");
     }
 
     private void RegisterExternalActions()
@@ -6342,6 +6345,7 @@ public class TargetGrabber : MVRScript
     {
         pendingWristHandLocks.Clear();
         completedWristHandLocks.Clear();
+        hugBodyWristReferencePositions.Clear();
     }
 
     private void ApplyBothHandWristTest(string mode)
@@ -6911,6 +6915,57 @@ public class TargetGrabber : MVRScript
         return baseRotation * Quaternion.Euler(0.0f, 0.0f, angle);
     }
 
+    private void StoreHugBodyWristReference(FreeControllerV3 handControl, Vector3 referencePoint, Vector3 center)
+    {
+        if (handControl == null || !IsHugBodyTarget())
+            return;
+
+        Vector3 actorSideAxis = GetHugOriginPosition(center) - center;
+        actorSideAxis.y = 0.0f;
+        if (actorSideAxis.sqrMagnitude < 0.0001f)
+            actorSideAxis = -GetHugForwardAxis(center);
+        actorSideAxis.y = 0.0f;
+
+        if (actorSideAxis.sqrMagnitude < 0.0001f)
+            return;
+
+        actorSideAxis.Normalize();
+        float depth = Vector3.Dot(referencePoint - center, actorSideAxis);
+
+        // Keep the last meaningful near/far reference from the actual reach-limited target.
+        // Do not use the raw desired point: when the desired point is unreachable behind the
+        // target, the hand may actually stop on the front/near side and should pick Wrist Out.
+        if (Mathf.Abs(depth) >= HUG_BODY_WRIST_DEPTH_THRESHOLD)
+            hugBodyWristReferencePositions[handControl] = referencePoint;
+    }
+
+    private bool TryGetHugBodyWristReference(FreeControllerV3 handControl, Vector3 fallbackPoint, Vector3 center, out Vector3 referencePoint, out float depth, out string source)
+    {
+        referencePoint = fallbackPoint;
+        depth = 0.0f;
+        source = "fallback";
+
+        Vector3 actorSideAxis = GetHugOriginPosition(center) - center;
+        actorSideAxis.y = 0.0f;
+        if (actorSideAxis.sqrMagnitude < 0.0001f)
+            actorSideAxis = -GetHugForwardAxis(center);
+        actorSideAxis.y = 0.0f;
+
+        if (actorSideAxis.sqrMagnitude < 0.0001f)
+        {
+            source = "no-axis";
+            return false;
+        }
+
+        actorSideAxis.Normalize();
+
+        if (handControl != null && hugBodyWristReferencePositions.TryGetValue(handControl, out referencePoint))
+            source = "stored";
+
+        depth = Vector3.Dot(referencePoint - center, actorSideAxis);
+        return Mathf.Abs(depth) >= HUG_BODY_WRIST_DEPTH_THRESHOLD;
+    }
+
     private Quaternion GetWristButtonHandWorldRotation(bool actualRightHand, string mode, Quaternion fallbackRotation)
     {
         WristArmPose pose = GetWristButtonArmPose(mode);
@@ -6931,21 +6986,72 @@ public class TargetGrabber : MVRScript
             return baseRotation;
 
         bool crossedPath = pathRightSide != actualRightHand;
-        Vector3 toCenter = center - handPos;
-        float targetDistance = toCenter.magnitude;
-        Quaternion fallbackInRotation = ApplyHandWristMode(baseRotation, actualRightHand, "In");
-        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, "In", fallbackInRotation);
+
+        // Important:
+        // Decide from the actual final hand position only.
+        // Older versions cached an earlier reach-limited target. During Hug Body the hand opens wide,
+        // then closes back toward center, so that cached early point could say "front => Out" even
+        // after the hand finally returned near center. That was the wrong reference.
+        Vector3 actorSideAxis = GetHugOriginPosition(center) - center;
+        actorSideAxis.y = 0.0f;
+        if (actorSideAxis.sqrMagnitude < 0.0001f)
+            actorSideAxis = -GetHugForwardAxis(center);
+        actorSideAxis.y = 0.0f;
+
+        bool hasAxis = actorSideAxis.sqrMagnitude >= 0.0001f;
+        if (hasAxis)
+            actorSideAxis.Normalize();
+
+        Vector3 centerToHand = handPos - center;
+        Vector3 centerToHandFlat = centerToHand;
+        centerToHandFlat.y = 0.0f;
+        float flatDistance = centerToHandFlat.magnitude;
+        float depth = hasAxis ? Vector3.Dot(centerToHand, actorSideAxis) : 0.0f;
+
+        // depth is measured along target-center -> actor/self side.
+        //   actual final depth > threshold : final hand is still on near/front/actor side => Wrist Out.
+        //   actual final depth <= threshold: center/back/unknown => Wrist In.
+        // This deliberately defaults to In for near-center, because Hug Body closes to Final Grab Width
+        // and the final hand position is often only 1 cm from center.
+        string mode = "In";
+        string reason = "default-in";
+        if (!hasAxis)
+        {
+            reason = "no-axis-in";
+        }
+        else if (flatDistance < HUG_BODY_WRIST_NEAR_CENTER_DISTANCE)
+        {
+            reason = "near-center-in";
+        }
+        else if (depth > HUG_BODY_WRIST_DEPTH_THRESHOLD)
+        {
+            mode = "Out";
+            reason = "final-front-out";
+        }
+        else if (depth < -HUG_BODY_WRIST_DEPTH_THRESHOLD)
+        {
+            reason = "final-back-in";
+        }
+        else
+        {
+            reason = "depth-small-in";
+        }
+
+        Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, mode);
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, mode, fallbackRotation);
 
         if (IsDebugEnabled())
         {
             Vector3 finalEuler = finalRotation.eulerAngles;
-            DebugLog("[WRIST HUG FORCE IN] hand=" + (actualRightHand ? "R" : "L") +
-                " mode=In" +
+            DebugLog("[WRIST HUG FINALPOS] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=" + mode +
                 " apply=button-preset" +
+                " reason=" + reason +
                 " cross=" + Bool01(crossedPath) +
                 " pathRight=" + Bool01(pathRightSide) +
                 " front=" + Bool01(frontSide) +
-                " dist=" + targetDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                " depth=" + depth.ToString("F3", CultureInfo.InvariantCulture) +
+                " flatDist=" + flatDistance.ToString("F3", CultureInfo.InvariantCulture) +
                 " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
                     finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
                     finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")" +
