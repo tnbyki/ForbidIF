@@ -1,3 +1,16 @@
+// ============================================================
+// TargetGrabber.cs
+// Version: v4.0bq_wrist_button_arm_pose_lock
+// Date: 2026-06-20
+// Base: TargetGrabber_v4_0bp_wrist_button_preset_only.cs
+// Summary:
+// - Integrates verified v011 wrist button behavior into TargetGrabber.
+// - Wrist buttons keep current rHand/lHand positions locked, apply selected hand rotation presets,
+//   and move matching rElbow/lElbow controls to the captured arm pose.
+// - Keeps Hug Body handCenter far/inside correction fade-out when Hug Mode is OFF.
+// - Keeps Final Grab Width zero/default values clamped to 0.01 internally.
+// - Keeps v4.0bh Grab Hand Pull-To-Hand behavior and existing Hug Body axis/side fixes.
+// ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
 // VAM Target Grabber
@@ -5,7 +18,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0bg-hugbody-layout-resolve
+// Version: v4.0bq_wrist_button_arm_pose_lock
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -62,6 +75,16 @@
 // v4.0bb: Caps only Hug Body hand path width so wrapping stays wide but avoids unreachable detours.
 // v4.0bd: For Hug Body hands, uses approach-based actor-left side axis instead of target root side axis.
 // v4.0bg: Resolves Hug Body hand layout by current hand side and movement cost, avoiding fixed L/R or simple forward flip.
+// v4.0bh: Restores Hand/Foot/Knee Grab Hand Pull by moving target IK toward active self hand IK.
+// v4.0bi: Uses a 0.01 internal minimum for Final Grab Width instead of allowing 0.000.
+// v4.0bj: Hug Body layout prefers the candidate farther from the actor root instead of shortest-distance only.
+// v4.0bk: Fades Hug Body far handCenter bias out near the end when Hug Mode is OFF.
+// v4.0bm: Rebuilds Wrist test buttons to use the same fixed hand basis as Grab hand rotation.
+// v4.0bn: Uses a left/right symmetric visual base for Wrist test buttons instead of pathRight/layout basis.
+// v4.0bo: Uses the verified Grab HAND ROT fixed presets for Wrist Straight and fixes the left/right preset swap.
+// v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
+// v4.0bq: Wrist buttons use captured arm poses: hand positions locked, hand rotations preset, elbows moved per mode.
+// v4.0br: Clears pending wrist hand locks on wrist button start / grab start / release / defaults to avoid stale 8-frame locks.
 //
 // 機能
 // ・Target Type排他選択（Atom / Person）
@@ -136,10 +159,53 @@ public class TargetGrabber : MVRScript
     private const string FOLLOW_SELF = "Self";
     private const string FOLLOW_TARGET = "Target";
     private const string CUSTOM_TARGET_PREFIX = "Custom: ";
+
+    private const int WRIST_HAND_LOCK_FRAMES = 8;
+
+    private struct WristControlPose
+    {
+        public Vector3 LocalPos;
+        public Quaternion LocalRot;
+
+        public WristControlPose(float px, float py, float pz, float qx, float qy, float qz, float qw)
+        {
+            LocalPos = new Vector3(px, py, pz);
+            LocalRot = NormalizeQuaternionRaw(new Quaternion(qx, qy, qz, qw));
+        }
+    }
+
+    private class WristArmPose
+    {
+        public WristControlPose RHand;
+        public WristControlPose LHand;
+        public WristControlPose RElbow;
+        public WristControlPose LElbow;
+
+        public WristArmPose(WristControlPose rHand, WristControlPose lHand, WristControlPose rElbow, WristControlPose lElbow)
+        {
+            RHand = rHand;
+            LHand = lHand;
+            RElbow = rElbow;
+            LElbow = lElbow;
+        }
+    }
+
+    private class PendingWristHandLock
+    {
+        public string Mode;
+        public string Label;
+        public FreeControllerV3 Control;
+        public Vector3 LockTransformWorldPos;
+        public Vector3 LockControlWorldPos;
+        public Quaternion TargetLocalRot;
+        public bool HasControlTransform;
+        public int FramesLeft;
+    }
+    private const float MIN_FINAL_GRAB_WIDTH = 0.01f;
     private const float HIP_HOLD_GRAB_WIDTH = 1.50f;
     private const float HIP_HOLD_FINAL_GRAB_WIDTH = 0.13f;
     private const float CROTCH_GRAB_WIDTH = 0.00f;
-    private const float CROTCH_FINAL_GRAB_WIDTH = 0.00f;
+    private const float CROTCH_FINAL_GRAB_WIDTH = MIN_FINAL_GRAB_WIDTH;
     private const float PENI_GRAB_WIDTH = 0.10f;
     private const float PENI_FINAL_GRAB_WIDTH = 0.03f;
     private const float PENI_AUTO_Z_OFFSET = -0.03f;
@@ -216,6 +282,8 @@ public class TargetGrabber : MVRScript
 
     private FreeControllerV3 lHandControl;
     private FreeControllerV3 rHandControl;
+    private FreeControllerV3 lElbowControl;
+    private FreeControllerV3 rElbowControl;
     private FreeControllerV3 lFootControl;
     private FreeControllerV3 rFootControl;
     private FreeControllerV3 lKneeControl;
@@ -248,6 +316,8 @@ public class TargetGrabber : MVRScript
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryRelaxRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly List<FreeControllerV3> temporaryRelaxControls = new List<FreeControllerV3>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryHandRotationOffStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
+    private readonly Dictionary<FreeControllerV3, PendingWristHandLock> pendingWristHandLocks = new Dictionary<FreeControllerV3, PendingWristHandLock>();
+    private readonly List<FreeControllerV3> completedWristHandLocks = new List<FreeControllerV3>();
     private readonly List<FreeControllerV3> pendingSelfFollowTargets = new List<FreeControllerV3>();
     private readonly List<SelfFollowParentLink> activeSelfFollowParentLinks = new List<SelfFollowParentLink>();
     private readonly Dictionary<FreeControllerV3, SelfFollowLinkState> selfFollowOriginalLinkStates = new Dictionary<FreeControllerV3, SelfFollowLinkState>();
@@ -371,7 +441,7 @@ public class TargetGrabber : MVRScript
         // 左側UI: Target / Motion / Advanced。
         // Foot Sole系は左下へ寄せる。
         grabWidthJSON = CreateFloat("Grab Width", 1.60f, 0.0f, 2.00f, false);
-        finalGrabWidthJSON = CreateFloat("Final Grab Width", 0.10f, 0.0f, 2.00f, false);
+        finalGrabWidthJSON = CreateFloat("Final Grab Width", 0.10f, MIN_FINAL_GRAB_WIDTH, 2.00f, false);
         autoGrabWidthJSON = CreateBool("Auto Grab Width", true, false);
         grabCloseSpeedJSON = CreateFloat("Grab Close Speed", 5.0f, 0.1f, 20.0f, false);
         moveTimeJSON = CreateFloat("Move Time Sec", 0.50f, 0.05f, 10.00f, false);
@@ -463,7 +533,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0bg-hugbody-layout-resolve / v4.0bd-hugbody-approach-side");
+        DebugLog("ready / v4.0bq_wrist_button_arm_pose_lock / v4.0bp-preset-only / v4.0bk-bias-fadeout / v4.0bi-final-width-min-001");
     }
 
     private void RegisterExternalActions()
@@ -1083,7 +1153,7 @@ public class TargetGrabber : MVRScript
             if (grabWidthJSON != null)
                 grabWidthJSON.val = grabWidth;
 
-            float finalWidth = 0.00f;
+            float finalWidth = MIN_FINAL_GRAB_WIDTH;
             if (hipHold)
                 finalWidth = HIP_HOLD_FINAL_GRAB_WIDTH;
             else if (targetPersonPartChooser != null && targetPersonPartChooser.val == TC_HEAD)
@@ -1412,6 +1482,8 @@ public class TargetGrabber : MVRScript
 
     private void LoadUserDefaults()
     {
+        ClearPendingWristHandLocks();
+
         string[] actionNames =
         {
             "Load User Defaults",
@@ -1443,6 +1515,7 @@ public class TargetGrabber : MVRScript
         }
 
         hasActiveGrab = false;
+        ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
         activeMoveTimeMultiplier = 1.0f;
         activeIncludeHead = false;
@@ -1621,6 +1694,8 @@ public class TargetGrabber : MVRScript
     {
         lHandControl = null;
         rHandControl = null;
+        lElbowControl = null;
+        rElbowControl = null;
         lFootControl = null;
         rFootControl = null;
         lKneeControl = null;
@@ -1634,6 +1709,8 @@ public class TargetGrabber : MVRScript
 
         lHandControl = GetControl("lHandControl");
         rHandControl = GetControl("rHandControl");
+        lElbowControl = GetControl("lElbowControl");
+        rElbowControl = GetControl("rElbowControl");
         lFootControl = GetControl("lFootControl");
         rFootControl = GetControl("rFootControl");
         lKneeControl = GetControl("lKneeControl");
@@ -1646,6 +1723,8 @@ public class TargetGrabber : MVRScript
         {
             DebugLog("[RESOLVE] lHand=" + Bool01(lHandControl != null) +
                 " rHand=" + Bool01(rHandControl != null) +
+                " lElbow=" + Bool01(lElbowControl != null) +
+                " rElbow=" + Bool01(rElbowControl != null) +
                 " lFoot=" + Bool01(lFootControl != null) +
                 " rFoot=" + Bool01(rFootControl != null) +
                 " lKnee=" + Bool01(lKneeControl != null) +
@@ -1727,6 +1806,11 @@ public class TargetGrabber : MVRScript
         hasActiveGrab = false;
     }
 
+    public void LateUpdate()
+    {
+        UpdatePendingWristHandLocks();
+    }
+
     private void GrabHand()
     {
         StartTimedGrab(true, false);
@@ -1761,6 +1845,30 @@ public class TargetGrabber : MVRScript
         if (pullControls.Count == 0)
         {
             SetStatus("Grab Hand Pull needs movable target control");
+            return;
+        }
+
+        if (IsPullToHandTargetMode())
+        {
+            float maxDistance;
+            int movedCount;
+            int snappedHands;
+            bool pulledToHand = TryPullTargetControlsToActiveHands(pullControls, out maxDistance, out movedCount, out snappedHands);
+
+            UpdateGrabHandUtilityButtons();
+            StartTimedGrab(true, false, pulledToHand, false, true);
+            QueueAutoSnapPullOpenIK(null);
+
+            if (pulledToHand)
+            {
+                SetStatus("Grab Hand Pull To Hand / moved=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+                    " / maxDist=" + maxDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                    " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+            }
+            else
+            {
+                SetStatus("Grab Hand Pull To Hand / already close");
+            }
             return;
         }
 
@@ -1832,6 +1940,145 @@ public class TargetGrabber : MVRScript
         QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { single });
         QueueSelfFollowParentTargets(new List<FreeControllerV3> { single });
         SetStatus("Grab Hand Open");
+    }
+
+    private bool IsPullToHandTargetMode()
+    {
+        if (!IsTargetPersonMode() || targetPersonPartChooser == null)
+            return false;
+
+        string choice = targetPersonPartChooser.val;
+        return choice == TC_HAND ||
+               choice == TC_L_HAND ||
+               choice == TC_R_HAND ||
+               choice == TC_FOOT ||
+               choice == TC_L_FOOT ||
+               choice == TC_R_FOOT ||
+               choice == TC_KNEE ||
+               choice == TC_L_KNEE ||
+               choice == TC_R_KNEE;
+    }
+
+    private bool TryPullTargetControlsToActiveHands(List<FreeControllerV3> pullControls, out float maxDistance, out int movedCount, out int snappedHands)
+    {
+        maxDistance = 0.0f;
+        movedCount = 0;
+        snappedHands = 0;
+
+        if (pullControls == null || pullControls.Count == 0 || selectedPerson == null)
+            return false;
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        if (!leftActive && !rightActive)
+            return false;
+
+        if (leftActive && SnapIKControlToBody(selectedPerson, lHandControl))
+            snappedHands++;
+        if (rightActive && SnapIKControlToBody(selectedPerson, rHandControl))
+            snappedHands++;
+
+        PrepareTemporaryRelaxLinkedIK(pullControls);
+
+        bool moved = false;
+        if (pullControls.Count == 2 && leftActive && rightActive)
+        {
+            FreeControllerV3 firstTarget = pullControls[0];
+            FreeControllerV3 secondTarget = pullControls[1];
+
+            float normalCost = GetControlDistanceSqr(firstTarget, lHandControl) + GetControlDistanceSqr(secondTarget, rHandControl);
+            float swappedCost = GetControlDistanceSqr(firstTarget, rHandControl) + GetControlDistanceSqr(secondTarget, lHandControl);
+
+            if (swappedCost < normalCost)
+            {
+                moved |= MoveTargetControlTowardHand(firstTarget, rHandControl, ref maxDistance, ref movedCount);
+                moved |= MoveTargetControlTowardHand(secondTarget, lHandControl, ref maxDistance, ref movedCount);
+            }
+            else
+            {
+                moved |= MoveTargetControlTowardHand(firstTarget, lHandControl, ref maxDistance, ref movedCount);
+                moved |= MoveTargetControlTowardHand(secondTarget, rHandControl, ref maxDistance, ref movedCount);
+            }
+        }
+        else
+        {
+            foreach (FreeControllerV3 target in pullControls)
+            {
+                FreeControllerV3 hand = GetNearestActivePullHand(target, leftActive, rightActive);
+                moved |= MoveTargetControlTowardHand(target, hand, ref maxDistance, ref movedCount);
+            }
+        }
+
+        return moved;
+    }
+
+    private float GetControlDistanceSqr(FreeControllerV3 a, FreeControllerV3 b)
+    {
+        if (a == null || b == null)
+            return float.MaxValue * 0.25f;
+
+        return (GetControlPosition(a) - GetControlPosition(b)).sqrMagnitude;
+    }
+
+    private FreeControllerV3 GetNearestActivePullHand(FreeControllerV3 target, bool leftActive, bool rightActive)
+    {
+        if (target == null)
+            return null;
+
+        if (leftActive && !rightActive)
+            return lHandControl;
+        if (rightActive && !leftActive)
+            return rHandControl;
+
+        Vector3 targetPos = GetControlPosition(target);
+        float leftDist = lHandControl != null ? (GetControlPosition(lHandControl) - targetPos).sqrMagnitude : float.MaxValue;
+        float rightDist = rHandControl != null ? (GetControlPosition(rHandControl) - targetPos).sqrMagnitude : float.MaxValue;
+        return rightDist < leftDist ? rHandControl : lHandControl;
+    }
+
+    private bool MoveTargetControlTowardHand(FreeControllerV3 target, FreeControllerV3 hand, ref float maxDistance, ref int movedCount)
+    {
+        if (target == null || hand == null)
+            return false;
+
+        Vector3 targetPos = GetControlPosition(target);
+        Vector3 handPos = GetControlPosition(hand);
+        Vector3 delta = handPos - targetPos;
+        float distance = delta.magnitude;
+        if (distance > maxDistance)
+            maxDistance = distance;
+
+        if (distance < 0.005f)
+        {
+            LockTargetIKControl(target);
+            return false;
+        }
+
+        float moveDistance = Mathf.Min(distance, GRAB_PULL_MAX_DISTANCE);
+        Vector3 nextPos = targetPos + delta.normalized * moveDistance;
+        MoveTargetControlToPosition(target, nextPos);
+        LockTargetIKControl(target);
+        movedCount++;
+
+        DebugLog("[PULL TO HAND] target=" + target.name +
+            " hand=" + hand.name +
+            " dist=" + distance.ToString("F3", CultureInfo.InvariantCulture) +
+            " move=" + moveDistance.ToString("F3", CultureInfo.InvariantCulture) +
+            " from=" + FormatVector3(targetPos) +
+            " to=" + FormatVector3(nextPos) +
+            " handPos=" + FormatVector3(handPos));
+
+        return true;
+    }
+
+    private void MoveTargetControlToPosition(FreeControllerV3 fc, Vector3 position)
+    {
+        if (fc == null)
+            return;
+
+        CaptureTargetOriginal(fc);
+        Quaternion rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
+        MoveControl(fc, position, rot, false, true);
     }
 
     private bool TryGetGrabPullOffset(out Vector3 pullOffset, out float maxShortage)
@@ -2818,6 +3065,7 @@ public class TargetGrabber : MVRScript
     private void StartTimedGrab(bool includeHands, bool includeFeet, bool keepTemporaryRelaxLinkedIK = false, bool includeHead = false, bool useFinalGrabWidth = false)
     {
         ResolveControls();
+        ClearPendingWristHandLocks();
 
         RestoreSelfFollowParentLinks();
 
@@ -4870,6 +5118,10 @@ public class TargetGrabber : MVRScript
         HugBodyHandLayout best = baseLayout;
         float plusScore = -1.0f;
         float minusScore = -1.0f;
+        float plusAwayDot = 0.0f;
+        float minusAwayDot = 0.0f;
+        float centerBias = 0.0f;
+        bool farCandidateUsed = false;
 
         if (!IsHugMode())
         {
@@ -4878,15 +5130,57 @@ public class TargetGrabber : MVRScript
             if (axis.sqrMagnitude > 0.0001f)
             {
                 axis.Normalize();
-                HugBodyHandLayout plus = BuildHugBodyHandLayout("axis+", targetCenter, baseHandCenter + axis * HUG_BODY_HAND_CENTER_OFFSET, handSide, handPathWidth);
-                HugBodyHandLayout minus = BuildHugBodyHandLayout("axis-", targetCenter, baseHandCenter - axis * HUG_BODY_HAND_CENTER_OFFSET, handSide, handPathWidth);
+
+                // v4.0bk:
+                // Hug Body + Hug Mode OFF では、奥側 handCenter 補正は「通過経路用」。
+                // 最終地点まで補正を残すと手が奥へ出過ぎるため、終盤で補正量を0へ戻す。
+                centerBias = GetHugBodyCenterBiasFade();
+                Vector3 centerOffset = axis * HUG_BODY_HAND_CENTER_OFFSET * centerBias;
+
+                HugBodyHandLayout plus = BuildHugBodyHandLayout("axis+", targetCenter, baseHandCenter + centerOffset, handSide, handPathWidth);
+                HugBodyHandLayout minus = BuildHugBodyHandLayout("axis-", targetCenter, baseHandCenter - centerOffset, handSide, handPathWidth);
                 plusScore = plus.score;
                 minusScore = minus.score;
 
-                if (plus.score < best.score)
-                    best = plus;
-                if (minus.score < best.score)
-                    best = minus;
+                // v4.0bj:
+                // Hug Body の handCenter 補正は「手の移動距離が短い候補」だけで選ぶと、
+                // 胸中心より自分root側へ戻る候補を選び、抱きに行く位置が手前に来ることがある。
+                // targetCenter から actor/root へ向かう方向との dot が負の候補を「奥側」として優先する。
+                Vector3 actorDir = GetHugOriginPosition(targetCenter) - targetCenter;
+                actorDir.y = 0.0f;
+                if (actorDir.sqrMagnitude > 0.0001f)
+                {
+                    actorDir.Normalize();
+                    plusAwayDot = Vector3.Dot(plus.handCenter - targetCenter, actorDir);
+                    minusAwayDot = Vector3.Dot(minus.handCenter - targetCenter, actorDir);
+
+                    bool plusFar = plusAwayDot < -0.0001f;
+                    bool minusFar = minusAwayDot < -0.0001f;
+
+                    if (plusFar && minusFar)
+                    {
+                        best = plus.score <= minus.score ? plus : minus;
+                        farCandidateUsed = true;
+                    }
+                    else if (plusFar)
+                    {
+                        best = plus;
+                        farCandidateUsed = true;
+                    }
+                    else if (minusFar)
+                    {
+                        best = minus;
+                        farCandidateUsed = true;
+                    }
+                }
+
+                if (!farCandidateUsed)
+                {
+                    if (plus.score < best.score)
+                        best = plus;
+                    if (minus.score < best.score)
+                        best = minus;
+                }
             }
         }
 
@@ -4897,6 +5191,10 @@ public class TargetGrabber : MVRScript
                 " baseScore=" + baseLayout.score.ToString("F3", CultureInfo.InvariantCulture) +
                 " axisPlusScore=" + plusScore.ToString("F3", CultureInfo.InvariantCulture) +
                 " axisMinusScore=" + minusScore.ToString("F3", CultureInfo.InvariantCulture) +
+                " plusAwayDot=" + plusAwayDot.ToString("F3", CultureInfo.InvariantCulture) +
+                " minusAwayDot=" + minusAwayDot.ToString("F3", CultureInfo.InvariantCulture) +
+                " centerBias=" + centerBias.ToString("F3", CultureInfo.InvariantCulture) +
+                " farPick=" + Bool01(farCandidateUsed) +
                 " leftStartSide=" + best.leftStartSide.ToString("F3", CultureInfo.InvariantCulture) +
                 " rightStartSide=" + best.rightStartSide.ToString("F3", CultureInfo.InvariantCulture) +
                 " leftPathRight=" + Bool01(best.leftPathRightSide) +
@@ -4908,6 +5206,21 @@ public class TargetGrabber : MVRScript
         }
 
         return best;
+    }
+
+    private float GetHugBodyCenterBiasFade()
+    {
+        // v4.0bk:
+        // 0.0 - 0.65 : 奥側補正を維持
+        // 0.65 - 1.0 : smoothstepで補正を0へ戻す
+        // 最終地点は補正なしの target center 基準にする。
+        float t = GetMoveTLinear();
+        if (t <= 0.65f)
+            return 1.0f;
+
+        float u = Mathf.Clamp01((t - 0.65f) / 0.35f);
+        float smooth = u * u * (3.0f - 2.0f * u);
+        return Mathf.Clamp01(1.0f - smooth);
     }
 
     private HugBodyHandLayout BuildHugBodyHandLayout(
@@ -5306,6 +5619,30 @@ public class TargetGrabber : MVRScript
             value.z.ToString("F3", CultureInfo.InvariantCulture) + ")";
     }
 
+
+    private string FormatQuaternion(Quaternion value)
+    {
+        return "(" +
+            value.x.ToString("F3", CultureInfo.InvariantCulture) + "," +
+            value.y.ToString("F3", CultureInfo.InvariantCulture) + "," +
+            value.z.ToString("F3", CultureInfo.InvariantCulture) + "," +
+            value.w.ToString("F3", CultureInfo.InvariantCulture) + ")";
+    }
+
+    private static Quaternion NormalizeQuaternionRaw(Quaternion q)
+    {
+        float m = Mathf.Sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+        if (m <= 0.0001f)
+            return Quaternion.identity;
+
+        return new Quaternion(q.x / m, q.y / m, q.z / m, q.w / m);
+    }
+
+    private Quaternion NormalizeQuaternion(Quaternion q)
+    {
+        return NormalizeQuaternionRaw(q);
+    }
+
     private bool IsTargetOnPositiveSide(Vector3 target, Vector3 center, Vector3 side)
     {
         if (side.sqrMagnitude < 0.0001f)
@@ -5554,16 +5891,19 @@ public class TargetGrabber : MVRScript
 
     private float GetFinalGrabWidth()
     {
+        // 0.000 はIK/配置計算で潰れやすいので、内部の最終幅は必ず少し残す。
+        // Hug Mode でも完全ゼロには閉じず、ログ上も finalWidth=0.010 になる。
         if (IsHugMode())
-            return 0.0f;
+            return MIN_FINAL_GRAB_WIDTH;
 
         // UI上の Final Grab Width は「左右の実距離」として扱う。
         // 配置計算は center ± width の半幅方式なので、内部値は半分にする。
+        // ただし UI値が0/極小の場合も、内部値は MIN_FINAL_GRAB_WIDTH を下限にする。
         float width = finalGrabWidthJSON != null
             ? Mathf.Max(0.0f, finalGrabWidthJSON.val)
             : 0.10f;
 
-        return width * 0.5f;
+        return Mathf.Max(MIN_FINAL_GRAB_WIDTH, width * 0.5f);
     }
 
     private float GetHugDepth()
@@ -5652,7 +5992,7 @@ public class TargetGrabber : MVRScript
     private void AutoCloseGrabWidth()
     {
         // Grab Width はUI値を維持し、内部の currentGrabWidth だけを閉じる。
-        // Hug Mode時は Final Grab Width を強制0にする。
+        // Hug Mode時も完全0には閉じず、GetFinalGrabWidth() の最小幅へ閉じる。
         currentGrabWidth = Mathf.Lerp(grabStartWidth, GetFinalGrabWidth(), GetMoveTLinear());
     }
 
@@ -5993,24 +6333,62 @@ public class TargetGrabber : MVRScript
         return alignFootSoleJSON != null && alignFootSoleJSON.val;
     }
 
+    private void ClearPendingWristHandLocks()
+    {
+        pendingWristHandLocks.Clear();
+        completedWristHandLocks.Clear();
+    }
+
     private void ApplyBothHandWristTest(string mode)
     {
         ResolveControls();
+        ClearPendingWristHandLocks();
 
-        int moved = 0;
-        if (leftHandJSON == null || leftHandJSON.val)
-            moved += ApplyHandWristTest(lHandControl, false, mode);
-        if (rightHandJSON == null || rightHandJSON.val)
-            moved += ApplyHandWristTest(rHandControl, true, mode);
+        WristArmPose pose = GetWristButtonArmPose(mode);
+        if (pose == null)
+        {
+            SetStatus("Wrist Test unknown mode: " + mode);
+            return;
+        }
 
-        if (moved <= 0)
+        bool useLeft = leftHandJSON == null || leftHandJSON.val;
+        bool useRight = rightHandJSON == null || rightHandJSON.val;
+
+        if (!useLeft && !useRight)
         {
             SetStatus("Wrist Test needs checked L/R Hand");
             return;
         }
 
-        SetStatus("Wrist Test / " + mode + " / hands=" + moved.ToString(CultureInfo.InvariantCulture));
-        DebugLog("[WRIST TEST] mode=" + mode + " moved=" + moved.ToString(CultureInfo.InvariantCulture));
+        int hands = 0;
+        int elbows = 0;
+
+        // Apply elbows first, then lock current hand positions and rotate hands.
+        if (useRight)
+        {
+            elbows += ApplyWristButtonElbowPose(rElbowControl, true, mode, pose.RElbow);
+            hands += ApplyWristButtonHandLocked(rHandControl, true, mode, pose.RHand.LocalRot);
+        }
+
+        if (useLeft)
+        {
+            elbows += ApplyWristButtonElbowPose(lElbowControl, false, mode, pose.LElbow);
+            hands += ApplyWristButtonHandLocked(lHandControl, false, mode, pose.LHand.LocalRot);
+        }
+
+        if (hands <= 0)
+        {
+            SetStatus("Wrist Test needs hand controls");
+            return;
+        }
+
+        SetStatus("Wrist Test / " + mode + " / hands=" + hands.ToString(CultureInfo.InvariantCulture) +
+            " elbows=" + elbows.ToString(CultureInfo.InvariantCulture) + " handPosition=LOCKED");
+
+        DebugLog("[WRIST TEST ARM] mode=" + mode +
+            " hands=" + hands.ToString(CultureInfo.InvariantCulture) +
+            " elbows=" + elbows.ToString(CultureInfo.InvariantCulture) +
+            " handPosition=LOCKED");
     }
 
     private int ApplyHandWristTest(FreeControllerV3 handControl, bool actualRightHand, string mode)
@@ -6020,32 +6398,415 @@ public class TargetGrabber : MVRScript
             return 0;
         }
 
-        Vector3 pos = handControl.control != null ? handControl.control.position : handControl.transform.position;
-        Quaternion rot = GetHandWristRotation(actualRightHand, mode);
+        Vector3 pos = GetControlPosition(handControl);
+        Quaternion rot = GetHandWristButtonRotation(handControl, actualRightHand, mode, pos);
         MoveControl(handControl, pos, rot, true, true);
         return 1;
     }
 
+
+    private WristArmPose GetWristButtonArmPose(string mode)
+    {
+        if (mode == "In")
+        {
+            return new WristArmPose(
+                new WristControlPose( 0.096f, 1.219f, 0.295f, -0.230f, -0.718f, -0.603f, 0.261f),
+                new WristControlPose(-0.096f, 1.219f, 0.295f, -0.230f,  0.718f,  0.603f, 0.261f),
+                new WristControlPose( 0.232f, 1.188f, 0.107f, -0.275f, -0.754f, -0.468f, 0.370f),
+                new WristControlPose(-0.228f, 1.188f, 0.111f, -0.285f,  0.749f,  0.466f, 0.374f)
+            );
+        }
+
+        if (mode == "Out")
+        {
+            return new WristArmPose(
+                new WristControlPose( 0.106f, 1.219f, 0.287f, -0.754f, -0.012f,  0.054f, 0.654f),
+                new WristControlPose(-0.106f, 1.219f, 0.287f, -0.754f,  0.012f, -0.054f, 0.654f),
+                new WristControlPose( 0.166f, 1.148f, 0.075f, -0.454f, -0.660f, -0.399f, 0.445f),
+                new WristControlPose(-0.166f, 1.148f, 0.076f, -0.455f,  0.660f,  0.399f, 0.445f)
+            );
+        }
+
+        if (mode == "Up")
+        {
+            return new WristArmPose(
+                new WristControlPose( 0.106f, 1.219f, 0.287f, -0.581f, -0.415f,  0.514f, 0.474f),
+                new WristControlPose(-0.106f, 1.219f, 0.287f, -0.581f,  0.415f, -0.514f, 0.474f),
+                new WristControlPose( 0.179f, 1.140f, 0.082f, -0.203f, -0.801f,  0.028f, 0.563f),
+                new WristControlPose(-0.180f, 1.140f, 0.082f, -0.203f,  0.801f, -0.029f, 0.562f)
+            );
+        }
+
+        if (mode == "Down")
+        {
+            return new WristArmPose(
+                new WristControlPose( 0.106f, 1.219f, 0.287f, -0.601f,  0.392f, -0.425f, 0.551f),
+                new WristControlPose(-0.106f, 1.219f, 0.287f, -0.601f, -0.392f,  0.425f, 0.551f),
+                new WristControlPose( 0.185f, 1.174f, 0.080f, -0.552f, -0.342f, -0.732f, 0.206f),
+                new WristControlPose(-0.186f, 1.173f, 0.080f, -0.552f,  0.344f,  0.731f, 0.205f)
+            );
+        }
+
+        // Straight is the default.
+        return new WristArmPose(
+            new WristControlPose( 0.096f, 1.219f, 0.295f, -0.512f, -0.554f, -0.436f, 0.491f),
+            new WristControlPose(-0.096f, 1.219f, 0.295f, -0.512f,  0.554f,  0.436f, 0.491f),
+            new WristControlPose( 0.185f, 1.167f, 0.089f, -0.384f, -0.691f, -0.450f, 0.415f),
+            new WristControlPose(-0.185f, 1.167f, 0.089f, -0.385f,  0.692f,  0.449f, 0.415f)
+        );
+    }
+
+    private Transform GetSelectedPersonPoseRootTransform()
+    {
+        if (selectedPerson == null)
+            return null;
+
+        if (selectedPerson.mainController != null && selectedPerson.mainController.transform != null)
+            return selectedPerson.mainController.transform;
+
+        return selectedPerson.transform;
+    }
+
+    private int ApplyWristButtonElbowPose(FreeControllerV3 elbowControl, bool actualRightHand, string mode, WristControlPose pose)
+    {
+        if (elbowControl == null)
+        {
+            DebugLog("[WRIST ELBOW MISS] hand=" + (actualRightHand ? "R" : "L") + " mode=" + mode);
+            return 0;
+        }
+
+        Transform rootT = GetSelectedPersonPoseRootTransform();
+        if (rootT == null)
+            return 0;
+
+        Vector3 beforeWorldPos = elbowControl.control != null ? elbowControl.control.position : elbowControl.transform.position;
+        Vector3 beforeLocalPos = rootT.InverseTransformPoint(beforeWorldPos);
+        Quaternion beforeLocalRot = Quaternion.Inverse(rootT.rotation) * (elbowControl.control != null ? elbowControl.control.rotation : elbowControl.transform.rotation);
+
+        Vector3 worldPos = rootT.TransformPoint(pose.LocalPos);
+        Quaternion worldRot = rootT.rotation * pose.LocalRot;
+
+        EnsurePositionStateOn(elbowControl);
+        EnsureRotationStateOn(elbowControl);
+
+        elbowControl.transform.position = worldPos;
+        elbowControl.transform.rotation = worldRot;
+        if (elbowControl.control != null)
+        {
+            elbowControl.control.position = worldPos;
+            elbowControl.control.rotation = worldRot;
+        }
+
+        if (IsDebugEnabled())
+        {
+            Vector3 afterLocalPos = rootT.InverseTransformPoint(elbowControl.control != null ? elbowControl.control.position : elbowControl.transform.position);
+            Quaternion afterLocalRot = Quaternion.Inverse(rootT.rotation) * (elbowControl.control != null ? elbowControl.control.rotation : elbowControl.transform.rotation);
+            DebugLog("[WRIST ELBOW] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=" + mode +
+                " beforeLocalPos=" + FormatVector3(beforeLocalPos) +
+                " targetLocalPos=" + FormatVector3(pose.LocalPos) +
+                " afterLocalPos=" + FormatVector3(afterLocalPos) +
+                " posDelta=" + Vector3.Distance(beforeWorldPos, elbowControl.control != null ? elbowControl.control.position : elbowControl.transform.position).ToString("F6", CultureInfo.InvariantCulture) +
+                " beforeLocalQuat=" + FormatQuaternion(beforeLocalRot) +
+                " targetLocalQuat=" + FormatQuaternion(pose.LocalRot) +
+                " afterLocalQuat=" + FormatQuaternion(afterLocalRot) +
+                " rotErrDeg=" + Quaternion.Angle(pose.LocalRot, afterLocalRot).ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        return 1;
+    }
+
+    private int ApplyWristButtonHandLocked(FreeControllerV3 handControl, bool actualRightHand, string mode, Quaternion targetLocalRot)
+    {
+        if (handControl == null)
+            return 0;
+
+        Transform rootT = GetSelectedPersonPoseRootTransform();
+        if (rootT == null)
+            return 0;
+
+        targetLocalRot = NormalizeQuaternion(targetLocalRot);
+
+        Vector3 lockTransformPos = handControl.transform.position;
+        Vector3 lockControlPos = handControl.control != null ? handControl.control.position : handControl.transform.position;
+        Vector3 beforeLocalPos = rootT.InverseTransformPoint(handControl.control != null ? handControl.control.position : handControl.transform.position);
+        Quaternion beforeLocalRot = Quaternion.Inverse(rootT.rotation) * (handControl.control != null ? handControl.control.rotation : handControl.transform.rotation);
+        Quaternion worldRot = rootT.rotation * targetLocalRot;
+
+        EnsurePositionStateOn(handControl);
+        EnsureRotationStateOn(handControl);
+
+        handControl.transform.rotation = worldRot;
+        handControl.transform.position = lockTransformPos;
+        if (handControl.control != null)
+        {
+            handControl.control.rotation = worldRot;
+            handControl.control.position = lockControlPos;
+        }
+
+        PendingWristHandLock pending = new PendingWristHandLock();
+        pending.Mode = mode;
+        pending.Label = actualRightHand ? "RHand" : "LHand";
+        pending.Control = handControl;
+        pending.LockTransformWorldPos = lockTransformPos;
+        pending.LockControlWorldPos = lockControlPos;
+        pending.TargetLocalRot = targetLocalRot;
+        pending.HasControlTransform = handControl.control != null;
+        pending.FramesLeft = WRIST_HAND_LOCK_FRAMES;
+        pendingWristHandLocks[handControl] = pending;
+
+        if (IsDebugEnabled())
+        {
+            Vector3 afterLocalPos = rootT.InverseTransformPoint(handControl.control != null ? handControl.control.position : handControl.transform.position);
+            Quaternion afterLocalRot = Quaternion.Inverse(rootT.rotation) * (handControl.control != null ? handControl.control.rotation : handControl.transform.rotation);
+            DebugLog("[WRIST HAND BEGIN] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=" + mode +
+                " beforeLocalPos=" + FormatVector3(beforeLocalPos) +
+                " afterLocalPos=" + FormatVector3(afterLocalPos) +
+                " posDeltaNow=" + Vector3.Distance(lockControlPos, handControl.control != null ? handControl.control.position : handControl.transform.position).ToString("F6", CultureInfo.InvariantCulture) +
+                " beforeLocalQuat=" + FormatQuaternion(beforeLocalRot) +
+                " targetLocalQuat=" + FormatQuaternion(targetLocalRot) +
+                " afterLocalQuat=" + FormatQuaternion(afterLocalRot) +
+                " rotErrDegNow=" + Quaternion.Angle(targetLocalRot, afterLocalRot).ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        return 1;
+    }
+
+    private void UpdatePendingWristHandLocks()
+    {
+        if (pendingWristHandLocks.Count == 0)
+            return;
+
+        Transform rootT = GetSelectedPersonPoseRootTransform();
+        if (rootT == null)
+        {
+            ClearPendingWristHandLocks();
+            return;
+        }
+
+        completedWristHandLocks.Clear();
+
+        foreach (KeyValuePair<FreeControllerV3, PendingWristHandLock> item in pendingWristHandLocks)
+        {
+            PendingWristHandLock pending = item.Value;
+            if (pending == null || pending.Control == null)
+            {
+                completedWristHandLocks.Add(item.Key);
+                continue;
+            }
+
+            Quaternion worldRot = rootT.rotation * pending.TargetLocalRot;
+
+            EnsurePositionStateOn(pending.Control);
+            EnsureRotationStateOn(pending.Control);
+
+            pending.Control.transform.rotation = worldRot;
+            pending.Control.transform.position = pending.LockTransformWorldPos;
+            if (pending.Control.control != null)
+            {
+                pending.Control.control.rotation = worldRot;
+                pending.Control.control.position = pending.LockControlWorldPos;
+            }
+
+            pending.FramesLeft--;
+            if (pending.FramesLeft <= 0)
+                completedWristHandLocks.Add(item.Key);
+        }
+
+        for (int i = 0; i < completedWristHandLocks.Count; i++)
+        {
+            FreeControllerV3 key = completedWristHandLocks[i];
+            PendingWristHandLock pending;
+            if (pendingWristHandLocks.TryGetValue(key, out pending) && pending != null)
+                LogWristHandLockDone(rootT, pending);
+
+            pendingWristHandLocks.Remove(key);
+        }
+    }
+
+    private void LogWristHandLockDone(Transform rootT, PendingWristHandLock pending)
+    {
+        if (!IsDebugEnabled() || pending == null || pending.Control == null)
+            return;
+
+        Quaternion afterTransformLocalRot = Quaternion.Inverse(rootT.rotation) * pending.Control.transform.rotation;
+        Quaternion afterControlLocalRot = pending.Control.control != null
+            ? Quaternion.Inverse(rootT.rotation) * pending.Control.control.rotation
+            : Quaternion.identity;
+        Vector3 afterTransformLocalPos = rootT.InverseTransformPoint(pending.Control.transform.position);
+        Vector3 afterControlLocalPos = pending.Control.control != null
+            ? rootT.InverseTransformPoint(pending.Control.control.position)
+            : Vector3.zero;
+
+        float transformPosDelta = Vector3.Distance(pending.LockTransformWorldPos, pending.Control.transform.position);
+        float controlPosDelta = pending.Control.control != null
+            ? Vector3.Distance(pending.LockControlWorldPos, pending.Control.control.position)
+            : 0.0f;
+
+        float transformAngleError = Quaternion.Angle(pending.TargetLocalRot, afterTransformLocalRot);
+        float controlAngleError = pending.Control.control != null
+            ? Quaternion.Angle(pending.TargetLocalRot, afterControlLocalRot)
+            : -1.0f;
+
+        DebugLog("[WRIST HAND DONE] label=" + pending.Label +
+            " mode=" + pending.Mode +
+            " targetLocalQuat=" + FormatQuaternion(pending.TargetLocalRot) +
+            " afterTransformLocalQuat=" + FormatQuaternion(afterTransformLocalRot) +
+            " afterControlLocalQuat=" + (pending.Control.control != null ? FormatQuaternion(afterControlLocalRot) : "(null)") +
+            " transformErrDeg=" + transformAngleError.ToString("F3", CultureInfo.InvariantCulture) +
+            " controlErrDeg=" + controlAngleError.ToString("F3", CultureInfo.InvariantCulture) +
+            " afterTransformLocalPos=" + FormatVector3(afterTransformLocalPos) +
+            " afterControlLocalPos=" + (pending.Control.control != null ? FormatVector3(afterControlLocalPos) : "(null)") +
+            " transformPosDelta=" + transformPosDelta.ToString("F6", CultureInfo.InvariantCulture) +
+            " controlPosDelta=" + controlPosDelta.ToString("F6", CultureInfo.InvariantCulture));
+    }
+
+    private Quaternion GetHandWristButtonRotation(FreeControllerV3 handControl, bool actualRightHand, string mode, Vector3 controlPosition)
+    {
+        // v4.0bp:
+        // Wrist test buttons are a pure preset test. Do not mix in:
+        // - Hand Palm Add Rot X/Y/Z
+        // - Hug Body layout/pathRight/frontSide
+        // - target center
+        // - current hand rotation
+        // Straight must be exactly the supplied preset.
+        Quaternion baseRotation = GetHandWristButtonSymmetricBaseRotation(actualRightHand);
+        Quaternion finalRotation = ApplyHandWristMode(baseRotation, actualRightHand, mode);
+
+        if (IsDebugEnabled())
+        {
+            Vector3 baseEuler = baseRotation.eulerAngles;
+            Vector3 modeEuler = GetHandWristModeEuler(actualRightHand, mode);
+            Vector3 finalEuler = finalRotation.eulerAngles;
+            DebugLog("[WRIST TEST PRESET] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=" + mode +
+                " basis=preset-only" +
+                " pos=" + FormatVector3(controlPosition) +
+                " baseEuler=(" + baseEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    baseEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    baseEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")" +
+                " modeEuler=(" + modeEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    modeEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    modeEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")" +
+                " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
+        }
+
+        return finalRotation;
+    }
+
+    private Quaternion GetHandWristButtonBaseRotation(
+        FreeControllerV3 handControl,
+        bool actualRightHand,
+        Vector3 controlPosition,
+        out bool pathRightSide,
+        out bool frontSide,
+        out Vector3 center,
+        out string basis)
+    {
+        pathRightSide = actualRightHand;
+        frontSide = false;
+        center = Vector3.zero;
+        basis = "visual-symmetric";
+
+        // v4.0bn:
+        // Wrist test buttons are used to verify the actual bend definitions.
+        // Do not use Hug Body pathRight/layout as the base here, because that can swap
+        // the left/right starting rotation before Straight/In/Out/Up/Down is tested.
+        // Keep pathRight/front only as debug context.
+        if (selectedPerson != null && HasValidTarget())
+        {
+            center = GetTargetCenter();
+            frontSide = IsTargetPersonMode() && selectedTargetPerson != null
+                ? IsGrabberInFrontOfTargetPerson(center)
+                : false;
+
+            string contextBasis;
+            if (TryGetGrabHandPathRightSideForWristButton(actualRightHand, center, out pathRightSide, out contextBasis))
+                basis = "visual-symmetric/" + contextBasis;
+        }
+
+        return GetHandWristButtonSymmetricBaseRotation(actualRightHand);
+    }
+
+    private Quaternion GetHandWristButtonSymmetricBaseRotation(bool actualRightHand)
+    {
+        // v4.0bp: preset-only. Do not apply Hand Palm Add Rot X/Y/Z to test buttons.
+        return Quaternion.Euler(GetHandWristSymmetricBaseEuler(actualRightHand));
+    }
+
+    private bool TryGetGrabHandPathRightSideForWristButton(bool actualRightHand, Vector3 center, out bool pathRightSide, out string basis)
+    {
+        pathRightSide = actualRightHand;
+        basis = "none";
+
+        if (selectedPerson == null || !HasValidTarget())
+            return false;
+
+        bool nipplePairMode = IsNipplePairMode();
+        bool hipHoldMode = IsHipHoldMode();
+        bool targetPairMode = IsTargetPairMode();
+
+        Vector3 handCenter = (nipplePairMode || hipHoldMode || targetPairMode) ? center : GetHugCenter(center);
+        Vector3 baseSide = GetTargetSideAxis();
+        Vector3 handSide = GetHandSideAxis(baseSide);
+        if (IsHugBodyTarget())
+            handSide = GetHugBodyApproachSideAxis(center, handSide);
+
+        bool swapSidePaths = ShouldSwapSidePaths(center);
+        bool leftPathRightSide = !swapSidePaths;
+        bool rightPathRightSide = swapSidePaths;
+        basis = "grab-swap";
+
+        if (IsHugBodyTarget())
+        {
+            float handPathWidth = Mathf.Min(GetGrabWidth(), HUG_BODY_HAND_WIDTH_CAP);
+            HugBodyHandLayout layout = ResolveHugBodyHandLayout(center, handCenter, handSide, handPathWidth, false);
+            leftPathRightSide = layout.leftPathRightSide;
+            rightPathRightSide = layout.rightPathRightSide;
+            basis = "hug-body-" + layout.mode;
+        }
+
+        pathRightSide = actualRightHand ? rightPathRightSide : leftPathRightSide;
+        return true;
+    }
+
+    private Quaternion ApplyHandWristMode(Quaternion baseRotation, bool actualRightHand, string mode)
+    {
+        return baseRotation * Quaternion.Euler(GetHandWristModeEuler(actualRightHand, mode));
+    }
+
     private Quaternion GetHandWristRotation(bool actualRightHand, string mode)
     {
-        return GetHandWristStraightRotation(actualRightHand) * Quaternion.Euler(GetHandWristTestEuler(actualRightHand, mode));
+        return ApplyHandWristMode(GetHandWristStraightRotation(actualRightHand), actualRightHand, mode);
     }
 
     private Quaternion GetHandWristStraightRotation(bool actualRightHand)
     {
-        // Same checked fixed hand orientation used by the normal Grab hand-palm alignment.
-        Vector3 leftPreset = new Vector3(298.76f, 51.38f, 25.61f);
-        Vector3 rightPreset = new Vector3(298.76f, 308.62f, 334.39f);
-        return Quaternion.Euler(actualRightHand ? rightPreset : leftPreset);
+        return Quaternion.Euler(GetHandWristSymmetricBaseEuler(actualRightHand));
     }
 
-    private Vector3 GetHandWristTestEuler(bool actualRightHand, string mode)
+    private Vector3 GetHandWristSymmetricBaseEuler(bool actualRightHand)
+    {
+        // v4.0bo:
+        // Fixed Straight presets from the verified Grab HAND ROT log:
+        //   leftEuler  = (298.8, 308.6, 334.4)
+        //   rightEuler = (298.8,  51.4,  25.6)
+        // Do not derive these from pathRight/layout here; buttons must be stable for retesting.
+        Vector3 leftPreset = new Vector3(298.76f, 308.62f, 334.39f);
+        Vector3 rightPreset = new Vector3(298.76f, 51.38f, 25.61f);
+        return actualRightHand ? rightPreset : leftPreset;
+    }
+
+    private Vector3 GetHandWristModeEuler(bool actualRightHand, string mode)
     {
         const float angle = 90.0f;
 
         if (mode == "In")
         {
-            // IN = bend to the inner wrist side in the checked user image.
+            // IN = both wrists bend toward the actor center side when hands are extended.
             return new Vector3(0.0f, 0.0f, actualRightHand ? angle : -angle);
         }
 
@@ -6066,6 +6827,11 @@ public class TargetGrabber : MVRScript
         }
 
         return Vector3.zero;
+    }
+
+    private Vector3 GetHandWristTestEuler(bool actualRightHand, string mode)
+    {
+        return GetHandWristModeEuler(actualRightHand, mode);
     }
 
     private Vector3 GetHandRotationOffset()
@@ -6165,7 +6931,7 @@ public class TargetGrabber : MVRScript
                 " center=" + FormatVector3(center));
         }
 
-        return baseRotation * Quaternion.Euler(GetHandWristTestEuler(actualRightHand, applyMode));
+        return ApplyHandWristMode(baseRotation, actualRightHand, applyMode);
     }
 
     private void LogWristAutoAngleDebug(Vector3 handPos, Vector3 center, Vector3 targetDir, Vector3 palmAxis, Vector3 bendAxis, float angle, bool pathRightSide, bool actualRightHand, bool frontSide, bool hugBodyFlip)
@@ -6213,7 +6979,17 @@ public class TargetGrabber : MVRScript
             " center=" + FormatVector3(center));
     }
 
-    private Quaternion GetFixedHandRotation(Vector3 controlPosition, Vector3 startPosition, Vector3 center, Vector3 eulerOffset, bool pathRightSide, bool actualRightHand, bool frontSide)
+    private Quaternion GetFixedHandBaseRotation(Vector3 eulerOffset, bool pathRightSide, bool actualRightHand, bool frontSide)
+    {
+        Vector3 baseEuler = GetFixedHandBaseEuler(pathRightSide, actualRightHand, frontSide);
+        return Quaternion.Euler(
+            baseEuler.x + eulerOffset.x,
+            baseEuler.y + eulerOffset.y,
+            baseEuler.z + eulerOffset.z
+        );
+    }
+
+    private Vector3 GetFixedHandBaseEuler(bool pathRightSide, bool actualRightHand, bool frontSide)
     {
         Vector3 leftPreset = new Vector3(298.76f, 51.38f, 25.61f);
         Vector3 rightPreset = new Vector3(298.76f, 308.62f, 334.39f);
@@ -6225,17 +7001,15 @@ public class TargetGrabber : MVRScript
         // 呼び出し側で元のTarget centerを渡すようにし、ここではTarget Person右手だけ
         // 正面=leftPreset、背面=rightPresetへ明示分岐する。
         // 左手とAtom modeは従来式のまま。
-        Vector3 baseEuler;
         if (IsTargetPersonMode() && actualRightHand)
-            baseEuler = frontSide ? leftPreset : rightPreset;
-        else
-            baseEuler = pathRightSide == actualRightHand ? rightPreset : leftPreset;
+            return frontSide ? leftPreset : rightPreset;
 
-        Quaternion baseRotation = Quaternion.Euler(
-            baseEuler.x + eulerOffset.x,
-            baseEuler.y + eulerOffset.y,
-            baseEuler.z + eulerOffset.z
-        );
+        return pathRightSide == actualRightHand ? rightPreset : leftPreset;
+    }
+
+    private Quaternion GetFixedHandRotation(Vector3 controlPosition, Vector3 startPosition, Vector3 center, Vector3 eulerOffset, bool pathRightSide, bool actualRightHand, bool frontSide)
+    {
+        Quaternion baseRotation = GetFixedHandBaseRotation(eulerOffset, pathRightSide, actualRightHand, frontSide);
 
         if (IsGenTarget())
         {
@@ -6511,6 +7285,7 @@ public class TargetGrabber : MVRScript
     private void Release()
     {
         hasActiveGrab = false;
+        ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
         activeMoveTimeMultiplier = 1.0f;
         activeIncludeHead = false;

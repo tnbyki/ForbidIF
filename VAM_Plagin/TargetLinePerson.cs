@@ -1,3 +1,15 @@
+// G_CONTACT_DOT_MICRO_LEFT_DOWN_2_BUILD 2026-06-21: Micro-adjusts the always-visible G contact dot slightly further left and down from v155.
+// G_CONTACT_DOT_INITIAL_RED_RANGE_BUILD 2026-06-21: Shows the P Tip/G HUD dot from the start, nudges it half-dot right/down, and keeps it red only during the existing P Tip on G contact range.
+// G_CONTACT_DOT_HALF_COLOR_BUILD 2026-06-21: Halves the P Tip/G HUD dot, nudges it slightly lower, and changes proximity by light-to-deep pink color without hiding alpha.
+// P_TIP_G_CONTACT_DOT_TUNE_BUILD 2026-06-21: Moves the P Tip/G HUD dot left/up and fades alpha from 50% to dense pink by contact closeness.
+// G_CONTACT_DOT_MICRO_LEFT_DOWN_BUILD 2026-06-21: Micro-adjusts the always-visible G contact dot slightly left and down from v154.
+// G_CONTACT_DOT_SHIFT_WIDE_COLOR_BUILD 2026-06-21: Shifts the always-visible G contact dot slightly right overall and widens the pale-pink to deep-pink proximity color range.
+// G_CONTACT_DOT_ALWAYS_RED_BUILD 2026-06-21: Keeps the G contact dot visible, shifts it left/down, and colors it from pale pink to red on contact.
+// P_TIP_G_CONTACT_HUD_DOT_BUILD 2026-06-21: Shows a pink contact dot under the Gen Depth HUD bar while P Tip is on G.
+// P_TIP_G_CONTACT_LOG_BUILD 2026-06-21: Allows PUSH Auto from P Tip on G contact without root-distance gating and logs on/off even when Debug View is off.
+// LIE_SAFE_DISTANCE_PUSH_GUIDE_BUILD 2026-06-21: Moves Lie docking to a safer 1.30 distance and lets near-zero G contact guide PUSH inward.
+// LIE_NEAR_NOW_DOCKING_STABLE_BUILD 2026-06-21: Keeps body yaw unchanged for Lie Now Docking at near-zero distance and only micro-adjusts XZ.
+// PERF_CACHE_HUD_BUILD 2026-06-21: Caches atom/controller lookups and throttles visual-only Gen Depth HUD sampling.
 // LIE_DOCKING_YAW_FLIP_BUILD 2026-06-20: Flips Lie Docking front/back preference after yaw lock selection.
 // LIE_DOCKING_YAW_LOCK_BUILD 2026-06-20: In Lie pose, locks Docking yaw to target root same/opposite direction instead of Labia/red-line angle.
 // LIE_PUSH_AUTO_FIX_BUILD 2026-06-20: Allows PUSH/PUSH Auto during Lie pose and uses Lie-compensated push depth for auto trigger.
@@ -202,6 +214,8 @@ public class TargetLinePerson : MVRScript
     float pushAutoGDepthEnterSince = -1.0f;
     float pushAutoGDepthExitSince = -1.0f;
     float pushAutoGDepthStartDistance;
+    float pushStartRawDepth;
+    float pushStartLateral;
     Vector3 pushSavedPBasePosition;
     Vector3 pushSavedPMidPosition;
     Vector3 pushSavedPTipPosition;
@@ -242,6 +256,8 @@ public class TargetLinePerson : MVRScript
     const float PushAutoGDepthExitRawDepth = 0.019f;
     const float PushAutoGDepthExitHoldSeconds = 0.08f;
     const float PushAutoGDepthExitDistanceDelta = 0.005f;
+    const float PushAutoNearZeroBackDepth = 0.020f;
+    const float PushNearZeroGuideDepth = 0.045f;
 
     FreeControllerV3.PositionState savedRKneePosState;
     FreeControllerV3.RotationState savedRKneeRotState;
@@ -345,6 +361,7 @@ public class TargetLinePerson : MVRScript
     bool isAvoidMoving;
     bool nowDockingLineFitActive;
     bool nowDockingKeepCurrentPlacement;
+    bool nowDockingLieNearKeepOrientation;
     float nowDockingLineFitPBaseY;
     float appliedHipYOffset;
     float appliedUpperTiltAngle;
@@ -465,6 +482,9 @@ public class TargetLinePerson : MVRScript
     const float NowDockingCurrentDistanceMax = 3.000f;
     const float NowDockingCurrentFitSideDotMin = 0.900f;
     const float NowDockingNearKeepPlacementDistance = 0.450f;
+    const float NowDockingLieNearKeepOrientationDistance = 0.220f;
+    const float NowDockingLieNearMicroAdjustMax = 0.080f;
+    const float LieDockingSafeDistance = 1.300f;
     const float NowDockingYellowSmartShapeDistance = 1.000f;
     const float GenDepthProbeLogMinInterval = 0.20f;
     const float GenDepthProbeLogHeartbeatInterval = 5.00f;
@@ -473,6 +493,19 @@ public class TargetLinePerson : MVRScript
     const float GenDepthBurstCooldownZero = 0.45f;
     const float GenDepthBurstCooldownMax = 0.85f;
     const float GenDepthBurstSize = 0.010f;
+    const float GenDepthHudSampleInterval = 0.033f;
+    const float GenDepthHudGContactDotBelowScale = 1.45f;
+    const float GenDepthHudGContactDotSizeScale = 0.29f;
+    const float GenDepthHudGContactDotLeftDotScale = 1.1567f; // v156: micro left from v155 by about 0.12 dot
+    const float GenDepthHudGContactDotUpDotScale = 7.76f; // v156: micro down from v155 by about 0.12 dot
+    const float GenDepthHudGContactDotForwardOffset = 0.016f;
+    const float GenDepthHudGContactDotPulseSpeed = 8.0f;
+    const float GenDepthHudGContactDotPulseStrength = 0.06f;
+    const float GenDepthHudGContactDotMinAlpha = 1.00f;
+    const float GenDepthHudGContactDotMaxAlpha = 1.00f;
+    const float GenDepthHudGContactColorLateralRangeScale = 2.20f;
+    const float GenDepthHudGContactColorBackDepthRangeScale = 4.00f;
+    const float GenDepthHudGContactColorCurvePower = 0.55f;
 
     GameObject forwardLineObj;
     GameObject moveLineObj;
@@ -484,6 +517,7 @@ public class TargetLinePerson : MVRScript
     GameObject genDepthHudMarkerObj;
     GameObject genDepthHudBottomMarkerObj;
     GameObject genDepthHudPeakObj;
+    GameObject genDepthHudGContactDotObj;
 
     LineRenderer forwardLine;
     LineRenderer moveLine;
@@ -496,6 +530,7 @@ public class TargetLinePerson : MVRScript
     Material genDepthHudFillMaterial;
     Material genDepthHudMarkerMaterial;
     Material genDepthHudPeakMaterial;
+    Material genDepthHudGContactDotMaterial;
     Material[] genDepthBurstMaterials;
     float genDepthPeakPercent;
     float genDepthPeakUntil;
@@ -506,6 +541,14 @@ public class TargetLinePerson : MVRScript
     float nextZeroBurstTime;
     float nextMaxBurstTime;
     float lastGenDepthUiTextTime = -999f;
+    float lastGenDepthHudSampleTime = -999f;
+    bool cachedHudDepthKnown;
+    bool cachedHudHasDepth;
+    float cachedHudDepth;
+    float cachedHudLength;
+    float cachedHudPercent;
+    bool genDepthHudActiveKnown;
+    bool genDepthHudActive;
     float lastGenDepthProbeLogTime = -999f;
     bool lastGenDepthProbeLogKnown;
     bool lastGenDepthProbeLateralGated;
@@ -517,6 +560,8 @@ public class TargetLinePerson : MVRScript
     bool gDepthPFollowApplied;
     float lastGDepthPFollowLogTime = -999f;
     bool lastGDepthAngleGateBlocked;
+    bool pTipOnGContactKnown;
+    bool pTipOnGContact;
     bool pBaseLiftAngleGateBlocked;
     float lastPBaseLiftAngleGateLogTime = -999f;
     bool genTgStartActive;
@@ -544,6 +589,9 @@ public class TargetLinePerson : MVRScript
     float genHeadInsideNextRandomTime = -1.0f;
     float genHeadDeepLastFireTime = -999.0f;
     float genHeadEndLastFireTime = -999.0f;
+    readonly Dictionary<string, Atom> atomCache = new Dictionary<string, Atom>();
+    readonly Dictionary<string, FreeControllerV3> controllerContainsCache = new Dictionary<string, FreeControllerV3>();
+    readonly Dictionary<string, FreeControllerV3> controllerExactCache = new Dictionary<string, FreeControllerV3>();
 
     class GenDepthBurstParticle
     {
@@ -1049,7 +1097,7 @@ public class TargetLinePerson : MVRScript
 
         RegisterExternalActions();
 
-        SuperController.LogMessage("[TargetLinePerson] Ready / v148 standing keep leg IK log trim / v147 HUD ignore angle gate");
+        SuperController.LogMessage("[TargetLinePerson] Ready / v156 g contact dot micro left down 2 / v155 g contact dot micro left down");
     }
 
     void RegisterExternalActions()
@@ -1734,6 +1782,7 @@ public class TargetLinePerson : MVRScript
 
     void RefreshPersonList()
     {
+        ClearLookupCaches();
         personChoices.Clear();
 
         foreach (Atom a in SuperController.singleton.GetAtoms())
@@ -1748,10 +1797,26 @@ public class TargetLinePerson : MVRScript
 
     Atom FindAtom(string uid)
     {
+        if (string.IsNullOrEmpty(uid))
+        {
+            return null;
+        }
+
+        Atom cached;
+        if (atomCache.TryGetValue(uid, out cached))
+        {
+            if (cached != null && cached.uid == uid)
+            {
+                return cached;
+            }
+            atomCache.Remove(uid);
+        }
+
         foreach (Atom a in SuperController.singleton.GetAtoms())
         {
             if (a != null && a.uid == uid)
             {
+                atomCache[uid] = a;
                 return a;
             }
         }
@@ -1767,6 +1832,16 @@ public class TargetLinePerson : MVRScript
         }
 
         string key = keyword.ToLower();
+        string cacheKey = atom.uid + "|" + key;
+        FreeControllerV3 cached;
+        if (controllerContainsCache.TryGetValue(cacheKey, out cached))
+        {
+            if (cached != null && cached.name != null && cached.name.ToLower().Contains(key))
+            {
+                return cached;
+            }
+            controllerContainsCache.Remove(cacheKey);
+        }
 
         foreach (FreeControllerV3 fc in atom.freeControllers)
         {
@@ -1774,6 +1849,7 @@ public class TargetLinePerson : MVRScript
 
             if (fc.name.ToLower().Contains(key))
             {
+                controllerContainsCache[cacheKey] = fc;
                 return fc;
             }
         }
@@ -1788,10 +1864,22 @@ public class TargetLinePerson : MVRScript
             return null;
         }
 
+        string cacheKey = atom.uid + "|" + controllerName;
+        FreeControllerV3 cached;
+        if (controllerExactCache.TryGetValue(cacheKey, out cached))
+        {
+            if (cached != null && cached.name == controllerName)
+            {
+                return cached;
+            }
+            controllerExactCache.Remove(cacheKey);
+        }
+
         foreach (FreeControllerV3 fc in atom.freeControllers)
         {
             if (fc != null && fc.name == controllerName)
             {
+                controllerExactCache[cacheKey] = fc;
                 return fc;
             }
         }
@@ -2148,11 +2236,20 @@ public class TargetLinePerson : MVRScript
 
     void OnTargetControllerChanged(string value)
     {
+        ClearLookupCaches();
         ResetCaptureStateForTargetChange("target changed to " + value);
+    }
+
+    void ClearLookupCaches()
+    {
+        atomCache.Clear();
+        controllerContainsCache.Clear();
+        controllerExactCache.Clear();
     }
 
     void OnTargetPersonChanged(string value)
     {
+        ClearLookupCaches();
         RefreshGenHeadAtomList();
         ResetCaptureStateForTargetChange("person changed to " + value);
     }
@@ -2506,6 +2603,7 @@ public class TargetLinePerson : MVRScript
         ClearAppliedUpperTilt();
         nowDockingLineFitActive = false;
         nowDockingKeepCurrentPlacement = false;
+        nowDockingLieNearKeepOrientation = false;
         nowDockingLineFitPBaseY = 0f;
         lieDockingYawLockActive = false;
         lieDockingYawLockForward = Vector3.zero;
@@ -2560,17 +2658,29 @@ public class TargetLinePerson : MVRScript
 // This is intentionally done BEFORE ApplyPlacement(), because ApplyPlacement() only moves
 // the root in X/Z.  If this step is skipped, the body can be placed horizontally while
 // the own P Base is left at the wrong height.
-AlignRootHeightOnce();
-SetHipYOffsetFromPenisBase();
-ApplyAutoUpperTiltYOffsetOnce();
-AlignHipRelativeControllersHeightToCapturedOriginOnce();
-ApplyAutoUpperTiltOnce();
-if (!ApplyAutoLieOnRidePoseIfNeeded())
+if (!nowDockingLieNearKeepOrientation)
 {
-    ReleaseRideLieIfNeeded();
-    ApplySitGroundPoseIfNeeded();
+    AlignRootHeightOnce();
+    SetHipYOffsetFromPenisBase();
+    ApplyAutoUpperTiltYOffsetOnce();
+    AlignHipRelativeControllersHeightToCapturedOriginOnce();
+    ApplyAutoUpperTiltOnce();
+    if (!ApplyAutoLieOnRidePoseIfNeeded())
+    {
+        ReleaseRideLieIfNeeded();
+        ApplySitGroundPoseIfNeeded();
+    }
+    ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
 }
-ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
+else
+{
+    SetHipYOffsetFromPenisBase();
+    DebugLog(
+        "[TargetLinePerson] Lie near Now Docking: keep orientation" +
+        " / distance=" + (distance != null ? distance.val.ToString("F3") : "n/a") +
+        " / microMax=" + NowDockingLieNearMicroAdjustMax.ToString("F3")
+    );
+}
 
         if (avoidCaptureRoutine != null)
         {
@@ -2595,8 +2705,13 @@ ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
                 DebugLog(
                     "[TargetLinePerson] Now Docking keep current placement" +
                     " / distance=" + (distance != null ? distance.val.ToString("F3") : "n/a") +
-                    " / threshold=" + NowDockingNearKeepPlacementDistance.ToString("F3")
+                    " / threshold=" + NowDockingNearKeepPlacementDistance.ToString("F3") +
+                    " / lieNearKeepYaw=" + (nowDockingLieNearKeepOrientation ? "1" : "0")
                 );
+                if (nowDockingLieNearKeepOrientation)
+                {
+                    ApplyPlacementMicroNoRotate(NowDockingLieNearMicroAdjustMax);
+                }
             }
             else
             {
@@ -3449,6 +3564,7 @@ ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
         {
             nowDockingLineFitActive = false;
             nowDockingKeepCurrentPlacement = false;
+            nowDockingLieNearKeepOrientation = false;
             nowDockingLineFitPBaseY = 0f;
 
             if (distance != null)
@@ -3485,6 +3601,9 @@ ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
         // of pushing it back to the safe minimum distance.
         float currentProjectedDistance = Mathf.Max(0.0f, Vector3.Dot(fromOrigin, lineDir));
         bool nearKeepPlacement = currentHorizontalDistance <= NowDockingNearKeepPlacementDistance;
+        bool lieNearKeepOrientation = nearKeepPlacement &&
+            currentHorizontalDistance <= NowDockingLieNearKeepOrientationDistance &&
+            (rideLieActive || IsOwnLiePoseForYellowGuide());
         float fittedDistance = nearKeepPlacement
             ? Mathf.Clamp(currentProjectedDistance, 0.0f, NowDockingCurrentDistanceMax)
             : Mathf.Clamp(
@@ -3504,6 +3623,7 @@ ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
 
         nowDockingLineFitActive = true;
         nowDockingKeepCurrentPlacement = nearKeepPlacement;
+        nowDockingLieNearKeepOrientation = lieNearKeepOrientation;
         // Do not lower P base here.  BuildCapturedYellowPPath() already creates the
         // yellow dip from the captured green plane.  Pre-lowering here double-applies
         // the yellow drop and makes the body look too low.
@@ -3517,7 +3637,9 @@ ApplyLieDockingYawLockIfNeeded(hardMode, chooseCurrentSide, reverseCurrentSide);
             " / projectedDist=" + currentProjectedDistance.ToString("F3") +
             " / distance=" + fittedDistance.ToString("F3") +
             " / keepCurrentPlacement=" + (nowDockingKeepCurrentPlacement ? "1" : "0") +
+            " / lieNearKeepYaw=" + (nowDockingLieNearKeepOrientation ? "1" : "0") +
             " / keepThreshold=" + NowDockingNearKeepPlacementDistance.ToString("F3") +
+            " / lieNearThreshold=" + NowDockingLieNearKeepOrientationDistance.ToString("F3") +
             " / yellowDipExpected=" + (yellowDipExpected ? "1" : "0") +
             " / preDrop=0" +
             " / dipDown=" + dipDown.ToString("F3") +
@@ -3719,6 +3841,43 @@ void ApplyPlacement(bool rotateToCapturedOrigin)
     {
         FaceCapturedOriginFromOwnHip(ownHip);
     }
+}
+
+void ApplyPlacementMicroNoRotate(float maxDelta)
+{
+    if (!captured)
+    {
+        return;
+    }
+
+    FreeControllerV3 ownHip = GetOwnHip();
+
+    if (ownHip == null || containingAtom == null || containingAtom.mainController == null)
+    {
+        return;
+    }
+
+    Vector3 targetHipPos = GetTargetHipPosition(ownHip);
+    Vector3 delta = targetHipPos - ownHip.transform.position;
+    delta.y = 0f;
+
+    float max = Mathf.Max(0.0f, maxDelta);
+    if (max > 0.0f && delta.magnitude > max)
+    {
+        delta = delta.normalized * max;
+    }
+
+    if (delta.sqrMagnitude < 0.000001f)
+    {
+        return;
+    }
+
+    containingAtom.mainController.transform.position += delta;
+    DebugLog(
+        "[TargetLinePerson] Lie near Now Docking micro adjust" +
+        " / delta=(" + FormatVector3(delta) + ")" +
+        " / max=" + max.ToString("F3")
+    );
 }
 
     string[] GetUpperBodyLowerControllerNames()
@@ -6200,8 +6359,32 @@ bool ApplyAutoLieOnRidePoseIfNeeded()
     // RootはCapture後の配置処理で相手方向へ向くため、Front/Back分岐はしない。
     ApplyLieOnBackPresetPose();
     rideLieActive = true;
+    EnsureLieDockingSafeDistance("auto-lie");
     DebugLog("[TargetLinePerson] Auto Lie On Ride Pose applied: Lie On Back fixed / genital dir ignored.");
     return true;
+}
+
+void EnsureLieDockingSafeDistance(string reason)
+{
+    if (distance == null)
+    {
+        return;
+    }
+
+    if (distance.val >= LieDockingSafeDistance - 0.0001f)
+    {
+        return;
+    }
+
+    distance.valNoCallback = LieDockingSafeDistance;
+    nowDockingKeepCurrentPlacement = false;
+    nowDockingLieNearKeepOrientation = false;
+    nowDockingLineFitActive = true;
+    DebugLog(
+        "[TargetLinePerson] Lie docking safe distance" +
+        " / reason=" + reason +
+        " / distance=" + LieDockingSafeDistance.ToString("F3")
+    );
 }
 
 void ReleaseRideLieIfNeeded()
@@ -6364,6 +6547,11 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         }
 
         FitNowDockingDistanceToCurrentLine(lieFitSideDot);
+    }
+
+    if (chooseCurrentSide)
+    {
+        EnsureLieDockingSafeDistance("lie-yaw-lock");
     }
 
     DebugLog(
@@ -7013,6 +7201,7 @@ bool IsTargetRideLikePose()
         genDepthHudFillMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.0f, 0.82f, 0.85f));
         genDepthHudMarkerMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 1.0f, 1.0f, 0.95f));
         genDepthHudPeakMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.92f, 0.05f, 0.45f));
+        genDepthHudGContactDotMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.45f, 0.84f, GenDepthHudGContactDotMinAlpha));
         genDepthBurstMaterials = CreateGenDepthBurstMaterials();
 
         genDepthHudBackObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Back", genDepthHudBackMaterial);
@@ -7022,6 +7211,7 @@ bool IsTargetRideLikePose()
         genDepthHudBottomMarkerObj = CreateGenDepthHudMarkerObject("TargetLinePerson_GenDepthHud_0", genDepthHudMarkerMaterial);
         genDepthHudBottomMarkerLine = genDepthHudBottomMarkerObj != null ? genDepthHudBottomMarkerObj.GetComponent<LineRenderer>() : null;
         genDepthHudPeakObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Peak", genDepthHudPeakMaterial);
+        genDepthHudGContactDotObj = CreateGenDepthHudDotObject("TargetLinePerson_GenDepthHud_GContactDot", genDepthHudGContactDotMaterial);
         genDepthPeakPercent = 0.0f;
         genDepthPeakUntil = 0.0f;
         previousGenDepthPercent = 0.0f;
@@ -7040,6 +7230,7 @@ bool IsTargetRideLikePose()
         DestroyNamedObject("TargetLinePerson_GenDepthHud_100");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_0");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_Peak");
+        DestroyNamedObject("TargetLinePerson_GenDepthHud_GContactDot");
         DestroyNamedObject("TargetLinePerson_GenDepthHud_Burst");
     }
 
@@ -7175,6 +7366,32 @@ bool IsTargetRideLikePose()
         return marker;
     }
 
+    GameObject CreateGenDepthHudDotObject(string objectName, Material mat)
+    {
+        GameObject dot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dot.name = objectName;
+
+        Collider col = dot.GetComponent<Collider>();
+        if (col != null)
+        {
+            Destroy(col);
+        }
+
+        Renderer renderer = dot.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            if (mat != null)
+            {
+                renderer.material = new Material(mat);
+            }
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        dot.SetActive(false);
+        return dot;
+    }
+
     void SetGenDepthHudHeart(LineRenderer line, Vector3 center, Vector3 right, Vector3 up, float radius, float width, bool flipY, Color color)
     {
         if (line == null)
@@ -7277,8 +7494,24 @@ bool IsTargetRideLikePose()
         float hudDepth = depth;
         float hudLength = length;
         float hudPercent = percent;
-        bool hasHudDepth = TryGetLiveGenDepthForHud(out hudDepth, out hudLength, out hudPercent);
         bool visible = showInsertDebug != null && showInsertDebug.val;
+        bool hasHudDepth = hasDepth;
+        if (visible && (!cachedHudDepthKnown || Time.time - lastGenDepthHudSampleTime >= GenDepthHudSampleInterval))
+        {
+            cachedHudDepth = hudDepth;
+            cachedHudLength = hudLength;
+            cachedHudPercent = hudPercent;
+            cachedHudHasDepth = TryGetLiveGenDepthForHud(out cachedHudDepth, out cachedHudLength, out cachedHudPercent);
+            cachedHudDepthKnown = true;
+            lastGenDepthHudSampleTime = Time.time;
+        }
+        if (visible && cachedHudDepthKnown)
+        {
+            hudDepth = cachedHudDepth;
+            hudLength = cachedHudLength;
+            hudPercent = cachedHudPercent;
+            hasHudDepth = cachedHudHasDepth;
+        }
         if (!hasDepth)
         {
             depth = 0.0f;
@@ -8012,6 +8245,25 @@ bool IsTargetRideLikePose()
         lastGenDepthLateral = lateralDistance;
         lastGenDepthBodyDistance = bodyDistance;
         lastGenDepthPercent = percent;
+        UpdatePTipOnGContactState(IsNearZeroGContact(rawDepth, lateralDistance), rawDepth, lateralDistance);
+    }
+
+    void UpdatePTipOnGContactState(bool onG, float rawDepth, float lateralDistance)
+    {
+        if (pTipOnGContactKnown && pTipOnGContact == onG)
+        {
+            return;
+        }
+
+        pTipOnGContactKnown = true;
+        pTipOnGContact = onG;
+
+        SuperController.LogMessage(
+            "[TargetLinePerson] " + (onG ? "P Tip on G" : "P Tip off G") +
+            " / rawDepth=" + rawDepth.ToString("F3") +
+            " / lateral=" + lateralDistance.ToString("F3") +
+            " / lateralMax=" + PushAutoGDepthEnterLateralMax.ToString("F3")
+        );
     }
 
     bool ShouldFreezeDynamicYellowEnd(out string freezeReason)
@@ -8351,6 +8603,8 @@ bool IsTargetRideLikePose()
             lowerMarkerColor
         );
 
+        UpdateGenDepthHudGContactDot(bottom, upDir, cam, IsGenDepthHudGContactDotActive());
+
         TriggerGenDepthBursts(percent, lowerMarkerCenter, markerCenter, cam.transform.right, cam.transform.up, cam.transform.forward, GetGenHudBurstSizeScale());
         UpdateGenDepthBurstParticles();
 
@@ -8380,6 +8634,77 @@ bool IsTargetRideLikePose()
         {
             genDepthHudPeakObj.SetActive(false);
         }
+    }
+
+    void UpdateGenDepthHudGContactDot(Vector3 bottom, Vector3 upDir, Camera cam, bool active)
+    {
+        if (genDepthHudGContactDotObj == null || cam == null)
+        {
+            return;
+        }
+
+        if (!active)
+        {
+            genDepthHudGContactDotObj.SetActive(false);
+            return;
+        }
+
+        float dotSize = GenDepthHudBarWidth * GenDepthHudGContactDotSizeScale;
+        float pulse = 1.0f + Mathf.Sin(Time.time * GenDepthHudGContactDotPulseSpeed) * GenDepthHudGContactDotPulseStrength;
+        Vector3 center =
+            bottom
+            - upDir * (GenDepthHudBarWidth * GenDepthHudGContactDotBelowScale)
+            + upDir * (dotSize * GenDepthHudGContactDotUpDotScale)
+            - cam.transform.right * (dotSize * GenDepthHudGContactDotLeftDotScale)
+            - cam.transform.forward * GenDepthHudGContactDotForwardOffset;
+
+        Color dotColor = GetGenDepthHudGContactDotColor();
+        Renderer renderer = genDepthHudGContactDotObj.GetComponent<Renderer>();
+        if (renderer != null && renderer.material != null)
+        {
+            renderer.material.color = dotColor;
+        }
+
+        genDepthHudGContactDotObj.transform.position = center;
+        genDepthHudGContactDotObj.transform.rotation = cam.transform.rotation;
+        genDepthHudGContactDotObj.transform.localScale = Vector3.one * (dotSize * pulse);
+        genDepthHudGContactDotObj.SetActive(true);
+    }
+
+    Color GetGenDepthHudGContactDotColor()
+    {
+        if (pTipOnGContactKnown && pTipOnGContact)
+        {
+            return new Color(1.0f, 0.0f, 0.0f, GenDepthHudGContactDotMaxAlpha);
+        }
+
+        float nearT = GetGenDepthHudGContactNearT();
+        Color far = new Color(1.0f, 0.78f, 0.92f, GenDepthHudGContactDotMinAlpha);
+        Color near = new Color(1.0f, 0.12f, 0.55f, GenDepthHudGContactDotMaxAlpha);
+        return Color.Lerp(far, near, nearT);
+    }
+
+    float GetGenDepthHudGContactNearT()
+    {
+        if (!lastGenDepthSampleKnown)
+        {
+            return 0.0f;
+        }
+
+        // Wider than the actual contact gate so the always-visible dot shows
+        // approach as a clear pale-pink -> deep-pink change before it turns red.
+        float lateralMax = Mathf.Max(0.0001f, PushAutoGDepthEnterLateralMax * GenDepthHudGContactColorLateralRangeScale);
+        float backDepthMax = Mathf.Max(0.0001f, PushAutoNearZeroBackDepth * GenDepthHudGContactColorBackDepthRangeScale);
+        float lateralRatio = Mathf.Clamp01(lastGenDepthLateral / lateralMax);
+        float backDepthRatio = Mathf.Clamp01(Mathf.Max(0.0f, -lastGenDepthRawDepth) / backDepthMax);
+        float normalizedDistance = Mathf.Sqrt(lateralRatio * lateralRatio + backDepthRatio * backDepthRatio);
+        float nearT = 1.0f - Mathf.Clamp01(normalizedDistance);
+        return Mathf.Pow(Mathf.Clamp01(nearT), GenDepthHudGContactColorCurvePower);
+    }
+
+    bool IsGenDepthHudGContactDotActive()
+    {
+        return targetControllerChooser == null || targetControllerChooser.val == "genital";
     }
 
     void UpdateGenDepthPeak(float percent)
@@ -8525,11 +8850,25 @@ bool IsTargetRideLikePose()
 
     void SetGenDepthHudActive(bool active)
     {
+        if (!active && genDepthHudGContactDotObj != null)
+        {
+            genDepthHudGContactDotObj.SetActive(false);
+        }
+
+        if (genDepthHudActiveKnown && genDepthHudActive == active)
+        {
+            return;
+        }
+
+        genDepthHudActiveKnown = true;
+        genDepthHudActive = active;
+
         if (genDepthHudBackObj != null) genDepthHudBackObj.SetActive(active);
         if (genDepthHudFillObj != null) genDepthHudFillObj.SetActive(active);
         if (genDepthHudMarkerObj != null) genDepthHudMarkerObj.SetActive(active);
         if (genDepthHudBottomMarkerObj != null) genDepthHudBottomMarkerObj.SetActive(active);
         if (genDepthHudPeakObj != null) genDepthHudPeakObj.SetActive(active);
+        if (!active && genDepthHudGContactDotObj != null) genDepthHudGContactDotObj.SetActive(false);
     }
 
     void UpdateDebugLines(bool visible)
@@ -9542,9 +9881,26 @@ bool IsTargetRideLikePose()
 
     bool IsPushAutoGDepthEnterCandidate()
     {
-        return lastGenDepthSampleKnown &&
+        if (!lastGenDepthSampleKnown)
+        {
+            return false;
+        }
+
+        if (IsNearZeroGContact(lastGenDepthRawDepth, lastGenDepthLateral))
+        {
+            return true;
+        }
+
+        return
             lastGenDepthPushEffectiveDepth >= PushAutoGDepthEnterRawDepth &&
             lastGenDepthLateral <= PushAutoGDepthEnterLateralMax &&
+            !IsPushAutoGDepthBodyGated();
+    }
+
+    bool IsNearZeroGContact(float rawDepth, float lateral)
+    {
+        return lateral <= PushAutoGDepthEnterLateralMax &&
+            rawDepth >= -PushAutoNearZeroBackDepth &&
             !IsPushAutoGDepthBodyGated();
     }
 
@@ -9829,6 +10185,8 @@ bool IsTargetRideLikePose()
         float pushDepth = pushLieDepth ? Mathf.Abs(rawDepth) : rawDepth;
         Vector3 closestOnAxis = origin + dir * rawDepth;
         float lateral = Vector3.Distance(penisTip.transform.position, closestOnAxis);
+        pushStartRawDepth = rawDepth;
+        pushStartLateral = lateral;
 
         CapturePushPState(penisBase, penisMid, penisTip);
         pushActiveDir = dir;
@@ -9914,6 +10272,11 @@ bool IsTargetRideLikePose()
         }
 
         float add = GetPushPAddDistance();
+        if (IsNearZeroGContact(pushStartRawDepth, pushStartLateral))
+        {
+            float guideAdd = Mathf.Clamp(PushNearZeroGuideDepth - Mathf.Max(0.0f, pushStartRawDepth), 0.0f, PushNearZeroGuideDepth);
+            add = Mathf.Max(add, guideAdd);
+        }
         float before = pushTargetMoveDistance;
         float maxMove = GetPushPMaxMoveDistance();
         pushTargetMoveDistance = Mathf.Min(pushTargetMoveDistance + add, maxMove);
@@ -9926,6 +10289,7 @@ bool IsTargetRideLikePose()
             " / autoMode=" + pushResolvedMode +
             " / scale=" + GetPushDepthScale().ToString("F2") +
             " / add=" + add.ToString("F3") +
+            " / nearGContact=" + (IsNearZeroGContact(pushStartRawDepth, pushStartLateral) ? "1" : "0") +
             " / currentMove=" + pushCurrentMoveDistance.ToString("F3") +
             " / targetMove=" + pushTargetMoveDistance.ToString("F3") +
             " / maxMove=" + maxMove.ToString("F3") +
@@ -10005,7 +10369,12 @@ bool IsTargetRideLikePose()
 
     float GetPushPMaxMoveDistance()
     {
-        return GetPushPAddDistance();
+        float maxMove = GetPushPAddDistance();
+        if (IsNearZeroGContact(pushStartRawDepth, pushStartLateral))
+        {
+            maxMove = Mathf.Max(maxMove, PushNearZeroGuideDepth);
+        }
+        return maxMove;
     }
 
     string GetPushAutoMode()
@@ -10449,6 +10818,11 @@ bool IsTargetRideLikePose()
             Destroy(genDepthHudPeakObj);
         }
 
+        if (genDepthHudGContactDotObj != null)
+        {
+            Destroy(genDepthHudGContactDotObj);
+        }
+
         if (genDepthHudBackMaterial != null)
         {
             Destroy(genDepthHudBackMaterial);
@@ -10467,6 +10841,11 @@ bool IsTargetRideLikePose()
         if (genDepthHudPeakMaterial != null)
         {
             Destroy(genDepthHudPeakMaterial);
+        }
+
+        if (genDepthHudGContactDotMaterial != null)
+        {
+            Destroy(genDepthHudGContactDotMaterial);
         }
 
         ClearGenDepthBurstParticles();
