@@ -1,12 +1,12 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0cn_hug_mode_no_extra_deep_center
+// Version: v4.0co_single_limb_wrist_in
 // Date: 2026-06-22
-// Base: TargetGrabber_v4_0cm_view_axis_all_hand_mid_in.cs
+// Base: TargetGrabber_v4_0cn_hug_mode_no_extra_deep_center.cs
 // Summary:
-// - Prevents Hug Mode from applying the old deep-center push on top of the final-point route.
-// - Normal/person hand routes now use the target center directly; Hug Mode no longer shifts the whole hand center forward.
-// - Hug Body keeps the final-point route and uses Hug Depth only as a small final-depth offset.
+// - Forces final wrist rotation to Wrist In for single limb targets: L/R Hand, L/R Foot, and L/R Knee.
+// - Pull/Open/Push/Up/Down re-grabs therefore finish with Wrist In on these single limb targets.
+// - Keeps Hug Body final-point depth IN/OUT logic and the stabilized Hug Mode no-extra-deep-center behavior.
 // - Keeps Pair Hand/Foot/Knee Hold Grab Width midpoint and fixed Wrist In.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -16,7 +16,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0ck_hug_ik_snap
+// Version: v4.0co_single_limb_wrist_in
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -78,6 +78,7 @@
 // v4.0bj: Hug Body layout prefers the candidate farther from the actor root instead of shortest-distance only.
 // v4.0bk: Fades Hug Body far handCenter bias out near the end when Hug Mode is OFF.
 // v4.0bm: Rebuilds Wrist test buttons to use the same fixed hand basis as Grab hand rotation.
+// v4.0co: Forces final Wrist In for L/R Hand, L/R Foot, and L/R Knee final-point re-grabs.
 // v4.0bn: Uses a left/right symmetric visual base for Wrist test buttons instead of pathRight/layout basis.
 // v4.0bo: Uses the verified Grab HAND ROT fixed presets for Wrist Straight and fixes the left/right preset swap.
 // v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
@@ -4035,6 +4036,10 @@ public class TargetGrabber : MVRScript
             return false;
 
         string choice = targetPersonPartChooser.val;
+
+        // v4.0co:
+        // These are single-limb grab targets. Pull/Open/Push/Up/Down re-grabs should not
+        // re-evaluate OUT/IN from depth for them; final wrist is always Wrist In.
         return choice == TC_L_HAND || choice == TC_R_HAND ||
                choice == TC_L_FOOT || choice == TC_R_FOOT ||
                choice == TC_L_KNEE || choice == TC_R_KNEE;
@@ -7873,7 +7878,7 @@ public class TargetGrabber : MVRScript
         if (IsSingleHandFootKneeTargetMode())
         {
             mode = "In";
-            reason = "single-limb-target-fixed-in";
+            reason = "single-limb-hand-foot-knee-fixed-in";
         }
         else if (depth < -FINAL_POINT_WRIST_DEPTH_THRESHOLD)
         {
