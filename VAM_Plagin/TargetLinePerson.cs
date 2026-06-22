@@ -1,3 +1,32 @@
+// P_MID_AXIS_ASSIST_TRIGGER_CONFIRM_BUILD 2026-06-22: Uses BodyTouchTriggerProbe Gen contact to confirm/scale P Mid Axis Assist.
+// P_MID_AXIS_ASSIST_BUILD 2026-06-22: Nudges P Mid/Base toward the Gen axis when Tip is already entering, reducing side-entry look from behind.
+// TARGET_SWITCH_KEEP_DISTANCE_BUILD 2026-06-22: Keeps Distance when switching directly between Gen and Anus targets.
+// QUALITY_HUD_FAST_BUILD 2026-06-22: Raises Quality HUD/debug-line pacing for a more screen-attached feel.
+// INSERT_REACTION_FRAME_SPREAD_BUILD 2026-06-22: Defers first Inside TG/HBA action fire by one frame to reduce insertion-frame spikes.
+// PERFORMANCE_MODE_BUILD 2026-06-22: Adds Quality/Balanced/Light update pacing for HUD, debug lines, and HBA bridge writes.
+// PUSH_LINE_LIGHT_WRITE_BUILD 2026-06-22: Skips redundant controller state/control writes during Auto Line/PUSH motion without changing targets.
+// SWITCH_RETRACT_LIGHT_WRITE_BUILD 2026-06-22: Skips redundant controller state/position writes during Switch Retract without changing motion.
+// SWITCH_RETRACT_HORIZONTAL_HBA_CLEAR_BUILD 2026-06-22: Horizontalizes target-switch hip/root retreat direction and silently clears old reaction state so switch-generated zero progress never fires End.
+// SWITCH_RETRACT_NO_CAPTURE_GATE_BUILD 2026-06-22: Allows Gen<->Anus Switch Retract even when capture state is false, using live target inside axis and keeping HBA End gated during the switch.
+// SWITCH_RETRACT_HBA_GATE_BUILD 2026-06-22: Suppresses HBA End/zero-progress during Gen<->Anus Switch Retract, adds skip diagnostics, and weakens P-controller follow so hip motion is visible.
+// SWITCH_RETRACT_COMPILEFIX_BUILD 2026-06-22: Initializes inside-line locals before compound condition so VaM Mono definite-assignment accepts Switch Retract.
+// SWITCH_RETRACT_BUILD 2026-06-22: Adds a brief withdrawal motion when switching between Gen and Anus targets, using the previous target insertion axis.
+// ANUS_HBA_COMMON_EVENT_BUILD 2026-06-22: Routes Anus HUD depth into the same HBA_Event_* bridge as Gen while keeping TargetId distinct.
+// LINE_RENDER_LIGHT_BUILD 2026-06-22: Throttles Debug View line drawing and caches HUD LineRenderer lookups without changing Auto Line motion.
+// AUTO_LINE_SLOW_LINEAR_BUILD 2026-06-22: Makes Auto Line Slow use a dedicated constant-speed in/out motion with no easing, while Auto Line/Fast stay unchanged.
+// HBA_RELINK_CURRENT_INSTANCE_BUILD 2026-06-22: Refreshes HBA shared-status storable cache and prefers HumanBodyAction instances exposing HBA_BridgeVersion to avoid stale links after swapping HBA scripts.
+// HBA_PROGRESS_HUD_SOURCE_FIX_BUILD 2026-06-22: Uses HUD/raw gen depth as HBA/event/UI progress when control depth is angle-gated at 0%.
+// HBA_ONLY_NO_TG_HEAD_UI_BUILD 2026-06-22: Removes TargetLinePerson TG/Head reaction UI and keeps only hidden HBA event/status notification bridge.
+// HBA_EVENT_STATUS_NOTIFY_BUILD 2026-06-22: Sends HBA_TargetId/HBA_Progress/HBA_Active to HumanBodyAction and defaults reactions to HBA_Event_* while TG_ defaults move to HumanBodyAction.
+// HBA_REACTION_ACTIONS_BUILD 2026-06-22: Replaces Tw_/Head reaction choices with HumanBodyAction HBA_ actions and targets HumanBodyAction as the preferred action plugin.
+// PERF_V176_DEPTH_FRAME_CACHE_BUILD 2026-06-22: Shares live depth results inside a frame to avoid duplicate Gen/Anus/Mouth projection work.
+// PERF_V175_LOG_TW_HUD_OPT_BUILD 2026-06-22: Adds Debug Log gating, caches Gen Head action lookup, and lets HUD FX stay off for lighter runtime.
+// PERF_V174_HUD_20FPS_BUILD 2026-06-22: Renders Gen/Anus HUD at 20fps while keeping depth detection and triggers per-frame.
+// PERF_V173_HUD_LIGHTEN_BUILD 2026-06-22: Avoids non-active anus HUD sampling, caches G contact dot renderer, and suppresses redundant SetActive calls.
+// TW_HEAD_HUD_DEPTH_FALLBACK_BUILD 2026-06-21: Uses HUD/raw depth for Gen Head/Tw reactions when control GenDepth is angle-gated, so Tw can fire on P Tip contact.
+// TWITCH_TARGET_FIXED_TRACE_BUILD 2026-06-21: Fixes Head Plugin Atom to Target Person and logs Tw_ calls even when only Target atom is used.
+// TWITCH_DEBUG_TRACE_BUILD 2026-06-21: Adds Debug View traces and test buttons for Tw_ BodyTwitcher reactions.
+// TWITCH_REACTION_ACTIONS_BUILD 2026-06-21: Adds Tw_ BodyTwitcher actions to Gen Head reaction action choosers.
 // MOUTH_PUSH_Y_SCALE_050_BUILD 2026-06-21: Relaxes mouth vertical damping from 0.25 to 0.50 so the line returns closer to mouthPhysicsMeshPredictionPoint.forward.
 // MOUTH_PUSH_AUTO_BUILD 2026-06-21: Enables PUSH/Auto PUSH for mouth with a dedicated mouth inside line and no mouth yellow fallback.
 // ANUS_NO_YELLOW_FALLBACK_AXIS_FIX_BUILD 2026-06-21: Keeps Anus P follow on the live anus axis instead of falling back to Yellow Guide, and derives Anus inside direction from the current red-line direction.
@@ -120,6 +149,7 @@ public class TargetLinePerson : MVRScript
 {
     JSONStorableStringChooser targetPersonChooser;
     JSONStorableStringChooser targetControllerChooser;
+    JSONStorableStringChooser performanceModeChooser;
 
     JSONStorableFloat distance;
     JSONStorableFloat orbitAngle;
@@ -136,10 +166,12 @@ public class TargetLinePerson : MVRScript
     JSONStorableBool followTarget;
     JSONStorableBool applyOnSliderChangeOnly;
     JSONStorableBool showLines;
+    JSONStorableBool debugLog;
     JSONStorableBool dynamicRedLine;
     JSONStorableFloat redLineUpdateSec;
     JSONStorableBool dynamicYellowEnd;
     JSONStorableBool showInsertDebug;
+    JSONStorableBool genDepthHudFx;
     JSONStorableString insertDebugText;
     JSONStorableFloat genDepthMax;
     JSONStorableFloat genHudDropMaxWidth;
@@ -186,6 +218,9 @@ public class TargetLinePerson : MVRScript
     JSONStorableFloat pushDepthScale;
     JSONStorableStringChooser pushAutoMode;
     JSONStorableBool pushAutoGDepthTrigger;
+    JSONStorableBool switchRetractOnTargetChange;
+    JSONStorableFloat switchRetractDistance;
+    JSONStorableFloat switchRetractTime;
 
     UIDynamicSlider orbitAngleSlider;
     UIDynamicSlider distanceSlider;
@@ -208,6 +243,11 @@ public class TargetLinePerson : MVRScript
     Vector3 lastDynamicPBaseOffset;
     float lastPAngleDebugLogTime = -999f;
     Coroutine pushPRoutine;
+    Coroutine switchRetractRoutine;
+    bool targetSwitchRetractBusy;
+    float targetSwitchRetractHbaGateUntil = -1.0f;
+    float lastSwitchRetractHbaGateLogTime = -999.0f;
+    string lastTargetControllerMode = "genital";
     bool pushPStateCaptured;
     bool pushStopRequested;
     bool pushAutoLoopActive;
@@ -223,6 +263,7 @@ public class TargetLinePerson : MVRScript
     float pushModeFollowSpeed;
     float pushModeReturnSeconds;
     float pushModeHoldSeconds;
+    bool pushModeLinearSlow;
     float pushModeSpiralAngle;
     float pushModeSpiralStartAngle;
     float pushAutoGDepthEnterSince = -1.0f;
@@ -250,6 +291,7 @@ public class TargetLinePerson : MVRScript
     const float PushPFollowSpeed = 10.5f;
     const float PushPReturnSeconds = 0.22f;
     const float PushPHoldSeconds = 0.00f;
+    const float PushPLineSlowLinearSpeed = 0.12f;
     const string PushModeNone = "None";
     const string PushModeAutoLine = "Auto Line";
     const string PushModeAutoLineSlow = "Auto Line Slow";
@@ -272,6 +314,16 @@ public class TargetLinePerson : MVRScript
     const float PushAutoGDepthExitDistanceDelta = 0.005f;
     const float PushAutoNearZeroBackDepth = 0.020f;
     const float PushNearZeroGuideDepth = 0.045f;
+    const float SwitchRetractDistanceDefault = 0.060f;
+    const float SwitchRetractDistanceMin = 0.000f;
+    const float SwitchRetractDistanceMax = 0.180f;
+    const float SwitchRetractTimeDefault = 0.180f;
+    const float SwitchRetractTimeMin = 0.050f;
+    const float SwitchRetractTimeMax = 0.600f;
+    const float SwitchRetractSettleSeconds = 0.050f;
+    const float SwitchRetractHbaGateResumeDelaySeconds = 0.150f;
+    const float SwitchRetractPControllerFollowScale = 0.25f;
+    const float SwitchRetractMinHorizontalDirSqr = 0.0001f;
 
     FreeControllerV3.PositionState savedRKneePosState;
     FreeControllerV3.RotationState savedRKneeRotState;
@@ -290,37 +342,74 @@ public class TargetLinePerson : MVRScript
     readonly List<string> genHeadActionChoices = new List<string>()
     {
         "Off",
-        "Head Shake",
-        "Head Tilt",
-        "Head Big Nod",
-        "Head Nod",
-        "Head Look Up",
-        "Head Intense Shake",
-        "Head Ecstasy Arch",
-        "Head Rapid Orgasm",
-        "Head Shy",
-        "Head Look Around",
-        "Head Neck Roll",
-        "Head Quick Nod",
-        "Head Up Eyes"
+        "HBA_Event_Start",
+        "HBA_Event_Inside",
+        "HBA_Event_Deep",
+        "HBA_Event_End",
+        "HBA_Gen_Start",
+        "HBA_Gen_Inside",
+        "HBA_Gen_Deep",
+        "HBA_Gen_End",
+        "HBA_Anus_Start",
+        "HBA_Anus_Inside",
+        "HBA_Anus_Deep",
+        "HBA_Anus_End",
+        "HBA_Mouth_Start",
+        "HBA_Mouth_Inside",
+        "HBA_Mouth_Deep",
+        "HBA_Mouth_End",
+        "HBA_Twitch_Weak",
+        "HBA_Twitch_Normal",
+        "HBA_Twitch_Strong",
+        "HBA_Head_Shake",
+        "HBA_Head_Tilt",
+        "HBA_Head_BigNod",
+        "HBA_Head_Nod",
+        "HBA_Head_LookUp",
+        "HBA_Head_IntenseShake",
+        "HBA_Head_EcstasyArch",
+        "HBA_Head_RapidOrgasm",
+        "HBA_Head_Shy",
+        "HBA_Head_LookAround",
+        "HBA_Head_NeckRoll",
+        "HBA_Head_QuickNod",
+        "HBA_Head_UpEyes"
     };
     readonly List<string> genHeadInsideActionChoices = new List<string>()
     {
         "Off",
-        "Head Shake",
-        "Head Tilt",
-        "Head Big Nod",
-        "Head Nod",
-        "Head Look Up",
-        "Head Intense Shake",
-        "Head Ecstasy Arch",
-        "Head Rapid Orgasm",
-        "Head Shy",
-        "Head Look Around",
-        "Head Neck Roll",
-        "Head Quick Nod",
-        "Head Up Eyes",
-        "Head Random"
+        "HBA_Event_Start",
+        "HBA_Event_Inside",
+        "HBA_Event_Deep",
+        "HBA_Event_End",
+        "HBA_Gen_Start",
+        "HBA_Gen_Inside",
+        "HBA_Gen_Deep",
+        "HBA_Gen_End",
+        "HBA_Anus_Start",
+        "HBA_Anus_Inside",
+        "HBA_Anus_Deep",
+        "HBA_Anus_End",
+        "HBA_Mouth_Start",
+        "HBA_Mouth_Inside",
+        "HBA_Mouth_Deep",
+        "HBA_Mouth_End",
+        "HBA_Twitch_Weak",
+        "HBA_Twitch_Normal",
+        "HBA_Twitch_Strong",
+        "HBA_Head_Shake",
+        "HBA_Head_Tilt",
+        "HBA_Head_BigNod",
+        "HBA_Head_Nod",
+        "HBA_Head_LookUp",
+        "HBA_Head_IntenseShake",
+        "HBA_Head_EcstasyArch",
+        "HBA_Head_RapidOrgasm",
+        "HBA_Head_Shy",
+        "HBA_Head_LookAround",
+        "HBA_Head_NeckRoll",
+        "HBA_Head_QuickNod",
+        "HBA_Head_UpEyes"
     };
     readonly List<string> genTgModeChoices = new List<string>()
     {
@@ -387,6 +476,7 @@ public class TargetLinePerson : MVRScript
 
     Coroutine avoidCaptureRoutine;
     Coroutine delayedLineLockRoutine;
+    Coroutine delayedInsideReactionRoutine;
 
     const float LineLockDelaySeconds = 0.20f;
     const int DelayedGuideRefreshFrameCount = 2;
@@ -404,6 +494,16 @@ public class TargetLinePerson : MVRScript
     const float PDynamicForwardKeepShapeLeadScale = 1.25f;
     const float PDynamicForwardKeepShapeMinLead = 0.16f;
     const float PDynamicForwardKeepShapeStartProgress = 0.985f;
+    const float PMidAxisAssistTipBackDepth = -0.030f;
+    const float PMidAxisAssistTipForwardDepth = 0.260f;
+    const float PMidAxisAssistTipLateralMax = 0.110f;
+    const float PMidAxisAssistMidLateralMin = 0.012f;
+    const float PMidAxisAssistMidMax = 0.045f;
+    const float PMidAxisAssistBaseMax = 0.026f;
+    const float PMidAxisAssistMidScale = 0.72f;
+    const float PMidAxisAssistBaseScale = 0.38f;
+    const float PMidAxisAssistUnconfirmedScale = 0.35f;
+    const float PMidAxisAssistLogInterval = 2.5f;
     const float PDynamicForwardKeepShapeMinUpAngleDegrees = 8.0f;
     const float PTipYellowGuideTangentSmoothDistance = 0.055f;
     const float PTipYellowGuideEndExtendMax = 0.45f;
@@ -443,7 +543,7 @@ public class TargetLinePerson : MVRScript
     const string GenHeadAtomTargetPerson = "Target Person";
     const string GenHeadActionOff = "Off";
     const string GenHeadActionRandom = "Head Random";
-    const string GenHeadPreferredPlugin = "HumanHeadOpenControl";
+    const string GenHeadPreferredPlugin = "HumanBodyAction";
     const float GenHeadEventCooldownSeconds = 0.50f;
     const float GenHeadInsideCooldownDefault = 3.00f;
     const float GenHeadRandomIntervalMin = 3.00f;
@@ -507,7 +607,11 @@ public class TargetLinePerson : MVRScript
     const float GenDepthBurstCooldownZero = 0.45f;
     const float GenDepthBurstCooldownMax = 0.85f;
     const float GenDepthBurstSize = 0.010f;
-    const float GenDepthHudSampleInterval = 0.033f;
+    const string PerformanceModeQuality = "Quality";
+    const string PerformanceModeBalanced = "Balanced";
+    const string PerformanceModeLight = "Light";
+    const float GenDepthHudSampleInterval = 0.050f;
+    const float DebugLineRenderInterval = 0.050f;
     const float GenDepthHudGContactDotBelowScale = 1.45f;
     const float GenDepthHudGContactDotSizeScale = 0.29f;
     const float GenDepthHudGContactDotLeftDotScale = 1.1567f; // v156: micro left from v155 by about 0.12 dot
@@ -585,6 +689,7 @@ public class TargetLinePerson : MVRScript
     float nextMaxBurstTime;
     float lastGenDepthUiTextTime = -999f;
     float lastGenDepthHudSampleTime = -999f;
+    float lastGenDepthHudRenderTime = -999f;
     bool cachedHudDepthKnown;
     bool cachedHudHasDepth;
     float cachedHudDepth;
@@ -597,17 +702,47 @@ public class TargetLinePerson : MVRScript
     float cachedAnusHudPercent;
     bool genDepthHudActiveKnown;
     bool genDepthHudActive;
+    bool genDepthHudVisibleKnown;
+    bool genDepthHudVisible;
+    bool anusDepthHudActiveKnown;
+    bool anusDepthHudActive;
+    bool genDepthHudGContactDotActiveKnown;
+    bool genDepthHudGContactDotActive;
+    Renderer genDepthHudGContactDotRenderer;
+    Color genDepthHudGContactDotLastColor;
+    bool genDepthHudGContactDotColorKnown;
+    float lastDebugLineRenderTime = -999f;
+    bool debugLinesEnabledKnown;
+    bool debugLinesEnabled;
+    readonly Dictionary<GameObject, LineRenderer> hudLineRendererCache = new Dictionary<GameObject, LineRenderer>();
     float lastGenDepthProbeLogTime = -999f;
     bool lastGenDepthProbeLogKnown;
     bool lastGenDepthProbeLateralGated;
     bool lastGenDepthProbeBodyGated;
     bool lastGenDepthProbeAngleGated;
+    string genHeadActionCacheAtomUid = "";
+    Dictionary<string, string> genHeadActionLocationCache = new Dictionary<string, string>();
+    string hbaLinkCacheAtomUid = "";
+    JSONStorableFloat hbaTargetIdParam;
+    JSONStorableFloat hbaProgressParam;
+    JSONStorableBool hbaActiveParam;
+    string bodyTouchProbeCacheAtomUid = "";
+    JSONStorableBool bodyTouchLabiaParam;
+    JSONStorableBool bodyTouchVaginaParam;
+    JSONStorableBool bodyTouchDeepVaginaParam;
+    JSONStorableBool bodyTouchDeeperVaginaParam;
+    float lastHbaSharedStatusTime = -999.0f;
+    float hbaLinkLastResolveTime = -999.0f;
+    const float HbaSharedStatusInterval = 0.05f;
+    const float HbaLinkRefreshInterval = 1.00f;
     int lastGenDepthProbeZone = -999;
     float lastGDepthGuideLineLogTime = -999f;
     bool lastGDepthGuideAngleGateBlocked;
     bool gDepthPFollowApplied;
     float lastGDepthPFollowLogTime = -999f;
     bool lastGDepthAngleGateBlocked;
+    bool pMidAxisAssistApplied;
+    float lastPMidAxisAssistLogTime = -999f;
     bool pTipOnGContactKnown;
     bool pTipOnGContact;
     bool pBaseLiftAngleGateBlocked;
@@ -616,6 +751,11 @@ public class TargetLinePerson : MVRScript
     bool genTgInsideActive;
     bool genTgDeepActive;
     bool genTgHadInside;
+    bool genHeadDepthStartActive;
+    bool genHeadDepthInsideActive;
+    bool genHeadDepthDeepActive;
+    bool genHeadDepthHadInside;
+    float lastGenHeadDepthSourceLogTime = -999.0f;
 
     class GenTgRuntime
     {
@@ -651,6 +791,22 @@ public class TargetLinePerson : MVRScript
     }
 
     readonly List<GenDepthBurstParticle> genDepthBurstParticles = new List<GenDepthBurstParticle>();
+
+    class DepthFrameCache
+    {
+        public int frame = -1;
+        public bool known;
+        public bool ok;
+        public float depth;
+        public float length;
+        public float percent;
+    }
+
+    readonly DepthFrameCache genDepthFrameCache = new DepthFrameCache();
+    readonly DepthFrameCache genHudDepthFrameCache = new DepthFrameCache();
+    readonly DepthFrameCache anusHudDepthFrameCache = new DepthFrameCache();
+    readonly DepthFrameCache anusPushDepthFrameCache = new DepthFrameCache();
+    readonly DepthFrameCache mouthPushDepthFrameCache = new DepthFrameCache();
 
     const int YellowPPathPointCount = 6;
     Vector3[] yellowPPathPoints = new Vector3[YellowPPathPointCount];
@@ -777,6 +933,46 @@ public class TargetLinePerson : MVRScript
         targetControllerChooser.setCallbackFunction = OnTargetControllerChanged;
         RegisterStringChooser(targetControllerChooser);
         CreateScrollablePopup(targetControllerChooser);
+        lastTargetControllerMode = targetControllerChooser.val;
+
+        performanceModeChooser = new JSONStorableStringChooser(
+            "Performance Mode",
+            new List<string>()
+            {
+                PerformanceModeQuality,
+                PerformanceModeBalanced,
+                PerformanceModeLight
+            },
+            PerformanceModeBalanced,
+            "Performance Mode"
+        );
+        RegisterStringChooser(performanceModeChooser);
+        CreateScrollablePopup(performanceModeChooser);
+
+        switchRetractOnTargetChange = new JSONStorableBool(
+            "Switch Retract",
+            true
+        );
+        RegisterBool(switchRetractOnTargetChange);
+        CreateToggle(switchRetractOnTargetChange, true);
+
+        switchRetractDistance = new JSONStorableFloat(
+            "Switch Retract Distance",
+            SwitchRetractDistanceDefault,
+            SwitchRetractDistanceMin,
+            SwitchRetractDistanceMax
+        );
+        RegisterFloat(switchRetractDistance);
+        CreateSlider(switchRetractDistance, true);
+
+        switchRetractTime = new JSONStorableFloat(
+            "Switch Retract Time",
+            SwitchRetractTimeDefault,
+            SwitchRetractTimeMin,
+            SwitchRetractTimeMax
+        );
+        RegisterFloat(switchRetractTime);
+        CreateSlider(switchRetractTime, true);
 
         CreateButton("Refresh Person List").button.onClick.AddListener(delegate
         {
@@ -845,7 +1041,7 @@ public class TargetLinePerson : MVRScript
         RegisterBool(avoidTargetOnCapture);
         CreateToggle(avoidTargetOnCapture);
 
-        // Avoid 系スライダーは Avoid Target On Capture の下、左側へまとめる。
+        // Avoid sliders are grouped under Avoid Target On Capture.
         avoidCaptureDuration = new JSONStorableFloat(
             "Avoid Duration",
             1.0f,
@@ -864,7 +1060,7 @@ public class TargetLinePerson : MVRScript
         RegisterFloat(avoidRadius);
         // hidden UI: CreateSlider(avoidRadius);
 
-        // Avoid時の2段階移動で、横へ逃げる角度。
+        // Side angle used for two-step avoid movement.
         avoidSideAngle = new JSONStorableFloat(
             "Avoid Side Angle",
             90.0f,
@@ -939,6 +1135,13 @@ public class TargetLinePerson : MVRScript
         RegisterBool(showLines);
         CreateToggle(showLines);
 
+        debugLog = new JSONStorableBool(
+            "Debug Log",
+            false
+        );
+        RegisterBool(debugLog);
+        CreateToggle(debugLog);
+
         dynamicRedLine = new JSONStorableBool(
             "Dynamic Red Line",
             true
@@ -968,6 +1171,13 @@ public class TargetLinePerson : MVRScript
         );
         RegisterBool(showInsertDebug);
         CreateToggle(showInsertDebug);
+
+        genDepthHudFx = new JSONStorableBool(
+            "HUD FX",
+            false
+        );
+        RegisterBool(genDepthHudFx);
+        CreateToggle(genDepthHudFx);
 
         genDepthMax = new JSONStorableFloat(
             "Gen Depth Max",
@@ -1024,8 +1234,7 @@ public class TargetLinePerson : MVRScript
         RegisterBool(pushAutoGDepthTrigger);
         CreateToggle(pushAutoGDepthTrigger, true);
 
-        CreateGenTgUi();
-        CreateGenHeadUi();
+        SetupHbaEventBridgeNoUi();
 
         insertDebugText = new JSONStorableString(
             "Insert Debug",
@@ -1145,7 +1354,50 @@ public class TargetLinePerson : MVRScript
 
         RegisterExternalActions();
 
-        SuperController.LogMessage("[TargetLinePerson] Ready / v167 mouth push auto enabled / v166 anus push auto enabled / v165 anus axis fix");
+        LogMessageIfDebug("[TargetLinePerson] Ready / v190 Switch Retract horizontal hip/root + silent HBA clear / Anus HBA common event / Auto Line Slow linear / no TG/Head UI");
+    }
+
+
+    void SetupHbaEventBridgeNoUi()
+    {
+        // TargetLinePerson should only notify HumanBodyAction.
+        // No TG/Head reaction UI is created here; TG_ and reaction routing live in HumanBodyAction.
+        genTgTriggers = new JSONStorableBool("Gen TG Triggers", false);
+        RegisterBool(genTgTriggers);
+
+        genTgPrefix = new JSONStorableString("TG Prefix", "TG_");
+        RegisterString(genTgPrefix);
+
+        genHeadActions = new JSONStorableBool("HBA Events", true);
+        RegisterBool(genHeadActions);
+
+        genHeadStartAction = CreateHiddenGenHeadActionChooser("HBA Start Event", "HBA_Event_Start", false);
+        genHeadInsideAction = CreateHiddenGenHeadActionChooser("HBA Inside Event", "HBA_Event_Inside", true);
+        genHeadDeepAction = CreateHiddenGenHeadActionChooser("HBA Deep Event", "HBA_Event_Deep", false);
+        genHeadEndAction = CreateHiddenGenHeadActionChooser("HBA End Event", "HBA_Event_End", false);
+
+        genHeadInsideCooldown = new JSONStorableFloat(
+            "HBA Inside Cooldown",
+            GenHeadInsideCooldownDefault,
+            0.50f,
+            10.00f
+        );
+        RegisterFloat(genHeadInsideCooldown);
+
+        RefreshGenTgAtomList();
+        RefreshGenHeadAtomList();
+    }
+
+    JSONStorableStringChooser CreateHiddenGenHeadActionChooser(string name, string defaultAction, bool insideChoices)
+    {
+        JSONStorableStringChooser chooser = new JSONStorableStringChooser(
+            name,
+            insideChoices ? genHeadInsideActionChoices : genHeadActionChoices,
+            defaultAction,
+            name
+        );
+        RegisterStringChooser(chooser);
+        return chooser;
     }
 
     void RegisterExternalActions()
@@ -1232,7 +1484,7 @@ public class TargetLinePerson : MVRScript
 
     void CreateGenTgUi()
     {
-        genTgTriggers = new JSONStorableBool("Gen TG Triggers", true);
+        genTgTriggers = new JSONStorableBool("Gen TG Triggers", false);
         RegisterBool(genTgTriggers);
         CreateToggle(genTgTriggers, true);
 
@@ -1306,6 +1558,7 @@ public class TargetLinePerson : MVRScript
         genTgInsideActive = false;
         genTgDeepActive = false;
         genTgHadInside = false;
+        ResetGenHeadReactionState("tg-list-refresh");
 
         genTgAtomChoices.Clear();
         genTgAtomChoices.Add("");
@@ -1335,7 +1588,7 @@ public class TargetLinePerson : MVRScript
         ApplyGenTgAtomChoices(genTgDeepAtom, deepCurrent, "Deep");
         ApplyGenTgAtomChoices(genTgEndAtom, endCurrent, "End");
 
-        SuperController.LogMessage(
+        LogMessageIfDebug(
             "[TargetLinePerson] Gen TG list refreshed" +
             " / prefix=" + prefix +
             " / found=" + matchCount +
@@ -1410,10 +1663,10 @@ public class TargetLinePerson : MVRScript
         RegisterStringChooser(genHeadAtom);
         CreateScrollablePopup(genHeadAtom, true);
 
-        genHeadStartAction = CreateGenHeadActionChooser("Start Head Action", "Head Quick Nod");
-        genHeadInsideAction = CreateGenHeadInsideActionChooser("Inside Head Action", "Head Nod");
-        genHeadDeepAction = CreateGenHeadActionChooser("Deep Head Action", "Head Ecstasy Arch");
-        genHeadEndAction = CreateGenHeadActionChooser("End Head Action", "Head Shy");
+        genHeadStartAction = CreateGenHeadActionChooser("Start Head Action", "HBA_Event_Start");
+        genHeadInsideAction = CreateGenHeadInsideActionChooser("Inside Head Action", "HBA_Event_Inside");
+        genHeadDeepAction = CreateGenHeadActionChooser("Deep Head Action", "HBA_Event_Deep");
+        genHeadEndAction = CreateGenHeadActionChooser("End Head Action", "HBA_Event_End");
 
         genHeadInsideCooldown = new JSONStorableFloat(
             "Inside Head Cooldown",
@@ -1432,6 +1685,16 @@ public class TargetLinePerson : MVRScript
         CreateButton("Log Head Status", true).button.onClick.AddListener(delegate
         {
             LogGenHeadStatus();
+        });
+
+        CreateButton("Test HBA_Event_Inside", true).button.onClick.AddListener(delegate
+        {
+            TestGenHeadAction("HBA_Event_Inside");
+        });
+
+        CreateButton("Test HBA_Event_Deep", true).button.onClick.AddListener(delegate
+        {
+            TestGenHeadAction("HBA_Event_Deep");
         });
 
         RefreshGenHeadAtomList();
@@ -1490,7 +1753,7 @@ public class TargetLinePerson : MVRScript
 
         Atom atom = GetGenHeadTargetAtom();
         bool found = atom != null && HasGenHeadActionPlugin(atom);
-        SuperController.LogMessage(
+        LogMessageIfDebug(
             "[TargetLinePerson] Gen Head list refreshed" +
             " / atom=" + (atom != null ? atom.uid : "") +
             " / pluginFound=" + found
@@ -1499,9 +1762,16 @@ public class TargetLinePerson : MVRScript
 
     Atom GetGenHeadTargetAtom()
     {
+        // v171: BodyTwitcher reactions are resolved against the current Target Person by default.
+        // This avoids confusion where Head Plugin Atom points somewhere else and Tw_ actions never fire.
+        if (targetPersonChooser != null && !string.IsNullOrEmpty(targetPersonChooser.val))
+        {
+            return FindAtom(targetPersonChooser.val);
+        }
+
         if (genHeadAtom == null || string.IsNullOrEmpty(genHeadAtom.val) || genHeadAtom.val == GenHeadAtomTargetPerson)
         {
-            return targetPersonChooser != null ? FindAtom(targetPersonChooser.val) : null;
+            return null;
         }
 
         return FindAtom(genHeadAtom.val);
@@ -1565,11 +1835,11 @@ public class TargetLinePerson : MVRScript
 
         if (IsApplyOnSliderChangeOnly())
         {
-            if (followTarget == null || !followTarget.val || isAvoidMoving)
+            if (followTarget == null || !followTarget.val || isAvoidMoving || targetSwitchRetractBusy)
             {
-                ResetUpperBodyLowerIfApplied("follow off or avoid");
-                ResetPAngleAtYellowP3IfApplied("follow off or avoid");
-                CancelDelayedGuideRefresh("follow off or avoid");
+                ResetUpperBodyLowerIfApplied("follow off or avoid or switch retract");
+                ResetPAngleAtYellowP3IfApplied("follow off or avoid or switch retract");
+                CancelDelayedGuideRefresh("follow off or avoid or switch retract");
             }
             else
             {
@@ -1585,7 +1855,7 @@ public class TargetLinePerson : MVRScript
 
         CancelDelayedGuideRefresh("continuous apply mode");
 
-        if (followTarget.val && !isAvoidMoving)
+        if (followTarget.val && !isAvoidMoving && !targetSwitchRetractBusy)
         {
             ApplyPlacement();
             ApplyUpperBodyLowerByYellowPathIfNeeded("update");
@@ -1593,8 +1863,8 @@ public class TargetLinePerson : MVRScript
         }
         else
         {
-            ResetUpperBodyLowerIfApplied("follow off or avoid");
-            ResetPAngleAtYellowP3IfApplied("follow off or avoid");
+            ResetUpperBodyLowerIfApplied("follow off or avoid or switch retract");
+            ResetPAngleAtYellowP3IfApplied("follow off or avoid or switch retract");
         }
 
         UpdateDynamicRedLineDisplayIfNeeded();
@@ -1606,6 +1876,86 @@ public class TargetLinePerson : MVRScript
     bool IsApplyOnSliderChangeOnly()
     {
         return applyOnSliderChangeOnly != null && applyOnSliderChangeOnly.val;
+    }
+
+    string GetPerformanceMode()
+    {
+        if (performanceModeChooser == null || string.IsNullOrEmpty(performanceModeChooser.val))
+        {
+            return PerformanceModeBalanced;
+        }
+
+        return performanceModeChooser.val;
+    }
+
+    float GetHudSampleInterval()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return 0.016f;
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 0.120f;
+        }
+        return 0.080f;
+    }
+
+    float GetDebugLineRenderInterval()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return 0.025f;
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 0.150f;
+        }
+        return 0.080f;
+    }
+
+    float GetDynamicRedLineMinInterval()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return 0.100f;
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 0.350f;
+        }
+        return 0.180f;
+    }
+
+    float GetGenDepthUiTextInterval()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return 0.200f;
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 0.500f;
+        }
+        return 0.300f;
+    }
+
+    float GetHbaSharedStatusInterval()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return HbaSharedStatusInterval;
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 0.120f;
+        }
+        return 0.075f;
     }
 
     void SetPlacementControlsInteractable(bool interactable)
@@ -1648,7 +1998,7 @@ public class TargetLinePerson : MVRScript
             return;
         }
 
-        if (followTarget == null || !followTarget.val || isAvoidMoving)
+        if (followTarget == null || !followTarget.val || isAvoidMoving || targetSwitchRetractBusy)
         {
             ResetUpperBodyLowerIfApplied(reason + " inactive");
             ResetPAngleAtYellowP3IfApplied(reason + " inactive");
@@ -2284,8 +2634,373 @@ public class TargetLinePerson : MVRScript
 
     void OnTargetControllerChanged(string value)
     {
+        string oldMode = string.IsNullOrEmpty(lastTargetControllerMode) ? "" : lastTargetControllerMode;
+        string newMode = string.IsNullOrEmpty(value) ? "" : value;
+        lastTargetControllerMode = newMode;
+        bool preserveDistance = oldMode != newMode && IsGenOrAnusTarget(oldMode) && IsGenOrAnusTarget(newMode);
+
         ClearLookupCaches();
-        ResetCaptureStateForTargetChange("target changed to " + value);
+
+        Vector3 origin = Vector3.zero;
+        Vector3 insideDir = Vector3.zero;
+        float length = 0.0f;
+        bool shouldRetract = false;
+        string skipReason = "";
+
+        if (switchRetractOnTargetChange == null || !switchRetractOnTargetChange.val)
+        {
+            skipReason = "disabled";
+        }
+        else if (!IsGenOrAnusTarget(oldMode) || !IsGenOrAnusTarget(newMode))
+        {
+            skipReason = "old/new not gen-anus";
+        }
+        else if (oldMode == newMode)
+        {
+            skipReason = "same-target";
+        }
+        else if (!TryGetInsideLineForTargetMode(oldMode, out origin, out insideDir, out length))
+        {
+            skipReason = "insideDir missing";
+        }
+        else if (insideDir.sqrMagnitude < 0.0001f)
+        {
+            skipReason = "insideDir zero";
+        }
+        else if (GetSwitchRetractDistance() <= 0.0001f)
+        {
+            skipReason = "distance zero";
+        }
+        else
+        {
+            shouldRetract = true;
+        }
+
+        if (switchRetractRoutine != null)
+        {
+            StopCoroutine(switchRetractRoutine);
+            switchRetractRoutine = null;
+            targetSwitchRetractBusy = false;
+        }
+
+        if (shouldRetract)
+        {
+            StartSwitchRetractHbaGate();
+            switchRetractRoutine = StartCoroutine(RunSwitchRetractThenReset(oldMode, newMode, origin, insideDir.normalized, preserveDistance));
+            return;
+        }
+
+        if (oldMode != newMode && IsDebugLogEnabled())
+        {
+            LogMessageIfDebug(
+                "[TargetLinePerson] Switch Retract skipped" +
+                " / old=" + oldMode +
+                " / new=" + newMode +
+                " / reason=" + skipReason +
+                " / captured=" + captured
+            );
+        }
+
+        ResetCaptureStateForTargetChange("target changed to " + value, preserveDistance);
+    }
+
+    bool IsGenOrAnusTarget(string mode)
+    {
+        return mode == "genital" || mode == "anus";
+    }
+    bool IsSwitchRetractHbaGateActive()
+    {
+        return targetSwitchRetractBusy || Time.time < targetSwitchRetractHbaGateUntil;
+    }
+
+    void StartSwitchRetractHbaGate()
+    {
+        targetSwitchRetractHbaGateUntil = Time.time + SwitchRetractHbaGateResumeDelaySeconds;
+        lastSwitchRetractHbaGateLogTime = -999.0f;
+    }
+
+    void ExtendSwitchRetractHbaGateAfterMotion()
+    {
+        float until = Time.time + SwitchRetractHbaGateResumeDelaySeconds;
+        if (until > targetSwitchRetractHbaGateUntil)
+        {
+            targetSwitchRetractHbaGateUntil = until;
+        }
+    }
+
+    void LogSwitchRetractHbaGateIfNeeded(string depthSource)
+    {
+        if (!IsDebugLogEnabled())
+        {
+            return;
+        }
+
+        if (Time.time - lastSwitchRetractHbaGateLogTime < 0.50f)
+        {
+            return;
+        }
+
+        lastSwitchRetractHbaGateLogTime = Time.time;
+        LogMessageIfDebug(
+            "[TargetLinePerson] Switch Retract HBA gate" +
+            " / busy=" + targetSwitchRetractBusy +
+            " / holdLeft=" + Mathf.Max(0.0f, targetSwitchRetractHbaGateUntil - Time.time).ToString("F2") +
+            " / suppressEnd=True" +
+            " / source=" + depthSource
+        );
+    }
+
+
+    float GetSwitchRetractDistance()
+    {
+        if (switchRetractDistance == null)
+        {
+            return SwitchRetractDistanceDefault;
+        }
+
+        return Mathf.Clamp(switchRetractDistance.val, SwitchRetractDistanceMin, SwitchRetractDistanceMax);
+    }
+
+    float GetSwitchRetractTime()
+    {
+        if (switchRetractTime == null)
+        {
+            return SwitchRetractTimeDefault;
+        }
+
+        return Mathf.Clamp(switchRetractTime.val, SwitchRetractTimeMin, SwitchRetractTimeMax);
+    }
+
+    bool TryGetInsideLineForTargetMode(string targetMode, out Vector3 origin, out Vector3 dir, out float length)
+    {
+        origin = Vector3.zero;
+        dir = Vector3.zero;
+        length = GetGenDepthMax();
+
+        if (targetPersonChooser == null)
+        {
+            return false;
+        }
+
+        Atom targetAtom = FindAtom(targetPersonChooser.val);
+        if (targetAtom == null)
+        {
+            return false;
+        }
+
+        if (targetMode == "genital")
+        {
+            Transform genitalLine = FindChildTransform(targetAtom, "LabiaTrigger");
+            if (genitalLine == null)
+            {
+                return false;
+            }
+
+            origin = genitalLine.position;
+            dir = genitalLine.up;
+        }
+        else if (targetMode == "anus")
+        {
+            Transform anusLine = FindAnusTargetTransform(targetAtom);
+            if (anusLine == null)
+            {
+                return false;
+            }
+
+            origin = anusLine.position;
+            dir = GetAnusInsideDirectionForDepth(targetAtom, anusLine);
+        }
+        else
+        {
+            return false;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        dir.Normalize();
+        return true;
+    }
+
+    Vector3 ResolveSwitchRetractHorizontalRetreatDir(Vector3 oldOrigin, Vector3 oldInsideDir)
+    {
+        // Retreat direction is the opposite of the old target's approach axis,
+        // but hip/root animation should stay horizontal. If the old axis is
+        // nearly vertical, fall back to "away from old target origin" on XZ.
+        Vector3 retreatDir = -oldInsideDir;
+        retreatDir.y = 0.0f;
+
+        if (retreatDir.sqrMagnitude < SwitchRetractMinHorizontalDirSqr)
+        {
+            FreeControllerV3 hip = GetOwnHip();
+            if (hip != null && hip.transform != null)
+            {
+                retreatDir = hip.transform.position - oldOrigin;
+                retreatDir.y = 0.0f;
+            }
+        }
+
+        if (retreatDir.sqrMagnitude < SwitchRetractMinHorizontalDirSqr)
+        {
+            if (containingAtom != null && containingAtom.transform != null)
+            {
+                retreatDir = -containingAtom.transform.forward;
+                retreatDir.y = 0.0f;
+            }
+        }
+
+        if (retreatDir.sqrMagnitude < SwitchRetractMinHorizontalDirSqr)
+        {
+            retreatDir = Vector3.back;
+        }
+
+        return retreatDir.normalized;
+    }
+
+    void ClearReactionStateForTargetSwitchSilently(string reason)
+    {
+        ForceAllGenTgOff();
+
+        genTgStartActive = false;
+        genTgInsideActive = false;
+        genTgDeepActive = false;
+        genTgHadInside = false;
+
+        genHeadDepthStartActive = false;
+        genHeadDepthInsideActive = false;
+        genHeadDepthDeepActive = false;
+        genHeadDepthHadInside = false;
+        genHeadInsideNextRandomTime = -1.0f;
+
+        UpdateHbaSharedStatus(0.0f, false);
+
+        if (IsDebugLogEnabled())
+        {
+            LogMessageIfDebug("[TargetLinePerson] Switch Retract silent reaction clear / reason=" + reason);
+        }
+    }
+
+    IEnumerator RunSwitchRetractThenReset(string oldMode, string newMode, Vector3 oldOrigin, Vector3 oldInsideDir, bool preserveDistance)
+    {
+        targetSwitchRetractBusy = true;
+        CancelDelayedGuideRefresh("switch retract");
+        ResetUpperBodyLowerIfApplied("switch retract");
+        ResetPAngleAtYellowP3IfApplied("switch retract");
+
+        if (pushPRoutine != null)
+        {
+            pushStopRequested = true;
+        }
+
+        FreeControllerV3 root = containingAtom != null ? containingAtom.mainController : null;
+        FreeControllerV3 hip = GetOwnHip();
+        FreeControllerV3 penisBase = GetOwnPenisBase();
+        FreeControllerV3 penisMid = GetOwnPenisMid();
+        FreeControllerV3 penisTip = GetOwnPenisTip();
+
+        if (hip == null || hip.transform == null || oldInsideDir.sqrMagnitude < 0.0001f)
+        {
+            targetSwitchRetractBusy = false;
+            ExtendSwitchRetractHbaGateAfterMotion();
+            ClearReactionStateForTargetSwitchSilently("switch retract skipped");
+            switchRetractRoutine = null;
+            ResetCaptureStateForTargetChange("target changed to " + newMode + " / switch retract skipped", preserveDistance);
+            yield break;
+        }
+
+        Vector3 horizontalRetreatDir = ResolveSwitchRetractHorizontalRetreatDir(oldOrigin, oldInsideDir);
+        if (horizontalRetreatDir.sqrMagnitude < 0.0001f)
+        {
+            targetSwitchRetractBusy = false;
+            ExtendSwitchRetractHbaGateAfterMotion();
+            ClearReactionStateForTargetSwitchSilently("switch retract direction missing");
+            switchRetractRoutine = null;
+            ResetCaptureStateForTargetChange("target changed to " + newMode + " / switch retract direction missing", preserveDistance);
+            yield break;
+        }
+
+        Vector3 retractDelta = horizontalRetreatDir * GetSwitchRetractDistance();
+        Vector3 pRetractDelta = retractDelta * SwitchRetractPControllerFollowScale;
+        Vector3 rootStart = root != null && root.transform != null ? root.transform.position : Vector3.zero;
+        Vector3 hipStart = hip.transform.position;
+        Vector3 baseStart = penisBase != null && penisBase.transform != null ? penisBase.transform.position : Vector3.zero;
+        Vector3 midStart = penisMid != null && penisMid.transform != null ? penisMid.transform.position : Vector3.zero;
+        Vector3 tipStart = penisTip != null && penisTip.transform != null ? penisTip.transform.position : Vector3.zero;
+
+        float duration = Mathf.Max(0.01f, GetSwitchRetractTime());
+        float startTime = Time.time;
+
+        DebugLog(
+            "[TargetLinePerson] Switch Retract start" +
+            " / old=" + oldMode +
+            " / new=" + newMode +
+            " / distance=" + GetSwitchRetractDistance().ToString("F3") +
+            " / time=" + duration.ToString("F2") +
+            " / pFollowScale=" + SwitchRetractPControllerFollowScale.ToString("F2") +
+            " / rawDir=(" + FormatVector3((-oldInsideDir.normalized)) + ")" +
+            " / horizontalDir=(" + FormatVector3(horizontalRetreatDir) + ")"
+        );
+
+        while (Time.time - startTime < duration)
+        {
+            float t = Mathf.Clamp01((Time.time - startTime) / duration);
+            float eased = t * t * (3.0f - 2.0f * t);
+            Vector3 delta = retractDelta * eased;
+
+            Vector3 pDelta = pRetractDelta * eased;
+            ApplySwitchRetractControllerPosition(root, rootStart + delta);
+            ApplySwitchRetractControllerPosition(hip, hipStart + delta);
+            ApplySwitchRetractControllerPosition(penisBase, baseStart + pDelta);
+            ApplySwitchRetractControllerPosition(penisMid, midStart + pDelta);
+            ApplySwitchRetractControllerPosition(penisTip, tipStart + pDelta);
+
+            yield return null;
+        }
+
+        ApplySwitchRetractControllerPosition(root, rootStart + retractDelta);
+        ApplySwitchRetractControllerPosition(hip, hipStart + retractDelta);
+        ApplySwitchRetractControllerPosition(penisBase, baseStart + pRetractDelta);
+        ApplySwitchRetractControllerPosition(penisMid, midStart + pRetractDelta);
+        ApplySwitchRetractControllerPosition(penisTip, tipStart + pRetractDelta);
+
+        if (SwitchRetractSettleSeconds > 0.0001f)
+        {
+            yield return new WaitForSeconds(SwitchRetractSettleSeconds);
+        }
+
+        ExtendSwitchRetractHbaGateAfterMotion();
+        ClearReactionStateForTargetSwitchSilently("switch retract from " + oldMode + " to " + newMode);
+        targetSwitchRetractBusy = false;
+        switchRetractRoutine = null;
+        ResetCaptureStateForTargetChange("target changed to " + newMode + " / switch retract from " + oldMode, preserveDistance);
+    }
+
+    void ApplySwitchRetractControllerPosition(FreeControllerV3 fc, Vector3 position)
+    {
+        if (fc == null || fc.transform == null)
+        {
+            return;
+        }
+
+        if (fc.currentPositionState != FreeControllerV3.PositionState.On)
+        {
+            fc.currentPositionState = FreeControllerV3.PositionState.On;
+        }
+
+        if ((fc.transform.position - position).sqrMagnitude > 0.00000001f)
+        {
+            fc.transform.position = position;
+        }
+
+        if (fc.control != null)
+        {
+            if ((fc.control.position - position).sqrMagnitude > 0.00000001f)
+            {
+                fc.control.position = position;
+            }
+        }
     }
 
     void ClearLookupCaches()
@@ -2293,6 +3008,7 @@ public class TargetLinePerson : MVRScript
         atomCache.Clear();
         controllerContainsCache.Clear();
         controllerExactCache.Clear();
+        ClearBodyTouchProbeCache();
     }
 
     void OnTargetPersonChanged(string value)
@@ -2304,6 +3020,12 @@ public class TargetLinePerson : MVRScript
 
     void ResetCaptureStateForTargetChange(string reason)
     {
+        ResetCaptureStateForTargetChange(reason, false);
+    }
+
+    void ResetCaptureStateForTargetChange(string reason, bool preserveDistance)
+    {
+        float preservedDistance = distance != null ? distance.val : 1.0f;
         if (delayedLineLockRoutine != null)
         {
             StopCoroutine(delayedLineLockRoutine);
@@ -2315,6 +3037,18 @@ public class TargetLinePerson : MVRScript
             StopCoroutine(avoidCaptureRoutine);
             avoidCaptureRoutine = null;
         }
+
+        if (switchRetractRoutine != null)
+        {
+            StopCoroutine(switchRetractRoutine);
+            switchRetractRoutine = null;
+        }
+        if (delayedInsideReactionRoutine != null)
+        {
+            StopCoroutine(delayedInsideReactionRoutine);
+            delayedInsideReactionRoutine = null;
+        }
+        targetSwitchRetractBusy = false;
 
         if (limbStateCaptured)
         {
@@ -2350,18 +3084,19 @@ public class TargetLinePerson : MVRScript
         lieDockingYawLockOpposite = false;
         pAngleAtYellowP3Applied = false;
         pDynamicBaseYApplied = false;
+        pMidAxisAssistApplied = false;
         lastDynamicPBaseOffset = Vector3.zero;
         ClearTipYellowParallelLock();
         CancelDelayedGuideRefresh(reason);
 
-        if (distance != null) distance.valNoCallback = 1.0f;
+        if (distance != null) distance.valNoCallback = preserveDistance ? preservedDistance : 1.0f;
         if (orbitAngle != null) orbitAngle.valNoCallback = 0.0f;
         if (hipYOffset != null) hipYOffset.valNoCallback = 0.0f;
 
         SetPlacementControlsInteractable(false);
         UpdateDebugLines(false);
 
-        SuperController.LogMessage("[TargetLinePerson] Target reset / reason=" + reason + " / press Now Docking again");
+        LogMessageIfDebug("[TargetLinePerson] Target reset / reason=" + reason + " / press Now Docking again");
     }
 
     void ReleasePControllerLocksOnly(string reason)
@@ -3050,13 +3785,13 @@ else
 
         if (targetAtom == null)
         {
-            SuperController.LogMessage("[TargetLinePerson] Docking target probe / targetAtom=MISSING / docking=SKIP");
+            LogMessageIfDebug("[TargetLinePerson] Docking target probe / targetAtom=MISSING / docking=SKIP");
             return false;
         }
 
         if (target == null)
         {
-            SuperController.LogMessage("[TargetLinePerson] Docking target probe / target=" + GetTargetModeName() + " / controller=MISSING / docking=SKIP");
+            LogMessageIfDebug("[TargetLinePerson] Docking target probe / target=" + GetTargetModeName() + " / controller=MISSING / docking=SKIP");
             return false;
         }
 
@@ -3069,7 +3804,7 @@ else
             genitalLine = FindChildTransform(targetAtom, "LabiaTrigger");
             if (genitalLine == null)
             {
-                SuperController.LogMessage("[TargetLinePerson] Docking target probe / target=genital / LabiaTrigger=MISSING / hipFallback=REMOVED / docking=SKIP");
+                LogMessageIfDebug("[TargetLinePerson] Docking target probe / target=genital / LabiaTrigger=MISSING / hipFallback=REMOVED / docking=SKIP");
                 return false;
             }
         }
@@ -3079,7 +3814,7 @@ else
             anusLine = FindAnusTargetTransform(targetAtom);
             if (anusLine == null)
             {
-                SuperController.LogMessage("[TargetLinePerson] Docking target probe / target=anus / _JointAl/Debug=MISSING / docking=SKIP");
+                LogMessageIfDebug("[TargetLinePerson] Docking target probe / target=anus / _JointAl/Debug=MISSING / docking=SKIP");
                 return false;
             }
         }
@@ -3091,7 +3826,7 @@ else
             mouthLine = FindMouthTargetTransform(targetAtom);
             if (mouthLine == null)
             {
-                SuperController.LogMessage("[TargetLinePerson] Docking target probe / target=mouth / mouthPhysicsMeshPredictionPoint=MISSING / hipFallback=REMOVED / docking=SKIP");
+                LogMessageIfDebug("[TargetLinePerson] Docking target probe / target=mouth / mouthPhysicsMeshPredictionPoint=MISSING / hipFallback=REMOVED / docking=SKIP");
                 return false;
             }
         }
@@ -3172,7 +3907,7 @@ else
             return;
         }
 
-        float interval = redLineUpdateSec != null ? Mathf.Max(0.10f, redLineUpdateSec.val) : 0.50f;
+        float interval = redLineUpdateSec != null ? Mathf.Max(GetDynamicRedLineMinInterval(), redLineUpdateSec.val) : 0.50f;
         if (Time.time - lastDynamicRedLineUpdateTime < interval)
         {
             return;
@@ -3603,12 +4338,35 @@ else
         return showLines != null && showLines.val;
     }
 
+    bool IsDebugLogEnabled()
+    {
+        return debugLog != null && debugLog.val;
+    }
+
     void DebugLog(string message)
     {
-        if (IsDebugViewEnabled())
+        if (IsDebugLogEnabled())
+        {
+            LogMessageIfDebug(message);
+        }
+    }
+
+    void LogMessageIfDebug(string message)
+    {
+        if (IsDebugLogEnabled())
         {
             SuperController.LogMessage(message);
         }
+    }
+
+    bool IsHbaActionName(string actionName)
+    {
+        return !string.IsNullOrEmpty(actionName) && actionName.IndexOf("HBA_", StringComparison.OrdinalIgnoreCase) == 0;
+    }
+
+    void TraceHeadAction(string message, string actionName)
+    {
+        DebugLog(message);
     }
 
     Vector3 GetTargetLineDirection(FreeControllerV3 target, Atom targetAtom, Transform genitalLine, Transform anusLine, Transform mouthLine)
@@ -4676,6 +5434,7 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         // Base = straight section, Mid = middle guide angle, Tip = steep guide angle.
         ApplyControllerToYellowPathRelative(penisMid, midTarget, midTan);
         ApplyControllerToYellowPathRelative(penisTip, tipTarget, tipTan);
+        ApplyPMidAxisAssistIfNeeded(penisBase, penisMid, penisTip, reason);
 
         bool shouldLog = !pAngleAtYellowP3Applied && IsDebugViewEnabled();
         if (shouldLog)
@@ -4835,6 +5594,7 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         SetPYellowRotationOnly(penisBase, GetYellowPPathRotation(dir));
         ApplyControllerToYellowPathRelative(penisMid, midTarget, dir);
         ApplyControllerToYellowPathRelative(penisTip, tipTarget, dir);
+        ApplyPMidAxisAssistIfNeeded(penisBase, penisMid, penisTip, reason);
 
         bool shouldLog = !gDepthPFollowApplied || (IsDebugViewEnabled() && Time.time - lastGDepthPFollowLogTime >= 2.5f);
         if (shouldLog)
@@ -4861,6 +5621,190 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         gDepthPFollowApplied = true;
         pAngleAtYellowP3Applied = true;
         return true;
+    }
+
+    void ApplyPMidAxisAssistIfNeeded(FreeControllerV3 penisBase, FreeControllerV3 penisMid, FreeControllerV3 penisTip, string reason)
+    {
+        if (penisBase == null || penisMid == null || penisTip == null)
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        if (GetTargetModeName() != "genital")
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        bool hasProbe;
+        bool triggerConfirmed = IsGenBodyTouchConfirmed(out hasProbe);
+        dir.Normalize();
+        Vector3 tipPos = penisTip.transform.position;
+        Vector3 tipFromOrigin = tipPos - origin;
+        float tipDepth = Vector3.Dot(tipFromOrigin, dir);
+        Vector3 tipClosest = origin + dir * tipDepth;
+        Vector3 tipLateral = Vector3.ProjectOnPlane(tipPos - tipClosest, dir);
+        float tipLateralDistance = tipLateral.magnitude;
+
+        if (tipDepth < PMidAxisAssistTipBackDepth || tipDepth > PMidAxisAssistTipForwardDepth || tipLateralDistance > PMidAxisAssistTipLateralMax)
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        Vector3 midPos = penisMid.transform.position;
+        float midDepth = Vector3.Dot(midPos - origin, dir);
+        Vector3 midClosest = origin + dir * midDepth;
+        Vector3 midLateral = Vector3.ProjectOnPlane(midPos - midClosest, dir);
+        float midLateralDistance = midLateral.magnitude;
+
+        if (midLateralDistance < PMidAxisAssistMidLateralMin)
+        {
+            pMidAxisAssistApplied = false;
+            return;
+        }
+
+        float confirmScale = hasProbe && !triggerConfirmed ? PMidAxisAssistUnconfirmedScale : 1.0f;
+        Vector3 midCorrection = Vector3.ClampMagnitude(-midLateral * PMidAxisAssistMidScale * confirmScale, PMidAxisAssistMidMax * confirmScale);
+        Vector3 baseCorrection = Vector3.ClampMagnitude(-midLateral * PMidAxisAssistBaseScale * confirmScale, PMidAxisAssistBaseMax * confirmScale);
+
+        ApplyControllerPositionOffsetIfChanged(penisMid, midCorrection);
+        ApplyControllerPositionOffsetIfChanged(penisBase, baseCorrection);
+
+        bool shouldLog = !pMidAxisAssistApplied || (IsDebugViewEnabled() && Time.time - lastPMidAxisAssistLogTime >= PMidAxisAssistLogInterval);
+        if (shouldLog)
+        {
+            lastPMidAxisAssistLogTime = Time.time;
+            DebugLog(
+                "[TargetLinePerson] P Mid Axis Assist" +
+                " / reason=" + reason +
+                " / triggerProbe=" + (hasProbe ? "1" : "0") +
+                " / triggerConfirmed=" + (triggerConfirmed ? "1" : "0") +
+                " / scale=" + confirmScale.ToString("F2") +
+                " / tipDepth=" + tipDepth.ToString("F3") +
+                " / tipLat=" + tipLateralDistance.ToString("F3") +
+                " / midLat=" + midLateralDistance.ToString("F3") +
+                " / midMove=" + midCorrection.magnitude.ToString("F3") +
+                " / baseMove=" + baseCorrection.magnitude.ToString("F3")
+            );
+        }
+
+        pMidAxisAssistApplied = true;
+    }
+
+    void ApplyControllerPositionOffsetIfChanged(FreeControllerV3 fc, Vector3 offset)
+    {
+        if (fc == null || offset.sqrMagnitude < 0.00000001f)
+        {
+            return;
+        }
+
+        Vector3 pos = fc.transform.position + offset;
+        if (fc.currentPositionState != FreeControllerV3.PositionState.On)
+        {
+            fc.currentPositionState = FreeControllerV3.PositionState.On;
+        }
+        if ((fc.transform.position - pos).sqrMagnitude > 0.00000001f)
+        {
+            fc.transform.position = pos;
+        }
+        if (fc.control != null && (fc.control.position - pos).sqrMagnitude > 0.00000001f)
+        {
+            fc.control.position = pos;
+        }
+    }
+
+    bool IsGenBodyTouchConfirmed(out bool hasProbe)
+    {
+        hasProbe = false;
+        Atom targetAtom = targetPersonChooser != null ? FindAtom(targetPersonChooser.val) : null;
+        if (!ResolveBodyTouchProbeStorables(targetAtom))
+        {
+            return false;
+        }
+
+        hasProbe = true;
+        return IsBoolParamOn(bodyTouchLabiaParam) ||
+            IsBoolParamOn(bodyTouchVaginaParam) ||
+            IsBoolParamOn(bodyTouchDeepVaginaParam) ||
+            IsBoolParamOn(bodyTouchDeeperVaginaParam);
+    }
+
+    bool IsBoolParamOn(JSONStorableBool param)
+    {
+        return param != null && param.val;
+    }
+
+    bool ResolveBodyTouchProbeStorables(Atom atom)
+    {
+        if (atom == null)
+        {
+            ClearBodyTouchProbeCache();
+            return false;
+        }
+
+        if (bodyTouchProbeCacheAtomUid == atom.uid && bodyTouchLabiaParam != null)
+        {
+            return true;
+        }
+
+        ClearBodyTouchProbeCache();
+
+        foreach (string storableId in atom.GetStorableIDs())
+        {
+            if (string.IsNullOrEmpty(storableId))
+            {
+                continue;
+            }
+
+            JSONStorable storable = atom.GetStorableByID(storableId);
+            if (storable == null)
+            {
+                continue;
+            }
+
+            JSONStorableBool labia = storable.GetBoolJSONParam("On LabiaTrigger");
+            JSONStorableBool vagina = storable.GetBoolJSONParam("On VaginaTrigger");
+            JSONStorableBool deep = storable.GetBoolJSONParam("On DeepVaginaTrigger");
+            JSONStorableBool deeper = storable.GetBoolJSONParam("On DeeperVaginaTrigger");
+
+            if (labia != null || vagina != null || deep != null || deeper != null)
+            {
+                bodyTouchProbeCacheAtomUid = atom.uid;
+                bodyTouchLabiaParam = labia;
+                bodyTouchVaginaParam = vagina;
+                bodyTouchDeepVaginaParam = deep;
+                bodyTouchDeeperVaginaParam = deeper;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void ClearBodyTouchProbeCache()
+    {
+        bodyTouchProbeCacheAtomUid = "";
+        bodyTouchLabiaParam = null;
+        bodyTouchVaginaParam = null;
+        bodyTouchDeepVaginaParam = null;
+        bodyTouchDeeperVaginaParam = null;
     }
 
     bool IsPYellowGuideStartReached(float progress, float p2Progress, out string startMode)
@@ -6516,12 +7460,10 @@ bool ApplyAutoLieOnRidePoseIfNeeded()
         return false;
     }
 
-    // Ride成立時は genital の向きを使わない。
-    // 現在の「相手hip -> 自分hip」の水平方向を配置方向として使う。
+    // Ride-like poses keep the current horizontal direction.
     OverrideCapturedDirectionForRidePose();
 
-    // Ride成立時は前後位置に関係なく Lie On Back 固定。
-    // RootはCapture後の配置処理で相手方向へ向くため、Front/Back分岐はしない。
+    // Ride-like poses use the fixed Lie On Back preset.
     ApplyLieOnBackPresetPose();
     rideLieActive = true;
     EnsureLieDockingSafeDistance("auto-lie");
@@ -6561,8 +7503,7 @@ void ReleaseRideLieIfNeeded()
 
     rideLieActive = false;
 
-    // Rideで男性側をLie On Backにした後、次のCaptureでRide条件が外れたら
-    // Upper Body Direction共通処理だけ呼ぶ。全身初期化はしない。
+    // Ride邵ｺ・ｧ騾包ｽｷ隲､・ｧ陋幢ｽｴ郢ｧ魍・e On Back邵ｺ・ｫ邵ｺ蜉ｱ笳・募ｾ個竏ｵ・ｬ・｡邵ｺ・ｮCapture邵ｺ・ｧRide隴夲ｽ｡闔会ｽｶ邵ｺ謔滂ｽ､謔ｶ・檎ｸｺ貅假ｽ・    // Re-apply upper body direction after ride lie is released.
     ApplyUpperBodyDirection();
     DebugLog("[TargetLinePerson] Ride Lie released: Upper Body Direction + head aligned applied.");
 }
@@ -6644,8 +7585,7 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         if (toOwn.sqrMagnitude >= 0.0001f)
         {
             currentSideDot = Vector3.Dot(toOwn.normalized, targetForward);
-            // Lie同方向は、相手root.forwardの後ろ側に自分hipを置く。
-            // 前側にいる場合は正反対向きにする。
+            // Pick the opposite side when the owner is behind target root forward.
             opposite = currentSideDot > 0f;
         }
         else if (containingAtom != null && containingAtom.mainController != null)
@@ -6764,14 +7704,14 @@ bool IsTargetRideLikePose()
         return false;
     }
 
-    // 1. 上半身がほぼ垂直
-    // 1.0に近いほど垂直。0.0に近いほど水平。
+    // 1. 闕ｳ髮∵ｿ髴・ｽｫ邵ｺ蠕娯括邵ｺ・ｼ陜吶ｉ蟲ｩ
+    // 1. Upper body verticality.
     float upperVerticalDot = Mathf.Abs(Vector3.Dot(upper.normalized, Vector3.up));
 
-    // 2. hipが低い
+    // 2. Hip height.
     float hipY = hipPos.y;
 
-    // 3. hipが膝ぐらいの高さ
+    // 3. Knee height.
     float kneeY = (rKneePos.y + lKneePos.y) * 0.5f;
     float hipKneeDiff = Mathf.Abs(hipY - kneeY);
 
@@ -6868,8 +7808,7 @@ bool IsTargetRideLikePose()
 
         Transform root = containingAtom.mainController.transform;
 
-        // 左右ミラー用。root.forward だと前後反転になって180度回転っぽくなるため、
-        // root.right を鏡面法線にする。
+        // Mirror around the root right plane.
         Vector3 mirrorCenter = root.position;
         Vector3 mirrorNormal = root.right;
         mirrorNormal.y = 0f;
@@ -7057,7 +7996,7 @@ bool IsTargetRideLikePose()
             return;
         }
 
-        // hip -> chest を背骨方向として使う。
+        // Use hip-to-chest as body up direction.
         Vector3 up = ownChest.transform.position - ownHip.transform.position;
 
         if (up.sqrMagnitude < 0.0001f)
@@ -7067,7 +8006,7 @@ bool IsTargetRideLikePose()
 
         up.Normalize();
 
-        // 体の正面方向を使う。胸やRootは回さず、headControlだけを整える。
+        // Align head control to body forward without rotating the root.
         Vector3 forward = containingAtom != null && containingAtom.mainController != null
             ? containingAtom.mainController.transform.forward
             : Vector3.forward;
@@ -7208,7 +8147,7 @@ bool IsTargetRideLikePose()
             return;
         }
 
-        SuperController.LogMessage("[TargetLinePerson] LOAD VaM USER DEF: PosePresets action not found.");
+        LogMessageIfDebug("[TargetLinePerson] LOAD VaM USER DEF: PosePresets action not found.");
     }
 
     bool TryExecutePosePresetAction(string[] actionNames)
@@ -7504,7 +8443,7 @@ bool IsTargetRideLikePose()
             return;
         }
 
-        LineRenderer line = obj.GetComponent<LineRenderer>();
+        LineRenderer line = GetCachedHudLineRenderer(obj);
         if (line == null)
         {
             return;
@@ -7523,6 +8462,27 @@ bool IsTargetRideLikePose()
 
         line.SetPosition(0, start);
         line.SetPosition(1, end);
+    }
+
+    LineRenderer GetCachedHudLineRenderer(GameObject obj)
+    {
+        if (obj == null)
+        {
+            return null;
+        }
+
+        LineRenderer line;
+        if (hudLineRendererCache.TryGetValue(obj, out line) && line != null)
+        {
+            return line;
+        }
+
+        line = obj.GetComponent<LineRenderer>();
+        if (line != null)
+        {
+            hudLineRendererCache[obj] = line;
+        }
+        return line;
     }
 
     GameObject CreateGenDepthHudMarkerObject(string objectName, Material mat)
@@ -7789,7 +8749,8 @@ bool IsTargetRideLikePose()
         float anusHudLength = GetGenDepthMax();
         float anusHudPercent = 0.0f;
         bool hasAnusHudDepth = false;
-        if (visible && (!cachedHudDepthKnown || Time.time - lastGenDepthHudSampleTime >= GenDepthHudSampleInterval))
+        bool anusHudVisible = visible && targetControllerChooser != null && targetControllerChooser.val == "anus";
+        if (visible && (!cachedHudDepthKnown || Time.time - lastGenDepthHudSampleTime >= GetHudSampleInterval()))
         {
             cachedHudDepth = hudDepth;
             cachedHudLength = hudLength;
@@ -7798,7 +8759,7 @@ bool IsTargetRideLikePose()
             cachedAnusHudDepth = anusHudDepth;
             cachedAnusHudLength = anusHudLength;
             cachedAnusHudPercent = anusHudPercent;
-            cachedAnusHudHasDepth = TryGetLiveAnusDepthForHud(out cachedAnusHudDepth, out cachedAnusHudLength, out cachedAnusHudPercent);
+            cachedAnusHudHasDepth = anusHudVisible && TryGetLiveAnusDepthForHud(out cachedAnusHudDepth, out cachedAnusHudLength, out cachedAnusHudPercent);
             cachedHudDepthKnown = true;
             cachedAnusHudDepthKnown = true;
             lastGenDepthHudSampleTime = Time.time;
@@ -7836,21 +8797,93 @@ bool IsTargetRideLikePose()
             anusHudPercent = 0.0f;
         }
 
-        UpdateGenDepthHud(hudDepth, hudLength, hudPercent, visible);
-        UpdateAnusDepthHud(anusHudDepth, anusHudLength, anusHudPercent, visible);
-        UpdateGenDepthUiText(hasDepth, percent);
-        UpdateGenTgTriggers(hasDepth, percent);
+        // Use target-specific HUD/raw depth as the public HBA progress source.
+        // TargetLinePerson stays a detector/bridge only: Gen and Anus both flow into
+        // the same HBA_Event_* path, while HBA_TargetId tells HumanBodyAction which target it is.
+        string eventTargetMode = GetTargetModeName();
+        string eventDepthSource = "none";
+        float eventPercent = 0.0f;
+        bool hasEventDepth = false;
+
+        if (eventTargetMode == "anus")
+        {
+            float rawAnusDepth;
+            float rawAnusLength;
+            float rawAnusPercent;
+            if (TryGetLiveAnusDepthForHud(out rawAnusDepth, out rawAnusLength, out rawAnusPercent))
+            {
+                eventPercent = rawAnusPercent;
+                hasEventDepth = true;
+                eventDepthSource = "anus-hud-depth";
+            }
+        }
+        else
+        {
+            // Genital keeps the previous HUD/raw fallback. Mouth currently has no common HBA depth event source.
+            if (eventTargetMode == "genital")
+            {
+                eventPercent = percent;
+                hasEventDepth = hasDepth;
+                eventDepthSource = hasEventDepth ? "gen-control-depth" : "gen-no-depth";
+
+                float rawHudDepth;
+                float rawHudLength;
+                float rawHudPercent;
+                if (TryGetLiveGenDepthForHud(out rawHudDepth, out rawHudLength, out rawHudPercent))
+                {
+                    if (!hasEventDepth || rawHudPercent > eventPercent + 0.0005f)
+                    {
+                        eventPercent = rawHudPercent;
+                        hasEventDepth = true;
+                        eventDepthSource = "genital-hud-raw-depth";
+                    }
+                }
+            }
+        }
+
+        UpdateDepthHudThrottled(hudDepth, hudLength, hudPercent, anusHudDepth, anusHudLength, anusHudPercent, visible);
+        UpdateGenDepthUiText(hasEventDepth, eventPercent, eventTargetMode);
+        UpdateGenTgTriggers(hasEventDepth, eventPercent, eventDepthSource);
     }
 
-    void UpdateGenDepthUiText(bool hasDepth, float percent)
+    void UpdateDepthHudThrottled(float hudDepth, float hudLength, float hudPercent, float anusHudDepth, float anusHudLength, float anusHudPercent, bool visible)
     {
-        if (insertDebugText == null || Time.time - lastGenDepthUiTextTime < 0.20f)
+        if (!visible)
+        {
+            if (!genDepthHudVisibleKnown || genDepthHudVisible)
+            {
+                UpdateGenDepthHud(0.0f, GetGenDepthMax(), 0.0f, false);
+                UpdateAnusDepthHud(0.0f, GetGenDepthMax(), 0.0f, false);
+                genDepthHudVisible = false;
+                genDepthHudVisibleKnown = true;
+            }
+            return;
+        }
+
+        if (genDepthHudVisibleKnown && genDepthHudVisible && Time.time - lastGenDepthHudRenderTime < GetHudSampleInterval())
         {
             return;
         }
 
-        string maxText = genDepthInsertedMaxPercent > 0.001f ? BuildDepthPercentText(0.0f, 1.0f, genDepthInsertedMaxPercent) : "--%";
-        string text = hasDepth ? ("Gen " + BuildDepthPercentText(0.0f, 1.0f, percent) + " / Max " + maxText) : "Gen --% / Max --%";
+        UpdateGenDepthHud(hudDepth, hudLength, hudPercent, true);
+        UpdateAnusDepthHud(anusHudDepth, anusHudLength, anusHudPercent, true);
+        lastGenDepthHudRenderTime = Time.time;
+        genDepthHudVisible = true;
+        genDepthHudVisibleKnown = true;
+    }
+
+    void UpdateGenDepthUiText(bool hasDepth, float percent, string targetMode)
+    {
+        if (insertDebugText == null || Time.time - lastGenDepthUiTextTime < GetGenDepthUiTextInterval())
+        {
+            return;
+        }
+
+        bool anusMode = targetMode == "anus";
+        string label = anusMode ? "Anus" : "Gen";
+        float maxPercent = anusMode ? anusDepthInsertedMaxPercent : genDepthInsertedMaxPercent;
+        string maxText = maxPercent > 0.001f ? BuildDepthPercentText(0.0f, 1.0f, maxPercent) : "--%";
+        string text = hasDepth ? (label + " " + BuildDepthPercentText(0.0f, 1.0f, percent) + " / Max " + maxText) : (label + " --% / Max --%");
 
         if (insertDebugText.val != text)
         {
@@ -7859,7 +8892,7 @@ bool IsTargetRideLikePose()
         lastGenDepthUiTextTime = Time.time;
     }
 
-    void UpdateGenTgTriggers(bool hasDepth, float percent)
+    void UpdateGenTgTriggers(bool hasDepth, float percent, string depthSource)
     {
         bool tgEnabled = genTgTriggers != null && genTgTriggers.val;
         bool headEnabled = genHeadActions != null && genHeadActions.val;
@@ -7867,6 +8900,12 @@ bool IsTargetRideLikePose()
         if (!tgEnabled)
         {
             ForceAllGenTgOff();
+        }
+
+        if (IsSwitchRetractHbaGateActive())
+        {
+            LogSwitchRetractHbaGateIfNeeded(depthSource);
+            return;
         }
 
         if (!hasDepth || (!tgEnabled && !headEnabled))
@@ -7879,6 +8918,7 @@ bool IsTargetRideLikePose()
             genTgInsideActive = false;
             genTgDeepActive = false;
             genTgHadInside = false;
+            ResetGenHeadReactionState(!hasDepth ? "no-depth" : "disabled");
             return;
         }
 
@@ -7930,24 +8970,368 @@ bool IsTargetRideLikePose()
         bool insideEvent = !wasInside && inserted;
         bool deepEvent = !wasDeep && deep;
         bool endEvent = wasInside && !inserted;
+        bool delayInsideReaction = insideEvent;
 
         if (inserted)
         {
             genTgHadInside = true;
         }
 
+        if (delayInsideReaction)
+        {
+            ScheduleDelayedInsideReaction(tgEnabled, headEnabled);
+        }
+
         if (tgEnabled)
         {
             ProcessGenTgSlot("Start", genTgStartAtom, genTgStartMode, genTgStartRuntime, started, startEvent);
-            ProcessGenTgSlot("Inside", genTgInsideAtom, genTgInsideMode, genTgInsideRuntime, inserted, insideEvent);
+            if (!delayInsideReaction)
+            {
+                ProcessGenTgSlot("Inside", genTgInsideAtom, genTgInsideMode, genTgInsideRuntime, inserted, insideEvent);
+            }
             ProcessGenTgSlot("Deep", genTgDeepAtom, genTgDeepMode, genTgDeepRuntime, deep, deepEvent);
             ProcessGenTgSlot("End", genTgEndAtom, genTgEndMode, genTgEndRuntime, !inserted && genTgHadInside, endEvent);
         }
 
         if (headEnabled)
         {
-            ProcessGenHeadActions(inserted, startEvent, insideEvent, deepEvent, endEvent);
+            UpdateGenHeadReactionTriggers(percent, string.IsNullOrEmpty(depthSource) ? "control-depth" : depthSource, delayInsideReaction);
         }
+        else
+        {
+            ResetGenHeadReactionState("head-disabled");
+        }
+    }
+
+    void ScheduleDelayedInsideReaction(bool tgEnabledAtStart, bool headEnabledAtStart)
+    {
+        if (delayedInsideReactionRoutine != null)
+        {
+            StopCoroutine(delayedInsideReactionRoutine);
+            delayedInsideReactionRoutine = null;
+        }
+
+        delayedInsideReactionRoutine = StartCoroutine(DelayedInsideReactionRoutine(tgEnabledAtStart, headEnabledAtStart));
+    }
+
+    IEnumerator DelayedInsideReactionRoutine(bool tgEnabledAtStart, bool headEnabledAtStart)
+    {
+        yield return null;
+        delayedInsideReactionRoutine = null;
+
+        if (!genTgInsideActive || IsSwitchRetractHbaGateActive())
+        {
+            yield break;
+        }
+
+        bool tgStillEnabled = tgEnabledAtStart && genTgTriggers != null && genTgTriggers.val;
+        bool headStillEnabled = headEnabledAtStart && genHeadActions != null && genHeadActions.val && genHeadDepthInsideActive;
+
+        if (tgStillEnabled)
+        {
+            ProcessGenTgSlot("Inside", genTgInsideAtom, genTgInsideMode, genTgInsideRuntime, true, true);
+        }
+
+        if (headStillEnabled)
+        {
+            ProcessGenHeadInside(true, true);
+        }
+    }
+
+    void ResetGenHeadReactionState(string reason)
+    {
+        if (!genHeadDepthStartActive && !genHeadDepthInsideActive && !genHeadDepthDeepActive && !genHeadDepthHadInside)
+        {
+            return;
+        }
+
+        if (genHeadDepthInsideActive)
+        {
+            ProcessGenHeadActions(false, false, false, false, true);
+        }
+
+        genHeadDepthStartActive = false;
+        genHeadDepthInsideActive = false;
+        genHeadDepthDeepActive = false;
+        genHeadDepthHadInside = false;
+        genHeadInsideNextRandomTime = -1.0f;
+        UpdateHbaSharedStatus(0.0f, false);
+
+        if (IsDebugViewEnabled())
+        {
+            DebugLog("[TargetLinePerson] Gen Head reaction state reset / reason=" + reason);
+        }
+    }
+
+    void UpdateGenHeadReactionTriggers(float controlPercent, string controlSource)
+    {
+        UpdateGenHeadReactionTriggers(controlPercent, controlSource, false);
+    }
+
+    void UpdateGenHeadReactionTriggers(float controlPercent, string controlSource, bool delayInsideReaction)
+    {
+        float reactionPercent = Mathf.Clamp(controlPercent, 0.0f, GenDepthHudDisplayMaxPercent);
+        string source = controlSource;
+        float fallbackPercent;
+        string fallbackSource;
+
+        if (TryGetGenHeadReactionFallbackPercent(out fallbackPercent, out fallbackSource) && fallbackPercent > reactionPercent + 0.0005f)
+        {
+            reactionPercent = Mathf.Clamp(fallbackPercent, 0.0f, GenDepthHudDisplayMaxPercent);
+            source = fallbackSource;
+        }
+
+        bool wasStart = genHeadDepthStartActive;
+        bool wasInside = genHeadDepthInsideActive;
+        bool wasDeep = genHeadDepthDeepActive;
+
+        if (genHeadDepthStartActive)
+        {
+            if (reactionPercent <= GenTgStartExitPercent)
+            {
+                genHeadDepthStartActive = false;
+            }
+        }
+        else if (reactionPercent > GenTgStartEnterPercent)
+        {
+            genHeadDepthStartActive = true;
+        }
+
+        if (genHeadDepthInsideActive)
+        {
+            if (reactionPercent <= GenTgInsideExitPercent)
+            {
+                genHeadDepthInsideActive = false;
+            }
+        }
+        else if (reactionPercent > GenTgInsideEnterPercent)
+        {
+            genHeadDepthInsideActive = true;
+        }
+
+        if (genHeadDepthDeepActive)
+        {
+            if (reactionPercent < GenTgDeepExitPercent)
+            {
+                genHeadDepthDeepActive = false;
+            }
+        }
+        else if (reactionPercent >= GenTgDeepEnterPercent)
+        {
+            genHeadDepthDeepActive = true;
+            genHeadDepthInsideActive = true;
+        }
+
+        bool started = genHeadDepthStartActive;
+        bool inserted = genHeadDepthInsideActive;
+        bool deep = genHeadDepthDeepActive;
+        bool startEvent = !wasStart && started;
+        bool insideEvent = !wasInside && inserted;
+        bool deepEvent = !wasDeep && deep;
+        bool endEvent = wasInside && !inserted;
+
+        if (inserted)
+        {
+            genHeadDepthHadInside = true;
+        }
+
+        UpdateHbaSharedStatus(reactionPercent, inserted || started || deep);
+
+        bool important = startEvent || insideEvent || deepEvent || endEvent || Time.time - lastGenHeadDepthSourceLogTime >= 3.0f;
+        if (important && IsDebugLogEnabled() && HasHbaActionSelected())
+        {
+            lastGenHeadDepthSourceLogTime = Time.time;
+            LogMessageIfDebug(
+                "[TargetLinePerson] HBA depth source" +
+                " / source=" + source +
+                " / controlPercent=" + controlPercent.ToString("F3") +
+                " / reactionPercent=" + reactionPercent.ToString("F3") +
+                " / start=" + started +
+                " / inside=" + inserted +
+                " / deep=" + deep +
+                " / startEvent=" + startEvent +
+                " / insideEvent=" + insideEvent +
+                " / deepEvent=" + deepEvent +
+                " / endEvent=" + endEvent +
+                " / rawDepth=" + (lastGenDepthSampleKnown ? lastGenDepthRawDepth.ToString("F3") : "n/a") +
+                " / lateral=" + (lastGenDepthSampleKnown ? lastGenDepthLateral.ToString("F3") : "n/a")
+            );
+        }
+
+        ProcessGenHeadActions(inserted, startEvent, delayInsideReaction ? false : insideEvent, deepEvent, endEvent);
+    }
+
+    bool HasHbaActionSelected()
+    {
+        return IsHbaActionName(GetGenHeadActionValue(genHeadStartAction)) ||
+            IsHbaActionName(GetGenHeadActionValue(genHeadInsideAction)) ||
+            IsHbaActionName(GetGenHeadActionValue(genHeadDeepAction)) ||
+            IsHbaActionName(GetGenHeadActionValue(genHeadEndAction));
+    }
+
+    bool TryGetGenHeadReactionFallbackPercent(out float percent, out string source)
+    {
+        percent = 0.0f;
+        source = "none";
+
+        string targetMode = GetTargetModeName();
+        float depth;
+        float length;
+        float rawPercent;
+
+        if (targetMode == "genital")
+        {
+            if (TryGetLiveGenDepthForHud(out depth, out length, out rawPercent))
+            {
+                percent = rawPercent;
+                source = "genital-hud-raw-depth";
+                return true;
+            }
+            return false;
+        }
+
+        if (targetMode == "anus")
+        {
+            if (TryGetLiveAnusDepthForHud(out depth, out length, out rawPercent))
+            {
+                percent = rawPercent;
+                source = "anus-hud-depth";
+                return true;
+            }
+            return false;
+        }
+
+        return false;
+    }
+
+
+    void UpdateHbaSharedStatus(float percent, bool active)
+    {
+        if (Time.time - lastHbaSharedStatusTime < GetHbaSharedStatusInterval())
+        {
+            return;
+        }
+
+        Atom atom = GetGenHeadTargetAtom();
+        if (!ResolveHbaStatusStorables(atom))
+        {
+            return;
+        }
+
+        if (hbaTargetIdParam != null)
+        {
+            float targetId = GetHbaTargetId();
+            if (Mathf.Abs(hbaTargetIdParam.val - targetId) > 0.0001f)
+            {
+                hbaTargetIdParam.val = targetId;
+            }
+        }
+        if (hbaProgressParam != null)
+        {
+            float nextProgress = Mathf.Clamp(percent, 0.0f, GenDepthHudDisplayMaxPercent);
+            if (Mathf.Abs(hbaProgressParam.val - nextProgress) > 0.0005f)
+            {
+                hbaProgressParam.val = nextProgress;
+            }
+        }
+        if (hbaActiveParam != null && hbaActiveParam.val != active) hbaActiveParam.val = active;
+        lastHbaSharedStatusTime = Time.time;
+    }
+
+    bool ResolveHbaStatusStorables(Atom atom)
+    {
+        if (atom == null)
+        {
+            ClearHbaStatusCache();
+            return false;
+        }
+
+        // During testing the HBA script may be swapped/reloaded while this plugin keeps
+        // old JSONStorable references.  Re-scan periodically and prefer the current
+        // HumanBodyAction bridge marker when available.
+        if (hbaLinkCacheAtomUid == atom.uid && hbaTargetIdParam != null && hbaProgressParam != null && hbaActiveParam != null)
+        {
+            if (Time.time - hbaLinkLastResolveTime < HbaLinkRefreshInterval)
+            {
+                return true;
+            }
+        }
+
+        ClearHbaStatusCache();
+        hbaLinkCacheAtomUid = atom.uid;
+
+        JSONStorable fallbackStorable = null;
+        JSONStorableFloat fallbackTargetId = null;
+        JSONStorableFloat fallbackProgress = null;
+        JSONStorableBool fallbackActive = null;
+
+        foreach (string sid in atom.GetStorableIDs())
+        {
+            JSONStorable storable = atom.GetStorableByID(sid);
+            if (storable == null)
+            {
+                continue;
+            }
+
+            JSONStorableFloat targetId = storable.GetFloatJSONParam("HBA_TargetId");
+            JSONStorableFloat progress = storable.GetFloatJSONParam("HBA_Progress");
+            JSONStorableBool active = storable.GetBoolJSONParam("HBA_Active");
+            if (targetId == null || progress == null || active == null)
+            {
+                continue;
+            }
+
+            JSONStorableFloat bridgeVersion = storable.GetFloatJSONParam("HBA_BridgeVersion");
+            bool looksLikeHba = sid.IndexOf("HumanBodyAction", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            // v011+ exposes HBA_BridgeVersion. Prefer it so we do not write to an old HBA
+            // instance left on the same Person while iterating scripts.
+            if (bridgeVersion != null || looksLikeHba)
+            {
+                hbaTargetIdParam = targetId;
+                hbaProgressParam = progress;
+                hbaActiveParam = active;
+                hbaLinkLastResolveTime = Time.time;
+                return true;
+            }
+
+            if (fallbackStorable == null)
+            {
+                fallbackStorable = storable;
+                fallbackTargetId = targetId;
+                fallbackProgress = progress;
+                fallbackActive = active;
+            }
+        }
+
+        if (fallbackStorable != null)
+        {
+            hbaTargetIdParam = fallbackTargetId;
+            hbaProgressParam = fallbackProgress;
+            hbaActiveParam = fallbackActive;
+            hbaLinkLastResolveTime = Time.time;
+            return true;
+        }
+
+        return false;
+    }
+
+    void ClearHbaStatusCache()
+    {
+        hbaLinkCacheAtomUid = "";
+        hbaTargetIdParam = null;
+        hbaProgressParam = null;
+        hbaActiveParam = null;
+        hbaLinkLastResolveTime = -999.0f;
+    }
+
+    float GetHbaTargetId()
+    {
+        string mode = GetTargetModeName();
+        if (mode == "genital") return 1.0f;
+        if (mode == "anus") return 2.0f;
+        if (mode == "mouth") return 3.0f;
+        return 0.0f;
     }
 
     void ProcessGenTgSlot(
@@ -8121,18 +9505,41 @@ bool IsTargetRideLikePose()
             return;
         }
 
+        Atom atom = GetGenHeadTargetAtom();
+        bool isHba = IsHbaActionName(actionName);
+        if (isHba && IsDebugLogEnabled())
+        {
+            LogMessageIfDebug(
+                "[TargetLinePerson] HBA slot trigger" +
+                " / slot=" + label +
+                " / action=" + actionName +
+                " / targetAtom=" + (atom != null ? atom.uid : "") +
+                " / actionFound=" + FindGenHeadActionLocation(atom, actionName)
+            );
+        }
+
         if (Time.time - lastFireTime < cooldown)
         {
+            if (isHba && IsDebugLogEnabled())
+            {
+                LogMessageIfDebug(
+                    "[TargetLinePerson] HBA skipped by cooldown" +
+                    " / slot=" + label +
+                    " / action=" + actionName +
+                    " / remain=" + Mathf.Max(0.0f, cooldown - (Time.time - lastFireTime)).ToString("F2")
+                );
+            }
             return;
         }
 
         lastFireTime = Time.time;
         bool ok = TryFireGenHeadAction(actionName);
-        DebugLog(
+        TraceHeadAction(
             "[TargetLinePerson] Gen Head action" +
             " / slot=" + label +
             " / action=" + actionName +
-            " / ok=" + ok
+            " / ok=" + ok,
+            actionName
         );
     }
 
@@ -8141,7 +9548,26 @@ bool IsTargetRideLikePose()
         Atom atom = GetGenHeadTargetAtom();
         if (atom == null || string.IsNullOrEmpty(actionName) || actionName == GenHeadActionOff)
         {
+            TraceHeadAction(
+                "[TargetLinePerson] Gen Head fire skipped" +
+                " / action=" + actionName +
+                " / atom=" + (atom != null ? atom.uid : "") +
+                " / reason=atom-or-action-empty",
+                actionName
+            );
             return false;
+        }
+
+        if (IsDebugLogEnabled())
+        {
+            TraceHeadAction(
+                "[TargetLinePerson] Gen Head fire try" +
+                " / action=" + actionName +
+                " / atom=" + atom.uid +
+                " / pluginFound=" + HasGenHeadActionPlugin(atom) +
+                " / actionFound=" + FindGenHeadActionLocation(atom, actionName),
+                actionName
+            );
         }
 
         if (TryExecuteGenHeadAction(atom, actionName, true))
@@ -8154,41 +9580,36 @@ bool IsTargetRideLikePose()
 
     bool TryExecuteGenHeadAction(Atom atom, string actionName, bool preferredOnly)
     {
-        if (atom == null)
+        JSONStorableAction action;
+        string storableId;
+        if (!TryGetCachedGenHeadAction(atom, actionName, preferredOnly, out action, out storableId))
         {
+            if (IsDebugLogEnabled())
+            {
+                TraceHeadAction(
+                    "[TargetLinePerson] Gen Head action not found in pass" +
+                    " / action=" + actionName +
+                    " / atom=" + (atom != null ? atom.uid : "") +
+                    " / preferredOnly=" + preferredOnly,
+                    actionName
+                );
+            }
             return false;
         }
 
-        foreach (string storableId in atom.GetStorableIDs())
+        if (IsDebugLogEnabled())
         {
-            if (string.IsNullOrEmpty(storableId))
-            {
-                continue;
-            }
-
-            bool preferred = storableId.IndexOf(GenHeadPreferredPlugin, StringComparison.OrdinalIgnoreCase) >= 0;
-            if (preferredOnly && !preferred)
-            {
-                continue;
-            }
-
-            JSONStorable storable = atom.GetStorableByID(storableId);
-            if (storable == null)
-            {
-                continue;
-            }
-
-            JSONStorableAction action = storable.GetAction(actionName);
-            if (action == null)
-            {
-                continue;
-            }
-
-            action.actionCallback.Invoke();
-            return true;
+            TraceHeadAction(
+                "[TargetLinePerson] Gen Head execute" +
+                " / action=" + actionName +
+                " / atom=" + atom.uid +
+                " / storable=" + storableId +
+                " / preferredOnly=" + preferredOnly,
+                actionName
+            );
         }
-
-        return false;
+        action.actionCallback.Invoke();
+        return true;
     }
 
     float GetGenTgTimedDuration(string mode)
@@ -8350,7 +9771,7 @@ bool IsTargetRideLikePose()
 
     void LogGenTgStatus()
     {
-        SuperController.LogMessage(
+        LogMessageIfDebug(
             "[TargetLinePerson] Gen TG status" +
             " / enabled=" + (genTgTriggers != null && genTgTriggers.val) +
             " / prefix=" + GetGenTgPrefix() +
@@ -8377,7 +9798,7 @@ bool IsTargetRideLikePose()
             hasTriggerValue = storable != null && storable.GetBoolJSONParam("value") != null;
         }
 
-        SuperController.LogMessage(
+        LogMessageIfDebug(
             "[TargetLinePerson] Gen TG slot" +
             " / slot=" + label +
             " / atom=" + atomUid +
@@ -8391,16 +9812,120 @@ bool IsTargetRideLikePose()
     void LogGenHeadStatus()
     {
         Atom atom = GetGenHeadTargetAtom();
-        SuperController.LogMessage(
+        string startAction = GetGenHeadActionValue(genHeadStartAction);
+        string insideAction = GetGenHeadActionValue(genHeadInsideAction);
+        string deepAction = GetGenHeadActionValue(genHeadDeepAction);
+        string endAction = GetGenHeadActionValue(genHeadEndAction);
+
+        LogMessageIfDebug(
             "[TargetLinePerson] Gen Head status" +
             " / enabled=" + (genHeadActions != null && genHeadActions.val) +
-            " / atom=" + (atom != null ? atom.uid : "") +
+            " / headPluginAtomChooser=" + (genHeadAtom != null ? genHeadAtom.val : "") +
+            " / resolvedMode=TargetPersonFixed" +
+            " / resolvedAtom=" + (atom != null ? atom.uid : "") +
             " / pluginFound=" + HasGenHeadActionPlugin(atom) +
-            " / start=" + GetGenHeadActionValue(genHeadStartAction) +
-            " / inside=" + GetGenHeadActionValue(genHeadInsideAction) +
-            " / deep=" + GetGenHeadActionValue(genHeadDeepAction) +
-            " / end=" + GetGenHeadActionValue(genHeadEndAction)
+            " / start=" + startAction + "@" + FindGenHeadActionLocation(atom, startAction) +
+            " / inside=" + insideAction + "@" + FindGenHeadActionLocation(atom, insideAction) +
+            " / deep=" + deepAction + "@" + FindGenHeadActionLocation(atom, deepAction) +
+            " / end=" + endAction + "@" + FindGenHeadActionLocation(atom, endAction) +
+            " / HBA_Twitch_Normal=" + FindGenHeadActionLocation(atom, "HBA_Twitch_Normal") +
+            " / HBA_Twitch_Strong=" + FindGenHeadActionLocation(atom, "HBA_Twitch_Strong")
         );
+    }
+
+    void TestGenHeadAction(string actionName)
+    {
+        bool ok = TryFireGenHeadAction(actionName);
+        LogMessageIfDebug(
+            "[TargetLinePerson] Gen Head TEST" +
+            " / action=" + actionName +
+            " / ok=" + ok
+        );
+    }
+
+    string FindGenHeadActionLocation(Atom atom, string actionName)
+    {
+        JSONStorableAction action;
+        string storableId;
+        if (TryGetCachedGenHeadAction(atom, actionName, false, out action, out storableId))
+        {
+            return storableId;
+        }
+        return atom == null ? "no-atom" : (string.IsNullOrEmpty(actionName) || actionName == GenHeadActionOff ? "off" : "not-found");
+    }
+
+    void ResetGenHeadActionCacheIfNeeded(Atom atom)
+    {
+        string uid = atom != null ? atom.uid : "";
+        if (genHeadActionCacheAtomUid == uid)
+        {
+            return;
+        }
+
+        genHeadActionCacheAtomUid = uid;
+        genHeadActionLocationCache.Clear();
+    }
+
+    bool TryGetCachedGenHeadAction(Atom atom, string actionName, bool preferredOnly, out JSONStorableAction action, out string storableId)
+    {
+        action = null;
+        storableId = "";
+        if (atom == null || string.IsNullOrEmpty(actionName) || actionName == GenHeadActionOff)
+        {
+            return false;
+        }
+
+        ResetGenHeadActionCacheIfNeeded(atom);
+        string key = (preferredOnly ? "P|" : "A|") + actionName;
+        if (genHeadActionLocationCache.TryGetValue(key, out storableId))
+        {
+            if (storableId == "not-found")
+            {
+                return false;
+            }
+
+            JSONStorable cachedStorable = atom.GetStorableByID(storableId);
+            action = cachedStorable != null ? cachedStorable.GetAction(actionName) : null;
+            if (action != null)
+            {
+                return true;
+            }
+
+            genHeadActionLocationCache.Remove(key);
+        }
+
+        foreach (string sid in atom.GetStorableIDs())
+        {
+            if (string.IsNullOrEmpty(sid))
+            {
+                continue;
+            }
+
+            bool preferred = sid.IndexOf(GenHeadPreferredPlugin, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (preferredOnly && !preferred)
+            {
+                continue;
+            }
+
+            JSONStorable storable = atom.GetStorableByID(sid);
+            if (storable == null)
+            {
+                continue;
+            }
+
+            action = storable.GetAction(actionName);
+            if (action != null)
+            {
+                storableId = sid;
+                genHeadActionLocationCache[key] = sid;
+                return true;
+            }
+        }
+
+        storableId = "not-found";
+        genHeadActionLocationCache[key] = storableId;
+        action = null;
+        return false;
     }
 
     string GetGenHeadActionValue(JSONStorableStringChooser chooser)
@@ -8421,7 +9946,94 @@ bool IsTargetRideLikePose()
         return BuildDepthPercentText(depth, length, percent);
     }
 
+    void ReadDepthFrameCache(DepthFrameCache cache, out float depth, out float length, out float percent)
+    {
+        depth = cache.depth;
+        length = cache.length;
+        percent = cache.percent;
+    }
+
+    void WriteDepthFrameCache(DepthFrameCache cache, bool ok, float depth, float length, float percent)
+    {
+        cache.frame = Time.frameCount;
+        cache.known = true;
+        cache.ok = ok;
+        cache.depth = depth;
+        cache.length = length;
+        cache.percent = percent;
+    }
+
+    bool IsDepthFrameCacheFresh(DepthFrameCache cache)
+    {
+        return cache.known && cache.frame == Time.frameCount;
+    }
+
     bool TryGetLiveGenDepth(out float depth, out float length, out float percent)
+    {
+        if (IsDepthFrameCacheFresh(genDepthFrameCache))
+        {
+            ReadDepthFrameCache(genDepthFrameCache, out depth, out length, out percent);
+            return genDepthFrameCache.ok;
+        }
+
+        bool ok = ComputeLiveGenDepth(out depth, out length, out percent);
+        WriteDepthFrameCache(genDepthFrameCache, ok, depth, length, percent);
+        return ok;
+    }
+
+    bool TryGetLiveGenDepthForHud(out float depth, out float length, out float percent)
+    {
+        if (IsDepthFrameCacheFresh(genHudDepthFrameCache))
+        {
+            ReadDepthFrameCache(genHudDepthFrameCache, out depth, out length, out percent);
+            return genHudDepthFrameCache.ok;
+        }
+
+        bool ok = ComputeLiveGenDepthForHud(out depth, out length, out percent);
+        WriteDepthFrameCache(genHudDepthFrameCache, ok, depth, length, percent);
+        return ok;
+    }
+
+    bool TryGetLiveAnusDepthForHud(out float depth, out float length, out float percent)
+    {
+        if (IsDepthFrameCacheFresh(anusHudDepthFrameCache))
+        {
+            ReadDepthFrameCache(anusHudDepthFrameCache, out depth, out length, out percent);
+            return anusHudDepthFrameCache.ok;
+        }
+
+        bool ok = ComputeLiveAnusDepthForHud(out depth, out length, out percent);
+        WriteDepthFrameCache(anusHudDepthFrameCache, ok, depth, length, percent);
+        return ok;
+    }
+
+    bool TryGetLiveAnusDepthForPush(out float depth, out float length, out float percent)
+    {
+        if (IsDepthFrameCacheFresh(anusPushDepthFrameCache))
+        {
+            ReadDepthFrameCache(anusPushDepthFrameCache, out depth, out length, out percent);
+            return anusPushDepthFrameCache.ok;
+        }
+
+        bool ok = ComputeLiveAnusDepthForPush(out depth, out length, out percent);
+        WriteDepthFrameCache(anusPushDepthFrameCache, ok, depth, length, percent);
+        return ok;
+    }
+
+    bool TryGetLiveMouthDepthForPush(out float depth, out float length, out float percent)
+    {
+        if (IsDepthFrameCacheFresh(mouthPushDepthFrameCache))
+        {
+            ReadDepthFrameCache(mouthPushDepthFrameCache, out depth, out length, out percent);
+            return mouthPushDepthFrameCache.ok;
+        }
+
+        bool ok = ComputeLiveMouthDepthForPush(out depth, out length, out percent);
+        WriteDepthFrameCache(mouthPushDepthFrameCache, ok, depth, length, percent);
+        return ok;
+    }
+
+    bool ComputeLiveGenDepth(out float depth, out float length, out float percent)
     {
         depth = 0.0f;
         length = GetGenDepthMax();
@@ -8495,7 +10107,7 @@ bool IsTargetRideLikePose()
         return true;
     }
 
-    bool TryGetLiveGenDepthForHud(out float depth, out float length, out float percent)
+    bool ComputeLiveGenDepthForHud(out float depth, out float length, out float percent)
     {
         depth = 0.0f;
         length = GetGenDepthMax();
@@ -8548,7 +10160,7 @@ bool IsTargetRideLikePose()
         return true;
     }
 
-    bool TryGetLiveAnusDepthForHud(out float depth, out float length, out float percent)
+    bool ComputeLiveAnusDepthForHud(out float depth, out float length, out float percent)
     {
         depth = 0.0f;
         length = GetGenDepthMax();
@@ -8625,7 +10237,7 @@ bool IsTargetRideLikePose()
         return false;
     }
 
-    bool TryGetLiveAnusDepthForPush(out float depth, out float length, out float percent)
+    bool ComputeLiveAnusDepthForPush(out float depth, out float length, out float percent)
     {
         depth = 0.0f;
         length = GetGenDepthMax();
@@ -8682,7 +10294,7 @@ bool IsTargetRideLikePose()
         return true;
     }
 
-    bool TryGetLiveMouthDepthForPush(out float depth, out float length, out float percent)
+    bool ComputeLiveMouthDepthForPush(out float depth, out float length, out float percent)
     {
         depth = 0.0f;
         length = GetGenDepthMax();
@@ -8764,7 +10376,7 @@ bool IsTargetRideLikePose()
         pTipOnGContactKnown = true;
         pTipOnGContact = onG;
 
-        SuperController.LogMessage(
+        LogMessageIfDebug(
             "[TargetLinePerson] " + (onG ? "P Tip on G" : "P Tip off G") +
             " / rawDepth=" + rawDepth.ToString("F3") +
             " / lateral=" + lateralDistance.ToString("F3") +
@@ -9178,6 +10790,11 @@ bool IsTargetRideLikePose()
         return false;
     }
 
+    bool IsGenDepthHudFxEnabled()
+    {
+        return genDepthHudFx != null && genDepthHudFx.val;
+    }
+
     float GetGenDepthMax()
     {
         if (genDepthMax == null)
@@ -9299,8 +10916,15 @@ bool IsTargetRideLikePose()
 
         UpdateGenDepthHudGContactDot(bottom, upDir, cam, IsGenDepthHudGContactDotActive());
 
-        TriggerGenDepthBursts(percent, lowerMarkerCenter, markerCenter, cam.transform.right, cam.transform.up, cam.transform.forward, GetGenHudBurstSizeScale());
-        UpdateGenDepthBurstParticles();
+        if (IsGenDepthHudFxEnabled())
+        {
+            TriggerGenDepthBursts(percent, lowerMarkerCenter, markerCenter, cam.transform.right, cam.transform.up, cam.transform.forward, GetGenHudBurstSizeScale());
+            UpdateGenDepthBurstParticles();
+        }
+        else if (genDepthBurstParticles.Count > 0)
+        {
+            ClearGenDepthBurstParticles();
+        }
 
         if (inserted)
         {
@@ -9371,7 +10995,7 @@ bool IsTargetRideLikePose()
             SetGenDepthHudBarLine(anusDepthHudFillObj, bottom, fillTop, barWidth * 0.72f, fillColor);
         }
 
-        // v163: no anus 100% horizontal marker; the bar and */○ marker are enough.
+        // v163: no anus 100% horizontal marker; the bar and */隨ｳ繝ｻmarker are enough.
         if (anusDepthHudMarkerObj != null)
         {
             anusDepthHudMarkerObj.SetActive(false);
@@ -9395,6 +11019,14 @@ bool IsTargetRideLikePose()
 
     void SetAnusDepthHudActive(bool active)
     {
+        if (anusDepthHudActiveKnown && anusDepthHudActive == active)
+        {
+            return;
+        }
+
+        anusDepthHudActiveKnown = true;
+        anusDepthHudActive = active;
+
         if (anusDepthHudBackObj != null) anusDepthHudBackObj.SetActive(active);
         if (anusDepthHudFillObj != null) anusDepthHudFillObj.SetActive(active);
         if (anusDepthHudMarkerObj != null) anusDepthHudMarkerObj.SetActive(false);
@@ -9410,7 +11042,7 @@ bool IsTargetRideLikePose()
 
         if (!active)
         {
-            genDepthHudGContactDotObj.SetActive(false);
+            SetGenDepthHudGContactDotActive(false);
             return;
         }
 
@@ -9424,16 +11056,52 @@ bool IsTargetRideLikePose()
             - cam.transform.forward * GenDepthHudGContactDotForwardOffset;
 
         Color dotColor = GetGenDepthHudGContactDotColor();
-        Renderer renderer = genDepthHudGContactDotObj.GetComponent<Renderer>();
-        if (renderer != null && renderer.material != null)
+        Material dotMaterial = genDepthHudGContactDotMaterial;
+        if (dotMaterial == null)
         {
-            renderer.material.color = dotColor;
+            Renderer renderer = GetGenDepthHudGContactDotRenderer();
+            if (renderer != null)
+            {
+                dotMaterial = renderer.material;
+            }
+        }
+        if (dotMaterial != null && (!genDepthHudGContactDotColorKnown || genDepthHudGContactDotLastColor != dotColor))
+        {
+            dotMaterial.color = dotColor;
+            genDepthHudGContactDotLastColor = dotColor;
+            genDepthHudGContactDotColorKnown = true;
         }
 
         genDepthHudGContactDotObj.transform.position = center;
         genDepthHudGContactDotObj.transform.rotation = cam.transform.rotation;
         genDepthHudGContactDotObj.transform.localScale = Vector3.one * (dotSize * pulse);
-        genDepthHudGContactDotObj.SetActive(true);
+        SetGenDepthHudGContactDotActive(true);
+    }
+
+    Renderer GetGenDepthHudGContactDotRenderer()
+    {
+        if (genDepthHudGContactDotRenderer == null && genDepthHudGContactDotObj != null)
+        {
+            genDepthHudGContactDotRenderer = genDepthHudGContactDotObj.GetComponent<Renderer>();
+        }
+        return genDepthHudGContactDotRenderer;
+    }
+
+    void SetGenDepthHudGContactDotActive(bool active)
+    {
+        if (genDepthHudGContactDotObj == null)
+        {
+            return;
+        }
+
+        if (genDepthHudGContactDotActiveKnown && genDepthHudGContactDotActive == active)
+        {
+            return;
+        }
+
+        genDepthHudGContactDotActiveKnown = true;
+        genDepthHudGContactDotActive = active;
+        genDepthHudGContactDotObj.SetActive(active);
     }
 
     Color GetGenDepthHudGContactDotColor()
@@ -9615,12 +11283,9 @@ bool IsTargetRideLikePose()
 
     void SetGenDepthHudActive(bool active)
     {
-        if (!active && genDepthHudGContactDotObj != null)
-        {
-            genDepthHudGContactDotObj.SetActive(false);
-        }
         if (!active)
         {
+            SetGenDepthHudGContactDotActive(false);
             SetAnusDepthHudActive(false);
         }
 
@@ -9637,7 +11302,6 @@ bool IsTargetRideLikePose()
         if (genDepthHudMarkerObj != null) genDepthHudMarkerObj.SetActive(active);
         if (genDepthHudBottomMarkerObj != null) genDepthHudBottomMarkerObj.SetActive(active);
         if (genDepthHudPeakObj != null) genDepthHudPeakObj.SetActive(active);
-        if (!active && genDepthHudGContactDotObj != null) genDepthHudGContactDotObj.SetActive(false);
     }
 
     void UpdateDebugLines(bool visible)
@@ -9646,11 +11310,7 @@ bool IsTargetRideLikePose()
         // internally even when the yellow LineRenderer is hidden.
         if (!captured)
         {
-            if (forwardLine != null) forwardLine.enabled = false;
-            if (moveLine != null) moveLine.enabled = false;
-            if (penisPathLine != null) penisPathLine.enabled = false;
-            if (bendMarkerLine != null) bendMarkerLine.enabled = false;
-            if (gDepthGuideLine != null) gDepthGuideLine.enabled = false;
+            SetDebugLineRenderersEnabled(false);
             return;
         }
 
@@ -9660,20 +11320,46 @@ bool IsTargetRideLikePose()
         }
 
         bool draw = visible && captured;
-        if (forwardLine != null) forwardLine.enabled = draw;
-        if (moveLine != null) moveLine.enabled = draw;
-        if (penisPathLine != null) penisPathLine.enabled = draw && hasYellowPPath;
-        if (bendMarkerLine != null) bendMarkerLine.enabled = draw && hasYellowPPath;
-        if (gDepthGuideLine != null) gDepthGuideLine.enabled = draw;
 
         if (!draw)
         {
+            SetDebugLineRenderersEnabled(false);
+            lastDebugLineRenderTime = -999f;
             return;
         }
+
+        SetDebugLineRenderersEnabled(true);
+        if (Time.time - lastDebugLineRenderTime < GetDebugLineRenderInterval())
+        {
+            return;
+        }
+        lastDebugLineRenderTime = Time.time;
 
         DrawOriginalRedGreenLines();
         DrawGDepthGuideLine();
         DrawYellowPPathAndPurpleBendMarker();
+    }
+
+    void SetDebugLineRenderersEnabled(bool enabled)
+    {
+        if (debugLinesEnabledKnown && debugLinesEnabled == enabled)
+        {
+            if (enabled)
+            {
+                if (penisPathLine != null) penisPathLine.enabled = hasYellowPPath;
+                if (bendMarkerLine != null) bendMarkerLine.enabled = hasYellowPPath;
+            }
+            return;
+        }
+
+        debugLinesEnabledKnown = true;
+        debugLinesEnabled = enabled;
+
+        if (forwardLine != null) forwardLine.enabled = enabled;
+        if (moveLine != null) moveLine.enabled = enabled;
+        if (penisPathLine != null) penisPathLine.enabled = enabled && hasYellowPPath;
+        if (bendMarkerLine != null) bendMarkerLine.enabled = enabled && hasYellowPPath;
+        if (gDepthGuideLine != null) gDepthGuideLine.enabled = enabled;
     }
 
     void ScheduleDelayedLineLock(string reason)
@@ -10506,19 +12192,19 @@ bool IsTargetRideLikePose()
 
         if (pushPRoutine != null)
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: PUSH running / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: PUSH running / reason=" + reason);
             return false;
         }
 
         if (pPathSealed != null && pPathSealed.val)
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: P Path Sealed ON / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: P Path Sealed ON / reason=" + reason);
             return false;
         }
 
         if (pYellowPathAlign == null || !pYellowPathAlign.val)
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: Align OFF / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: Align OFF / reason=" + reason);
             return false;
         }
 
@@ -10529,25 +12215,25 @@ bool IsTargetRideLikePose()
 
         if (!hasYellowPPath)
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: no yellow path / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: no yellow path / reason=" + reason);
             return false;
         }
 
         if (IsPControlBlockedByLiePose())
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: lie pose active / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: lie pose active / reason=" + reason);
             return false;
         }
 
         if (isAvoidMoving)
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: avoid moving / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: avoid moving / reason=" + reason);
             return false;
         }
 
         if (targetControllerChooser != null && targetControllerChooser.val != "genital")
         {
-            if (log) SuperController.LogMessage("[TargetLinePerson] P Yellow Path apply skipped: targetController=" + targetControllerChooser.val + " / reason=" + reason);
+            if (log) LogMessageIfDebug("[TargetLinePerson] P Yellow Path apply skipped: targetController=" + targetControllerChooser.val + " / reason=" + reason);
             return false;
         }
 
@@ -10559,7 +12245,7 @@ bool IsTargetRideLikePose()
         {
             if (log)
             {
-                SuperController.LogMessage(
+                LogMessageIfDebug(
                     "[TargetLinePerson] P Yellow Path apply skipped: missing controller" +
                     " / base=" + (penisBase != null) +
                     " / mid=" + (penisMid != null) +
@@ -10599,7 +12285,7 @@ bool IsTargetRideLikePose()
 
         if (log)
         {
-            SuperController.LogMessage(
+            LogMessageIfDebug(
                 "[TargetLinePerson] P Yellow Path apply" +
                 " / reason=" + reason +
                 " / advance=" + advance.ToString("F3") +
@@ -10904,7 +12590,7 @@ bool IsTargetRideLikePose()
         if (penisBase == null || penisMid == null || penisTip == null)
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage(
+            LogMessageIfDebug(
                 "[TargetLinePerson] PUSH skipped / reason=missing-controller" +
                 " / base=" + (penisBase != null) +
                 " / mid=" + (penisMid != null) +
@@ -10919,7 +12605,7 @@ bool IsTargetRideLikePose()
         if (isAvoidMoving)
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=avoid-moving");
+            LogMessageIfDebug("[TargetLinePerson] PUSH skipped / reason=avoid-moving");
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10930,7 +12616,7 @@ bool IsTargetRideLikePose()
         if (!IsPushDepthTargetMode(pushTargetMode))
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=target-not-push-depth / target=" + pushTargetMode);
+            LogMessageIfDebug("[TargetLinePerson] PUSH skipped / reason=target-not-push-depth / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10944,7 +12630,7 @@ bool IsTargetRideLikePose()
         if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=no-push-depth-line / target=" + pushTargetMode);
+            LogMessageIfDebug("[TargetLinePerson] PUSH skipped / reason=no-push-depth-line / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -10954,7 +12640,7 @@ bool IsTargetRideLikePose()
         if (dir.sqrMagnitude < 0.0001f)
         {
             pushReleasePIkOnDone = false;
-            SuperController.LogMessage("[TargetLinePerson] PUSH skipped / reason=bad-push-depth-dir / target=" + pushTargetMode);
+            LogMessageIfDebug("[TargetLinePerson] PUSH skipped / reason=bad-push-depth-dir / target=" + pushTargetMode);
             pushPRoutine = null;
             pushAutoLoopActive = false;
             UpdatePushButtonUi();
@@ -11008,7 +12694,7 @@ bool IsTargetRideLikePose()
 
             if (IsDebugViewEnabled())
             {
-                SuperController.LogMessage(
+                LogMessageIfDebug(
                     "[TargetLinePerson] PUSH cycle" +
                     " / autoMode=" + pushResolvedMode +
                     " / loop=" + pushAutoLoopActive +
@@ -11085,6 +12771,24 @@ bool IsTargetRideLikePose()
 
     IEnumerator MovePushPToDistance(FreeControllerV3 penisBase, FreeControllerV3 penisMid, FreeControllerV3 penisTip, float targetDistance, float speed)
     {
+        if (pushModeLinearSlow)
+        {
+            speed = Mathf.Max(0.005f, speed);
+            while (!pushStopRequested && Mathf.Abs(targetDistance - pushCurrentMoveDistance) > 0.001f)
+            {
+                pushCurrentMoveDistance = Mathf.MoveTowards(pushCurrentMoveDistance, targetDistance, speed * Time.deltaTime);
+                ApplyPushPDelta(penisBase, penisMid, penisTip, pushActiveDir * pushCurrentMoveDistance);
+                yield return null;
+            }
+
+            if (!pushStopRequested)
+            {
+                pushCurrentMoveDistance = targetDistance;
+                ApplyPushPDelta(penisBase, penisMid, penisTip, pushActiveDir * pushCurrentMoveDistance);
+            }
+            yield break;
+        }
+
         speed = Mathf.Max(0.01f, speed);
         while (!pushStopRequested && Mathf.Abs(targetDistance - pushCurrentMoveDistance) > 0.001f)
         {
@@ -11103,6 +12807,21 @@ bool IsTargetRideLikePose()
 
     IEnumerator ReturnPushPToHome(FreeControllerV3 penisBase, FreeControllerV3 penisMid, FreeControllerV3 penisTip, float seconds)
     {
+        if (pushModeLinearSlow)
+        {
+            float speed = Mathf.Max(0.005f, pushModeFollowSpeed);
+            while (pushCurrentMoveDistance > 0.001f)
+            {
+                pushCurrentMoveDistance = Mathf.MoveTowards(pushCurrentMoveDistance, 0.0f, speed * Time.deltaTime);
+                ApplyPushPDelta(penisBase, penisMid, penisTip, pushActiveDir * pushCurrentMoveDistance);
+                yield return null;
+            }
+
+            pushCurrentMoveDistance = 0.0f;
+            ApplyPushPDelta(penisBase, penisMid, penisTip, Vector3.zero);
+            yield break;
+        }
+
         float startDistance = pushCurrentMoveDistance;
         float elapsed = 0.0f;
         seconds = Mathf.Max(0.01f, seconds);
@@ -11194,6 +12913,7 @@ bool IsTargetRideLikePose()
         pushModeFollowSpeed = PushPFollowSpeed;
         pushModeReturnSeconds = PushPReturnSeconds;
         pushModeHoldSeconds = PushPHoldSeconds;
+        pushModeLinearSlow = false;
         pushModeSpiralAngle = 0.0f;
         pushModeSpiralStartAngle = 0.0f;
 
@@ -11205,8 +12925,11 @@ bool IsTargetRideLikePose()
         }
         else if (pushResolvedMode == PushModeAutoLineSlow)
         {
-            pushModeFollowSpeed = 6.5f;
-            pushModeReturnSeconds = 0.34f;
+            // Slow is intentionally different from the normal exponential line move:
+            // constant-speed in/out, no quick ease-in, no fast return.
+            pushModeLinearSlow = true;
+            pushModeFollowSpeed = PushPLineSlowLinearSpeed;
+            pushModeReturnSeconds = 0.0f;
             pushModeHoldSeconds = 0.0f;
         }
         else if (pushResolvedMode == PushModeAutoLineFast)
@@ -11262,15 +12985,34 @@ bool IsTargetRideLikePose()
             rot = Quaternion.AngleAxis(twistDegrees, pushActiveDir.normalized) * baseRotation;
         }
 
-        fc.currentPositionState = FreeControllerV3.PositionState.On;
-        fc.currentRotationState = FreeControllerV3.RotationState.On;
-        fc.transform.position = pos;
-        fc.transform.rotation = rot;
+        if (fc.currentPositionState != FreeControllerV3.PositionState.On)
+        {
+            fc.currentPositionState = FreeControllerV3.PositionState.On;
+        }
+        if (fc.currentRotationState != FreeControllerV3.RotationState.On)
+        {
+            fc.currentRotationState = FreeControllerV3.RotationState.On;
+        }
+
+        if ((fc.transform.position - pos).sqrMagnitude > 0.00000001f)
+        {
+            fc.transform.position = pos;
+        }
+        if (Quaternion.Angle(fc.transform.rotation, rot) > 0.001f)
+        {
+            fc.transform.rotation = rot;
+        }
 
         if (fc.control != null)
         {
-            fc.control.position = pos;
-            fc.control.rotation = rot;
+            if ((fc.control.position - pos).sqrMagnitude > 0.00000001f)
+            {
+                fc.control.position = pos;
+            }
+            if (Quaternion.Angle(fc.control.rotation, rot) > 0.001f)
+            {
+                fc.control.rotation = rot;
+            }
         }
     }
 
@@ -11423,8 +13165,7 @@ bool IsTargetRideLikePose()
         fc.currentPositionState = FreeControllerV3.PositionState.On;
         fc.currentRotationState = FreeControllerV3.RotationState.On;
 
-        // VaM/FreeControllerV3 は transform だけだと UI control 側に負ける場合があるので、
-        // サンプル方式を維持しつつ control も同時に更新する。
+        // Keep transform and control in sync.
         fc.transform.position = pos;
         fc.transform.rotation = rot;
 
@@ -11553,6 +13294,11 @@ bool IsTargetRideLikePose()
         {
             StopCoroutine(delayedLineLockRoutine);
             delayedLineLockRoutine = null;
+        }
+        if (delayedInsideReactionRoutine != null)
+        {
+            StopCoroutine(delayedInsideReactionRoutine);
+            delayedInsideReactionRoutine = null;
         }
         if (forwardLineObj != null)
         {

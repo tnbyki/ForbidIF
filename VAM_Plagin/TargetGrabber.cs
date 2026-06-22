@@ -1,10 +1,12 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0bx_hug_wrist_finalpos_pick
-// Date: 2026-06-21
-// Base: TargetGrabber_v4_0bw_hug_wrist_depth_target_pick.cs
+// Version: v4.0cb_hand_close_ui_trim
+// Date: 2026-06-22
+// Base: TargetGrabber_v4_0ca_hand_up_down_target_defaults.cs
 // Summary:
-// - Fixes Hug Body wrist depth pick to use the actual final hand position only, not any earlier cached open-path target.
+// - Adds Grab Hand Close as the opposite of Grab Hand Open.
+// - Hides Grab Selected UI while keeping the external action registered.
+// - Hides Target Ctrl Filter text field while keeping the storable registered.
 // - Hug Body final wrist: actual final front/actor side = Wrist Out; near-center/back/unknown = Wrist In.
 // - Uses the same fixed wrist-button preset rotations for final Hug Body In/Out application.
 // - Keeps Hug Body handCenter far/inside correction fade-out when Hug Mode is OFF.
@@ -17,7 +19,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0bx_hug_wrist_finalpos_pick
+// Version: v4.0bz_upper_body_pivot_push_pull
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -85,6 +87,11 @@
 // v4.0bq: Wrist buttons use captured arm poses: hand positions locked, hand rotations preset, elbows moved per mode.
 // v4.0br: Clears pending wrist hand locks on wrist button start / grab start / release / defaults to avoid stale 8-frame locks.
 // v4.0bx: Hug Body wrist picks Out only when the actual final hand position remains on the near/front side; near-center/back defaults to In.
+// v4.0ca: Adds Grab Hand Up/Down, moves self defaults under Target Controller, and adds target-side IK/default buttons.
+// v4.0cb: Adds Grab Hand Close, hides Grab Selected UI, and hides Target Ctrl Filter text field.
+// v4.0by: Adds Grab Hand Push as the counterpart to Grab Hand Pull.
+// v4.0bz: Upper-body Push/Pull uses target hip as pivot and rotates chest/head/related controls instead of plain translation.
+// v4.0by: Adds Grab Hand Push to move movable target controls horizontally away from active self hands, then re-grab.
 // v4.0bw: Hug Body wrist depth pick now stores the actual reach-limited hand target instead of unreachable desired.
 // v4.0bv: Hug Body wrist uses stored depth reference: near/actor side = Wrist Out, far/unknown = Wrist In.
 // v4.0bs: For Hug Body, chooses Wrist IN/OUT after hand arrival by comparing final palm-facing score; near center falls back to IN.
@@ -279,7 +286,11 @@ public class TargetGrabber : MVRScript
 
     private JSONStorableString statusJSON;
     private UIDynamicButton grabHandPullButton;
+    private UIDynamicButton grabHandPushButton;
+    private UIDynamicButton grabHandUpButton;
+    private UIDynamicButton grabHandDownButton;
     private UIDynamicButton grabHandOpenButton;
+    private UIDynamicButton grabHandCloseButton;
     private UIDynamicButton releaseTargetButton;
     private UIDynamicButton releaseButton;
 
@@ -363,6 +374,10 @@ public class TargetGrabber : MVRScript
     private const float GRAB_PULL_MAX_DISTANCE = 0.50f;
     private const float GRAB_PULL_MARGIN = 0.02f;
     private const float GRAB_HAND_OPEN_DISTANCE = 0.20f;
+    private const float GRAB_HAND_PUSH_DISTANCE = 0.20f;
+    private const float GRAB_HAND_VERTICAL_DISTANCE = 0.20f;
+    private const float UPPER_BODY_PIVOT_MAX_DEGREES = 12.0f;
+    private const float UPPER_BODY_PIVOT_DEGREES_PER_METER = 70.0f;
     private Vector3 jobLeftBase = Vector3.zero;
     private Vector3 jobRightBase = Vector3.zero;
     private float lastSideDebugTime = -10.0f;
@@ -438,7 +453,15 @@ public class TargetGrabber : MVRScript
 
         targetControllerFilterJSON = new JSONStorableString("Target Ctrl Filter", "");
         RegisterString(targetControllerFilterJSON);
-        CreateTextField(targetControllerFilterJSON, false);
+        // Hidden UI: Target Ctrl Filter text field is not normally needed.
+        // The storable remains registered for save/backward compatibility and external scripted use.
+        // CreateTextField(targetControllerFilterJSON, false);
+
+        // Left side: self/target reset helpers live directly under Target Controller.
+        CreateButton("Self IK Default", false).button.onClick.AddListener(SelfIKDefault);
+        CreateButton("Load User Defaults", false).button.onClick.AddListener(LoadUserDefaults);
+        CreateButton("Target IK Default", false).button.onClick.AddListener(TargetIKDefault);
+        CreateButton("Target Load User Defaults", false).button.onClick.AddListener(TargetLoadUserDefaults);
 
         debugLogJSON = CreateBool("Debug Log", false, false);
 
@@ -486,8 +509,16 @@ public class TargetGrabber : MVRScript
         CreateButton("Grab Hand", true).button.onClick.AddListener(GrabHand);
         grabHandPullButton = CreateButton("Grab Hand Pull", true);
         grabHandPullButton.button.onClick.AddListener(GrabHandPull);
+        grabHandPushButton = CreateButton("Grab Hand Push", true);
+        grabHandPushButton.button.onClick.AddListener(GrabHandPush);
+        grabHandUpButton = CreateButton("Grab Hand Up", true);
+        grabHandUpButton.button.onClick.AddListener(GrabHandUp);
+        grabHandDownButton = CreateButton("Grab Hand Down", true);
+        grabHandDownButton.button.onClick.AddListener(GrabHandDown);
         grabHandOpenButton = CreateButton("Grab Hand Open", true);
         grabHandOpenButton.button.onClick.AddListener(GrabHandOpen);
+        grabHandCloseButton = CreateButton("Grab Hand Close", true);
+        grabHandCloseButton.button.onClick.AddListener(GrabHandClose);
         leftHandJSON = CreateBool("Left Hand", true, true);
         rightHandJSON = CreateBool("Right Hand", true, true);
 
@@ -495,7 +526,8 @@ public class TargetGrabber : MVRScript
         leftFootJSON = CreateBool("Left Foot", true, true);
         rightFootJSON = CreateBool("Right Foot", true, true);
 
-        CreateButton("Grab Selected", true).button.onClick.AddListener(GrabSelected);
+        // Hidden UI: Grab Selected is still available as an external action, but rarely used.
+        // CreateButton("Grab Selected", true).button.onClick.AddListener(GrabSelected);
         CreateButton("pufupufu", true).button.onClick.AddListener(Pufupufu);
         CreateButton("job", true).button.onClick.AddListener(Job);
         releaseTargetButton = CreateButton("Release Target", true);
@@ -521,8 +553,6 @@ public class TargetGrabber : MVRScript
         CreatePopup(followModeChooser, true);
 
         autoSnapPullOpenIKJSON = CreateBool("Auto Snap Pull/Open IK", true, true);
-        CreateButton("Self IK Default", true).button.onClick.AddListener(SelfIKDefault);
-        CreateButton("Load User Defaults", true).button.onClick.AddListener(LoadUserDefaults);
 
         handWristAngleJSON = CreateBool("Use Hand Wrist Angle", true, true);
         CreateButton("Wrist Straight", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("Straight"); });
@@ -541,7 +571,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0bx_hug_wrist_finalpos_pick / hug-body-finalpos-out-only / v4.0bp-preset-only");
+        DebugLog("ready / v4.0cb_hand_close_ui_trim / hand-close / ui-trim / based-on-v4.0ca");
     }
 
     private void RegisterExternalActions()
@@ -559,7 +589,15 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Grab Head", GrabHead));
         RegisterAction(new JSONStorableAction("Grab Hand Pull", GrabHandPull));
         RegisterAction(new JSONStorableAction("Grab Pull", GrabHandPull));
+        RegisterAction(new JSONStorableAction("Grab Hand Push", GrabHandPush));
+        RegisterAction(new JSONStorableAction("Grab Push", GrabHandPush));
+        RegisterAction(new JSONStorableAction("Grab Hand Up", GrabHandUp));
+        RegisterAction(new JSONStorableAction("Grab Up", GrabHandUp));
+        RegisterAction(new JSONStorableAction("Grab Hand Down", GrabHandDown));
+        RegisterAction(new JSONStorableAction("Grab Down", GrabHandDown));
         RegisterAction(new JSONStorableAction("Grab Hand Open", GrabHandOpen));
+        RegisterAction(new JSONStorableAction("Grab Hand Close", GrabHandClose));
+        RegisterAction(new JSONStorableAction("Grab Close", GrabHandClose));
         RegisterAction(new JSONStorableAction("Grab Left Hand", GrabLeftHand));
         RegisterAction(new JSONStorableAction("Grab Right Hand", GrabRightHand));
         RegisterAction(new JSONStorableAction("Grab Foot", GrabFoot));
@@ -573,6 +611,10 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Self IK Default", SelfIKDefault));
         RegisterAction(new JSONStorableAction("Load User Defaults", LoadUserDefaults));
         RegisterAction(new JSONStorableAction("LoadUserDefaults", LoadUserDefaults));
+        RegisterAction(new JSONStorableAction("Target IK Default", TargetIKDefault));
+        RegisterAction(new JSONStorableAction("Target Load User Defaults", TargetLoadUserDefaults));
+        RegisterAction(new JSONStorableAction("Target Load Defaults", TargetLoadUserDefaults));
+        RegisterAction(new JSONStorableAction("TargetLoadDefaults", TargetLoadUserDefaults));
     }
 
     private void OnLegacyFollowTargetChanged(bool value)
@@ -1562,6 +1604,115 @@ public class TargetGrabber : MVRScript
         SetStatus("Self IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture));
     }
 
+    private void TargetIKDefault()
+    {
+        if (selectedTargetPerson == null)
+        {
+            SetStatus("Target IK Default / no Target Person");
+            return;
+        }
+
+        InvalidateTargetPersonControlCache();
+        int changed = ApplyPersonIKDefault(selectedTargetPerson, "TARGET IK DEFAULT");
+        SetStatus("Target IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private void TargetLoadUserDefaults()
+    {
+        if (selectedTargetPerson == null)
+        {
+            SetStatus("Target Load User Defaults / no Target Person");
+            return;
+        }
+
+        string[] actionNames =
+        {
+            "Load User Defaults",
+            "LoadUserDefaults",
+            "Load User Default",
+            "LoadUserDefault",
+            "Load Defaults",
+            "LoadDefaults"
+        };
+
+        if (TryExecutePosePresetActionOnAtom(selectedTargetPerson, actionNames, "TARGET LOAD DEFAULTS"))
+        {
+            SetStatus("Target Load User Defaults applied");
+            return;
+        }
+
+        SetStatus("Target Load User Defaults action not found");
+        SuperController.LogMessage("[TargetGrabber] TARGET LOAD DEFAULTS: PosePresets action not found on target person.");
+    }
+
+    private int ApplyPersonIKDefault(Atom person, string logPrefix)
+    {
+        if (person == null)
+            return 0;
+
+        int changed = 0;
+
+        changed += SetIKStateForAtom(person, "hipControl", true, true, logPrefix);
+        changed += SetIKStateForAtom(person, "chestControl", true, true, logPrefix);
+        changed += SetIKStateForAtom(person, "headControl", true, true, logPrefix);
+        changed += SetIKStateForAtom(person, "lFootControl", true, true, logPrefix);
+        changed += SetIKStateForAtom(person, "rFootControl", true, true, logPrefix);
+
+        changed += SetIKStateForAtom(person, "lHandControl", false, false, logPrefix);
+        changed += SetIKStateForAtom(person, "rHandControl", false, false, logPrefix);
+        changed += SetIKStateForAtom(person, "lKneeControl", false, false, logPrefix);
+        changed += SetIKStateForAtom(person, "rKneeControl", false, false, logPrefix);
+
+        changed += SetIKStateForAtomByAliases(person, false, false, logPrefix, "penisBaseControl", "penisBase", "penis base");
+        changed += SetIKStateForAtomByAliases(person, false, false, logPrefix, "penisMidControl", "penisMid", "penis mid");
+        changed += SetIKStateForAtomByAliases(person, false, false, logPrefix, "penisTipControl", "penisTip", "penis tip");
+
+        return changed;
+    }
+
+    private int SetIKStateForAtom(Atom atom, string controlName, bool positionOn, bool rotationOn, string logPrefix)
+    {
+        return SetIKStateForAtomByAliases(atom, positionOn, rotationOn, logPrefix, controlName);
+    }
+
+    private int SetIKStateForAtomByAliases(Atom atom, bool positionOn, bool rotationOn, string logPrefix, params string[] names)
+    {
+        if (atom == null || names == null)
+            return 0;
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            FreeControllerV3 fc = GetControlFromAtom(atom, names[i]);
+            if (fc != null)
+                return SetIKStateWithPrefix(fc, positionOn, rotationOn, logPrefix);
+        }
+
+        return 0;
+    }
+
+    private int SetIKStateWithPrefix(FreeControllerV3 fc, bool positionOn, bool rotationOn, string logPrefix)
+    {
+        if (fc == null)
+            return 0;
+
+        try
+        {
+            fc.currentPositionState = positionOn ? FreeControllerV3.PositionState.On : FreeControllerV3.PositionState.Off;
+        }
+        catch { }
+
+        try
+        {
+            fc.currentRotationState = rotationOn ? FreeControllerV3.RotationState.On : FreeControllerV3.RotationState.Off;
+        }
+        catch { }
+
+        DebugLog("[" + logPrefix + "] " + fc.name +
+            " pos=" + (positionOn ? "On" : "Off") +
+            " rot=" + (rotationOn ? "On" : "Off"));
+        return 1;
+    }
+
     private int SetIKState(FreeControllerV3 fc, bool positionOn, bool rotationOn)
     {
         if (fc == null)
@@ -1602,10 +1753,15 @@ public class TargetGrabber : MVRScript
 
     private bool TryExecutePosePresetAction(string[] actionNames)
     {
-        if (containingAtom == null)
+        return TryExecutePosePresetActionOnAtom(containingAtom, actionNames, "LOAD USER DEFAULTS");
+    }
+
+    private bool TryExecutePosePresetActionOnAtom(Atom atom, string[] actionNames, string logPrefix)
+    {
+        if (atom == null || actionNames == null)
             return false;
 
-        foreach (string storableId in containingAtom.GetStorableIDs())
+        foreach (string storableId in atom.GetStorableIDs())
         {
             if (string.IsNullOrEmpty(storableId))
                 continue;
@@ -1613,7 +1769,7 @@ public class TargetGrabber : MVRScript
             if (storableId.IndexOf("PosePresets", StringComparison.OrdinalIgnoreCase) < 0)
                 continue;
 
-            JSONStorable storable = containingAtom.GetStorableByID(storableId);
+            JSONStorable storable = atom.GetStorableByID(storableId);
             if (storable == null)
                 continue;
 
@@ -1624,7 +1780,7 @@ public class TargetGrabber : MVRScript
                     continue;
 
                 action.actionCallback.Invoke();
-                SuperController.LogMessage("[TargetGrabber] LOAD USER DEFAULTS: pose action=" + storableId + " / " + actionNames[i]);
+                SuperController.LogMessage("[TargetGrabber] " + logPrefix + ": atom=" + atom.uid + " / pose action=" + storableId + " / " + actionNames[i]);
                 return true;
             }
         }
@@ -1880,13 +2036,19 @@ public class TargetGrabber : MVRScript
             return;
         }
 
+        bool upperBodyPivot = IsUpperBodyPivotTargetMode();
+        List<FreeControllerV3> movedControls = upperBodyPivot ? GetUpperBodyPivotControls(pullControls) : pullControls;
+
         float shortage;
         Vector3 pullOffset;
         bool pulled = TryGetGrabPullOffset(out pullOffset, out shortage);
         if (pulled)
         {
-            PrepareTemporaryRelaxLinkedIK(pullControls);
-            ApplyGrabPullOffset(pullControls, pullOffset);
+            PrepareTemporaryRelaxLinkedIK(movedControls);
+            if (upperBodyPivot)
+                ApplyUpperBodyPivotOffset(movedControls, pullOffset, "Pull");
+            else
+                ApplyGrabPullOffset(pullControls, pullOffset);
         }
 
         UpdateGrabHandUtilityButtons();
@@ -1900,19 +2062,162 @@ public class TargetGrabber : MVRScript
         }
         else
         {
-            QueueAutoSnapPullOpenIK(pullControls);
-            QueueSelfFollowParentTargets(pullControls);
+            QueueAutoSnapPullOpenIK(movedControls);
+            QueueSelfFollowParentTargets(movedControls);
         }
 
         if (pulled)
         {
-            SetStatus("Grab Hand Pull / pulled=" + pullOffset.magnitude.ToString("F3", CultureInfo.InvariantCulture) +
+            SetStatus("Grab Hand Pull" + (upperBodyPivot ? " Pivot" : "") + " / pulled=" + pullOffset.magnitude.ToString("F3", CultureInfo.InvariantCulture) +
                 " / shortage=" + shortage.ToString("F3", CultureInfo.InvariantCulture));
         }
         else
         {
             SetStatus("Grab Hand Pull / reachable");
         }
+    }
+
+    private void GrabHandPush()
+    {
+        ResolveControls();
+
+        List<FreeControllerV3> pushControls = GetGrabHandPullTargetControls();
+        if (pushControls.Count == 0)
+        {
+            SetStatus("Grab Hand Push needs movable target control");
+            return;
+        }
+
+        bool upperBodyPivot = IsUpperBodyPivotTargetMode();
+        List<FreeControllerV3> movedControls = upperBodyPivot ? GetUpperBodyPivotControls(pushControls) : pushControls;
+        PrepareTemporaryRelaxLinkedIK(movedControls);
+
+        float maxDistance;
+        int movedCount;
+        int snappedHands;
+        Vector3 pivotPushOffset;
+        bool pushed;
+        if (upperBodyPivot)
+        {
+            pushed = TryGetUpperBodyPivotPushOffset(out pivotPushOffset, out maxDistance, out snappedHands);
+            if (pushed)
+            {
+                ApplyUpperBodyPivotOffset(movedControls, pivotPushOffset, "Push");
+                movedCount = movedControls.Count;
+            }
+            else
+            {
+                movedCount = 0;
+            }
+        }
+        else
+        {
+            pushed = TryPushTargetControlsFromActiveHands(pushControls, out maxDistance, out movedCount, out snappedHands);
+            pivotPushOffset = Vector3.zero;
+        }
+
+        UpdateGrabHandUtilityButtons();
+        StartTimedGrab(true, false, pushed, false, true);
+
+        if (IsHipHoldMode() || IsPeniMode())
+        {
+            // Hip Hold Push moves target l/rThighControl.
+            // Peni Push moves the selected Peni control.
+            // Do not auto-snap or self-follow those target controls back after the push.
+            QueueAutoSnapPullOpenIK(null);
+        }
+        else
+        {
+            QueueAutoSnapPullOpenIK(movedControls);
+            QueueSelfFollowParentTargets(movedControls);
+        }
+
+        if (pushed)
+        {
+            float pushAmount = upperBodyPivot ? pivotPushOffset.magnitude : GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale();
+            SetStatus("Grab Hand Push" + (upperBodyPivot ? " Pivot" : "") + " / moved=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+                " / push=" + pushAmount.ToString("F3", CultureInfo.InvariantCulture) +
+                " / maxDist=" + maxDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            SetStatus("Grab Hand Push / already away");
+        }
+    }
+
+    private void GrabHandUp()
+    {
+        GrabHandVertical(true);
+    }
+
+    private void GrabHandDown()
+    {
+        GrabHandVertical(false);
+    }
+
+    private void GrabHandVertical(bool up)
+    {
+        ResolveControls();
+
+        List<FreeControllerV3> baseControls = GetGrabHandPullTargetControls();
+        if (baseControls.Count == 0)
+        {
+            SetStatus(up ? "Grab Hand Up needs movable target control" : "Grab Hand Down needs movable target control");
+            return;
+        }
+
+        bool upperBodyGroup = IsUpperBodyPivotTargetMode();
+        List<FreeControllerV3> movedControls = upperBodyGroup ? GetUpperBodyPivotControls(baseControls) : baseControls;
+        PrepareTemporaryRelaxLinkedIK(movedControls);
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_VERTICAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = new Vector3(0.0f, up ? moveDistance : -moveDistance, 0.0f);
+        int movedCount = ApplyGrabHandVerticalOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+
+        UpdateGrabHandUtilityButtons();
+        StartTimedGrab(true, false, moved, false, true);
+
+        if (IsHipHoldMode() || IsPeniMode())
+        {
+            QueueAutoSnapPullOpenIK(null);
+        }
+        else
+        {
+            QueueAutoSnapPullOpenIK(movedControls);
+            QueueSelfFollowParentTargets(movedControls);
+        }
+
+        SetStatus((up ? "Grab Hand Up" : "Grab Hand Down") + (upperBodyGroup ? " Upper" : "") +
+            " / moved=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / y=" + offset.y.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private int ApplyGrabHandVerticalOffset(List<FreeControllerV3> controls, Vector3 offset)
+    {
+        int moved = 0;
+        if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
+            return moved;
+
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null)
+                continue;
+
+            Vector3 pos = GetControlPosition(fc);
+            Vector3 nextPos = pos + offset;
+            MoveTargetControlToPosition(fc, nextPos);
+            LockTargetIKControl(fc);
+            moved++;
+
+            DebugLog("[HAND VERTICAL] target=" + fc.name +
+                " offset=" + FormatVector3(offset) +
+                " from=" + FormatVector3(pos) +
+                " to=" + FormatVector3(nextPos));
+        }
+
+        return moved;
     }
 
     private void GrabHandOpen()
@@ -1948,6 +2253,41 @@ public class TargetGrabber : MVRScript
         QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { single });
         QueueSelfFollowParentTargets(new List<FreeControllerV3> { single });
         SetStatus("Grab Hand Open");
+    }
+
+    private void GrabHandClose()
+    {
+        ResolveControls();
+
+        FreeControllerV3 left;
+        FreeControllerV3 right;
+        if (TryGetGrabHandOpenTargetControls(out left, out right))
+        {
+            PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { left, right });
+            ApplyGrabHandCloseOffset(left, right);
+            UpdateGrabHandUtilityButtons();
+            StartTimedGrab(true, false, true, false, true);
+            QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { left, right });
+            QueueSelfFollowParentTargets(new List<FreeControllerV3> { left, right });
+            SetStatus("Grab Hand Close");
+            return;
+        }
+
+        FreeControllerV3 single;
+        bool singleRightSide;
+        if (!TryGetGrabHandOpenSingleTargetControl(out single, out singleRightSide))
+        {
+            SetStatus("Grab Hand Close needs closeable target");
+            return;
+        }
+
+        PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { single });
+        ApplyGrabHandCloseOffset(single, singleRightSide);
+        UpdateGrabHandUtilityButtons();
+        StartTimedGrab(true, false, true, false, true);
+        QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { single });
+        QueueSelfFollowParentTargets(new List<FreeControllerV3> { single });
+        SetStatus("Grab Hand Close");
     }
 
     private bool IsPullToHandTargetMode()
@@ -2018,6 +2358,322 @@ public class TargetGrabber : MVRScript
         }
 
         return moved;
+    }
+
+    private bool IsUpperBodyPivotTargetMode()
+    {
+        if (!IsTargetPersonMode() || targetPersonPartChooser == null)
+            return false;
+
+        string choice = targetPersonPartChooser.val;
+        return choice == TC_HUG_BODY ||
+               choice == TC_CHEST_HOLD ||
+               choice == TC_HEAD ||
+               choice == TC_HEAD_TOP ||
+               choice == TC_MOUTH ||
+               choice == TC_NECK ||
+               choice == TC_ABDOMEN ||
+               choice == TC_L_NIPPLE ||
+               choice == TC_R_NIPPLE;
+    }
+
+    private List<FreeControllerV3> GetUpperBodyPivotControls(List<FreeControllerV3> baseControls)
+    {
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("chestControl", "chest"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("neckControl", "neck"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("headControl", "head"));
+
+        if (baseControls != null)
+        {
+            foreach (FreeControllerV3 fc in baseControls)
+                AddControlIfNotNull(controls, fc);
+        }
+
+        return controls;
+    }
+
+    private FreeControllerV3 GetUpperBodyPivotPrimaryControl()
+    {
+        if (!IsTargetPersonMode() || targetPersonPartChooser == null)
+            return null;
+
+        string choice = targetPersonPartChooser.val;
+        if (choice == TC_HEAD || choice == TC_HEAD_TOP || choice == TC_MOUTH || choice == TC_NECK)
+        {
+            FreeControllerV3 head = GetTargetPersonControlByAliases("headControl", "head");
+            if (head != null)
+                return head;
+        }
+
+        if (choice == TC_ABDOMEN)
+        {
+            FreeControllerV3 abdomen = GetTargetPersonControlByAliases("abdomenControl", "abdomen");
+            if (abdomen != null)
+                return abdomen;
+        }
+
+        FreeControllerV3 chest = GetTargetPersonControlByAliases("chestControl", "chest");
+        if (chest != null)
+            return chest;
+
+        return GetTargetPersonPartControl();
+    }
+
+    private bool TryGetUpperBodyPivotPushOffset(out Vector3 pushOffset, out float maxDistance, out int snappedHands)
+    {
+        pushOffset = Vector3.zero;
+        maxDistance = 0.0f;
+        snappedHands = 0;
+
+        if (!IsTargetPersonMode() || selectedPerson == null || selectedTargetPerson == null)
+            return false;
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        if (!leftActive && !rightActive)
+            return false;
+
+        if (leftActive && SnapIKControlToBody(selectedPerson, lHandControl))
+            snappedHands++;
+        if (rightActive && SnapIKControlToBody(selectedPerson, rHandControl))
+            snappedHands++;
+
+        FreeControllerV3 primary = GetUpperBodyPivotPrimaryControl();
+        Vector3 targetPos = primary != null ? GetControlPosition(primary) : GetTargetCenter();
+
+        Vector3 dirSum = Vector3.zero;
+        int count = 0;
+        AddUpperBodyPivotPushHand(lHandControl, leftActive, targetPos, ref dirSum, ref count, ref maxDistance);
+        AddUpperBodyPivotPushHand(rHandControl, rightActive, targetPos, ref dirSum, ref count, ref maxDistance);
+
+        if (count <= 0 || dirSum.sqrMagnitude < 0.0001f)
+            dirSum = GetGrabPushFallbackDirection(targetPos);
+
+        dirSum.y = 0.0f;
+        if (dirSum.sqrMagnitude < 0.0001f)
+            return false;
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        if (moveDistance <= 0.0001f)
+            return false;
+
+        pushOffset = dirSum.normalized * moveDistance;
+        return pushOffset.sqrMagnitude > 0.0001f;
+    }
+
+    private void AddUpperBodyPivotPushHand(FreeControllerV3 hand, bool enabled, Vector3 targetPos, ref Vector3 dirSum, ref int count, ref float maxDistance)
+    {
+        if (!enabled || hand == null)
+            return;
+
+        Vector3 handPos = GetControlPosition(hand);
+        Vector3 rawDir = targetPos - handPos;
+        float distance = rawDir.magnitude;
+        if (distance > maxDistance)
+            maxDistance = distance;
+
+        rawDir.y = 0.0f;
+        if (rawDir.sqrMagnitude < 0.0001f)
+            rawDir = GetGrabPushFallbackDirection(targetPos);
+
+        if (rawDir.sqrMagnitude < 0.0001f)
+            return;
+
+        dirSum += rawDir.normalized;
+        count++;
+    }
+
+    private bool ApplyUpperBodyPivotOffset(List<FreeControllerV3> controls, Vector3 offset, string reason)
+    {
+        if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
+            return false;
+
+        FreeControllerV3 hip = GetTargetPersonControlByAliases("hipControl", "hip");
+        FreeControllerV3 primary = GetUpperBodyPivotPrimaryControl();
+        if (hip == null || primary == null)
+        {
+            ApplyGrabPullOffset(controls, offset);
+            DebugLog("[UPPER PIVOT " + reason + "] fallback translation / hip=" + Bool01(hip != null) + " primary=" + Bool01(primary != null));
+            return false;
+        }
+
+        Vector3 pivot = GetControlPosition(hip);
+        Vector3 from = GetControlPosition(primary) - pivot;
+        Vector3 flatOffset = offset;
+        flatOffset.y = 0.0f;
+        if (from.sqrMagnitude < 0.0001f || flatOffset.sqrMagnitude < 0.0001f)
+            return false;
+
+        Vector3 to = from + flatOffset;
+        if (to.sqrMagnitude < 0.0001f)
+            return false;
+
+        Quaternion rawRot = Quaternion.FromToRotation(from.normalized, to.normalized);
+        float angle;
+        Vector3 axis;
+        rawRot.ToAngleAxis(out angle, out axis);
+        if (float.IsNaN(angle) || axis.sqrMagnitude < 0.0001f)
+            return false;
+
+        if (angle > 180.0f)
+            angle -= 360.0f;
+
+        float maxAngle = Mathf.Min(UPPER_BODY_PIVOT_MAX_DEGREES, flatOffset.magnitude * UPPER_BODY_PIVOT_DEGREES_PER_METER);
+        if (maxAngle <= 0.0001f)
+            return false;
+
+        float clampedAngle = Mathf.Clamp(angle, -maxAngle, maxAngle);
+        Quaternion rot = Quaternion.AngleAxis(clampedAngle, axis.normalized);
+        int moved = 0;
+
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null || fc == hip)
+                continue;
+
+            CaptureTargetOriginal(fc);
+            Vector3 pos = GetControlPosition(fc);
+            Quaternion currentRot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
+            Vector3 nextPos = pivot + rot * (pos - pivot);
+            Quaternion nextRot = rot * currentRot;
+            MoveControl(fc, nextPos, nextRot, false, true);
+            LockTargetIKControl(fc);
+            moved++;
+        }
+
+        DebugLog("[UPPER PIVOT " + reason + "] moved=" + moved.ToString(CultureInfo.InvariantCulture) +
+            " angle=" + clampedAngle.ToString("F2", CultureInfo.InvariantCulture) +
+            " offset=" + FormatVector3(flatOffset) +
+            " pivot=" + FormatVector3(pivot) +
+            " primary=" + (primary != null ? primary.name : "<none>"));
+
+        return moved > 0;
+    }
+
+    private bool TryPushTargetControlsFromActiveHands(List<FreeControllerV3> pushControls, out float maxDistance, out int movedCount, out int snappedHands)
+    {
+        maxDistance = 0.0f;
+        movedCount = 0;
+        snappedHands = 0;
+
+        if (pushControls == null || pushControls.Count == 0 || selectedPerson == null)
+            return false;
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        if (!leftActive && !rightActive)
+            return false;
+
+        if (leftActive && SnapIKControlToBody(selectedPerson, lHandControl))
+            snappedHands++;
+        if (rightActive && SnapIKControlToBody(selectedPerson, rHandControl))
+            snappedHands++;
+
+        bool moved = false;
+        if (pushControls.Count == 2 && leftActive && rightActive)
+        {
+            FreeControllerV3 firstTarget = pushControls[0];
+            FreeControllerV3 secondTarget = pushControls[1];
+
+            float normalCost = GetControlDistanceSqr(firstTarget, lHandControl) + GetControlDistanceSqr(secondTarget, rHandControl);
+            float swappedCost = GetControlDistanceSqr(firstTarget, rHandControl) + GetControlDistanceSqr(secondTarget, lHandControl);
+
+            if (swappedCost < normalCost)
+            {
+                moved |= MoveTargetControlAwayFromHand(firstTarget, rHandControl, ref maxDistance, ref movedCount);
+                moved |= MoveTargetControlAwayFromHand(secondTarget, lHandControl, ref maxDistance, ref movedCount);
+            }
+            else
+            {
+                moved |= MoveTargetControlAwayFromHand(firstTarget, lHandControl, ref maxDistance, ref movedCount);
+                moved |= MoveTargetControlAwayFromHand(secondTarget, rHandControl, ref maxDistance, ref movedCount);
+            }
+        }
+        else
+        {
+            foreach (FreeControllerV3 target in pushControls)
+            {
+                FreeControllerV3 hand = GetNearestActivePullHand(target, leftActive, rightActive);
+                moved |= MoveTargetControlAwayFromHand(target, hand, ref maxDistance, ref movedCount);
+            }
+        }
+
+        return moved;
+    }
+
+    private bool MoveTargetControlAwayFromHand(FreeControllerV3 target, FreeControllerV3 hand, ref float maxDistance, ref int movedCount)
+    {
+        if (target == null)
+            return false;
+
+        Vector3 targetPos = GetControlPosition(target);
+        Vector3 handPos = hand != null ? GetControlPosition(hand) : GetSelfReferencePosition();
+        Vector3 rawDir = targetPos - handPos;
+        float distance = rawDir.magnitude;
+        if (distance > maxDistance)
+            maxDistance = distance;
+
+        Vector3 pushDir = rawDir;
+        pushDir.y = 0.0f;
+
+        if (pushDir.sqrMagnitude < 0.0001f)
+            pushDir = GetGrabPushFallbackDirection(targetPos);
+
+        if (pushDir.sqrMagnitude < 0.0001f)
+            return false;
+
+        pushDir.Normalize();
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        if (moveDistance <= 0.0001f)
+            return false;
+
+        Vector3 nextPos = targetPos + pushDir * moveDistance;
+        MoveTargetControlToPosition(target, nextPos);
+        LockTargetIKControl(target);
+        movedCount++;
+
+        DebugLog("[PUSH FROM HAND] target=" + target.name +
+            " hand=" + (hand != null ? hand.name : "<none>") +
+            " dist=" + distance.ToString("F3", CultureInfo.InvariantCulture) +
+            " move=" + moveDistance.ToString("F3", CultureInfo.InvariantCulture) +
+            " dir=" + FormatVector3(pushDir) +
+            " from=" + FormatVector3(targetPos) +
+            " to=" + FormatVector3(nextPos) +
+            " handPos=" + FormatVector3(handPos));
+
+        return true;
+    }
+
+    private Vector3 GetGrabPushFallbackDirection(Vector3 targetPos)
+    {
+        Vector3 selfPos = GetSelfReferencePosition();
+        Vector3 dir = targetPos - selfPos;
+        dir.y = 0.0f;
+
+        if (dir.sqrMagnitude >= 0.0001f)
+            return dir.normalized;
+
+        if (selectedPerson != null && selectedPerson.transform != null)
+        {
+            dir = selectedPerson.transform.forward;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude >= 0.0001f)
+                return dir.normalized;
+        }
+
+        if (containingAtom != null && containingAtom.transform != null)
+        {
+            dir = containingAtom.transform.forward;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude >= 0.0001f)
+                return dir.normalized;
+        }
+
+        return Vector3.forward;
     }
 
     private float GetControlDistanceSqr(FreeControllerV3 a, FreeControllerV3 b)
@@ -2338,6 +2994,33 @@ public class TargetGrabber : MVRScript
         MoveTargetControlByOffset(control, offset);
     }
 
+    private void ApplyGrabHandCloseOffset(FreeControllerV3 left, FreeControllerV3 right)
+    {
+        Vector3 leftPos = GetControlPosition(left);
+        Vector3 rightPos = GetControlPosition(right);
+        Vector3 axis = rightPos - leftPos;
+
+        if (axis.sqrMagnitude < 0.0001f)
+            axis = GetTargetSideAxis();
+
+        if (axis.sqrMagnitude < 0.0001f)
+            return;
+
+        axis.Normalize();
+        MoveTargetControlByOffset(left, axis * GRAB_HAND_OPEN_DISTANCE);
+        MoveTargetControlByOffset(right, -axis * GRAB_HAND_OPEN_DISTANCE);
+    }
+
+    private void ApplyGrabHandCloseOffset(FreeControllerV3 control, bool rightSide)
+    {
+        Vector3 side = GetTargetSideAxis();
+        if (side.sqrMagnitude < 0.0001f)
+            return;
+
+        Vector3 offset = -GetSideOffset(rightSide, side.normalized, GRAB_HAND_OPEN_DISTANCE);
+        MoveTargetControlByOffset(control, offset);
+    }
+
     private void MoveTargetControlByOffset(FreeControllerV3 fc, Vector3 offset)
     {
         if (fc == null || offset.sqrMagnitude < 0.0001f)
@@ -2399,6 +3082,8 @@ public class TargetGrabber : MVRScript
     private void UpdateGrabHandUtilityButtons()
     {
         bool pullEnabled = GetGrabHandPullTargetControls().Count > 0;
+        bool pushEnabled = pullEnabled;
+        bool verticalEnabled = pullEnabled;
         bool openEnabled = false;
         FreeControllerV3 left;
         FreeControllerV3 right;
@@ -2415,8 +3100,20 @@ public class TargetGrabber : MVRScript
         if (grabHandPullButton != null && grabHandPullButton.button != null)
             grabHandPullButton.button.interactable = pullEnabled;
 
+        if (grabHandPushButton != null && grabHandPushButton.button != null)
+            grabHandPushButton.button.interactable = pushEnabled;
+
+        if (grabHandUpButton != null && grabHandUpButton.button != null)
+            grabHandUpButton.button.interactable = verticalEnabled;
+
+        if (grabHandDownButton != null && grabHandDownButton.button != null)
+            grabHandDownButton.button.interactable = verticalEnabled;
+
         if (grabHandOpenButton != null && grabHandOpenButton.button != null)
             grabHandOpenButton.button.interactable = openEnabled;
+
+        if (grabHandCloseButton != null && grabHandCloseButton.button != null)
+            grabHandCloseButton.button.interactable = openEnabled;
 
         if (releaseTargetButton != null && releaseTargetButton.button != null)
             releaseTargetButton.button.interactable = HasTargetReleaseState();
