@@ -1,13 +1,15 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0co_single_limb_wrist_in
+// Version: v4.0cq_hug_body_push_pull_depth_axis
 // Date: 2026-06-22
-// Base: TargetGrabber_v4_0cn_hug_mode_no_extra_deep_center.cs
+// Base: TargetGrabber_v4_0cp_wide_grabwidth_080.cs
 // Summary:
-// - Forces final wrist rotation to Wrist In for single limb targets: L/R Hand, L/R Foot, and L/R Knee.
-// - Pull/Open/Push/Up/Down re-grabs therefore finish with Wrist In on these single limb targets.
+// - Keeps Hip Hold Auto Grab Width at 1.50.
+// - Changes other wide person targets that previously auto-set Grab Width to 2.00 down to 0.80.
+// - Keeps final wrist rotation fixed to Wrist In for single limb targets: L/R Hand, L/R Foot, and L/R Knee.
 // - Keeps Hug Body final-point depth IN/OUT logic and the stabilized Hug Mode no-extra-deep-center behavior.
 // - Keeps Pair Hand/Foot/Knee Hold Grab Width midpoint and fixed Wrist In.
+// - Makes Hug Body Push/Pull use self-to-target depth axis so Push and Pull are guaranteed opposites.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -16,7 +18,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0co_single_limb_wrist_in
+// Version: v4.0cq_hug_body_push_pull_depth_axis
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -79,6 +81,8 @@
 // v4.0bk: Fades Hug Body far handCenter bias out near the end when Hug Mode is OFF.
 // v4.0bm: Rebuilds Wrist test buttons to use the same fixed hand basis as Grab hand rotation.
 // v4.0co: Forces final Wrist In for L/R Hand, L/R Foot, and L/R Knee final-point re-grabs.
+// v4.0cp: Keeps Hip Hold Grab Width at 1.50 and lowers other wide person auto Grab Width from 2.00 to 0.80.
+// v4.0cq: For Hug Body Push/Pull, bypasses reach/hand-position offset logic and pivots along self-to-target depth axis with opposite signs.
 // v4.0bn: Uses a left/right symmetric visual base for Wrist test buttons instead of pathRight/layout basis.
 // v4.0bo: Uses the verified Grab HAND ROT fixed presets for Wrist Straight and fixes the left/right preset swap.
 // v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
@@ -219,6 +223,7 @@ public class TargetGrabber : MVRScript
     }
     private const float MIN_FINAL_GRAB_WIDTH = 0.01f;
     private const float HIP_HOLD_GRAB_WIDTH = 1.50f;
+    private const float WIDE_PERSON_GRAB_WIDTH = 0.80f;
     private const float HIP_HOLD_FINAL_GRAB_WIDTH = 0.13f;
     private const float CROTCH_GRAB_WIDTH = 0.00f;
     private const float CROTCH_FINAL_GRAB_WIDTH = MIN_FINAL_GRAB_WIDTH;
@@ -1194,7 +1199,7 @@ public class TargetGrabber : MVRScript
         else if (choice == TC_NECK)
             grabWidth = NECK_GRAB_WIDTH;
         else if (IsWidePersonController(c))
-            grabWidth = 2.00f;
+            grabWidth = WIDE_PERSON_GRAB_WIDTH;
 
         suppressApply = true;
         try
@@ -2040,7 +2045,10 @@ public class TargetGrabber : MVRScript
 
         float shortage;
         Vector3 pullOffset;
-        bool pulled = TryGetGrabPullOffset(out pullOffset, out shortage);
+        int hugDepthSnappedHands;
+        bool pulled = upperBodyPivot && IsHugBodyTarget()
+            ? TryGetHugBodyDepthPivotOffset(false, out pullOffset, out shortage, out hugDepthSnappedHands)
+            : TryGetGrabPullOffset(out pullOffset, out shortage);
         if (pulled)
         {
             PrepareTemporaryRelaxLinkedIK(movedControls);
@@ -2098,7 +2106,9 @@ public class TargetGrabber : MVRScript
         bool pushed;
         if (upperBodyPivot)
         {
-            pushed = TryGetUpperBodyPivotPushOffset(out pivotPushOffset, out maxDistance, out snappedHands);
+            pushed = IsHugBodyTarget()
+                ? TryGetHugBodyDepthPivotOffset(true, out pivotPushOffset, out maxDistance, out snappedHands)
+                : TryGetUpperBodyPivotPushOffset(out pivotPushOffset, out maxDistance, out snappedHands);
             if (pushed)
             {
                 ApplyUpperBodyPivotOffset(movedControls, pivotPushOffset, "Push");
@@ -2448,6 +2458,57 @@ public class TargetGrabber : MVRScript
 
         dirSum += rawDir.normalized;
         count++;
+    }
+
+    private bool TryGetHugBodyDepthPivotOffset(bool push, out Vector3 offset, out float amount, out int snappedHands)
+    {
+        offset = Vector3.zero;
+        amount = 0.0f;
+        snappedHands = 0;
+
+        if (!IsTargetPersonMode() || selectedPerson == null || selectedTargetPerson == null || !IsHugBodyTarget())
+            return false;
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        if (!leftActive && !rightActive)
+            return false;
+
+        if (leftActive && SnapIKControlToBody(selectedPerson, lHandControl))
+            snappedHands++;
+        if (rightActive && SnapIKControlToBody(selectedPerson, rHandControl))
+            snappedHands++;
+
+        FreeControllerV3 primary = GetUpperBodyPivotPrimaryControl();
+        Vector3 targetPos = primary != null ? GetControlPosition(primary) : GetTargetCenter();
+        Vector3 depthAxis = GetFinalPointDepthAxis(targetPos);
+        depthAxis.y = 0.0f;
+
+        if (depthAxis.sqrMagnitude < 0.0001f)
+            return false;
+
+        depthAxis.Normalize();
+
+        amount = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        if (amount <= 0.0001f)
+            return false;
+
+        // v4.0cq:
+        // Hug Body Push/Pull must be a true pair. Do not use reach-shortage or current hand-position
+        // directions here, because the Hug Body final-point route can place hands behind/around the body
+        // and make those two heuristics collapse to the same pivot direction.
+        // Push  = away from the actor, along self -> target.
+        // Pull  = toward the actor, opposite self -> target.
+        offset = (push ? depthAxis : -depthAxis) * amount;
+
+        DebugLog("[HUG BODY DEPTH PIVOT " + (push ? "Push" : "Pull") + "]" +
+            " amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+            " offset=" + FormatVector3(offset) +
+            " depthAxis=" + FormatVector3(depthAxis) +
+            " target=" + FormatVector3(targetPos) +
+            " snappedHands=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+
+        return offset.sqrMagnitude > 0.0001f;
     }
 
     private bool ApplyUpperBodyPivotOffset(List<FreeControllerV3> controls, Vector3 offset, string reason)
