@@ -1,8 +1,8 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0cq_hug_body_push_pull_depth_axis
-// Date: 2026-06-22
-// Base: TargetGrabber_v4_0cp_wide_grabwidth_080.cs
+// Version: v4.0da_ui_follow_lower_ik_select
+// Date: 2026-06-23
+// Base: TargetGrabber_v4_0cq_hug_body_push_pull_depth_axis.cs
 // Summary:
 // - Keeps Hip Hold Auto Grab Width at 1.50.
 // - Changes other wide person targets that previously auto-set Grab Width to 2.00 down to 0.80.
@@ -10,6 +10,14 @@
 // - Keeps Hug Body final-point depth IN/OUT logic and the stabilized Hug Mode no-extra-deep-center behavior.
 // - Keeps Pair Hand/Foot/Knee Hold Grab Width midpoint and fixed Wrist In.
 // - Makes Hug Body Push/Pull use self-to-target depth axis so Push and Pull are guaranteed opposites.
+// - Replaces the visible Grab Selected button with Target Swoon Drop: temporarily turns non-grab target IK off for 3 seconds; pressing again restores immediately.
+// - v4.0cu: Target Swoon Drop keeps only the actually grabbed target control(s), and detects a held grab even after hasActiveGrab turns off at move completion.
+// - v4.0cv: Tracks held target grab choice explicitly, includes target neck IK in Swoon Drop, adds one-hand Hug Body swoon twist, and doubles Hug Body Push/Pull pivot angle.
+// - v4.0cw: Compile fix: comments the v4.0cv header history line correctly.
+// - v4.0cx: Target Swoon Drop uses the current Target Controller first; Target Controller None forces keep=0/all target IK off.
+// - v4.0cy: Adds Grab Hand Close/Left/Right and moves Release/Follow controls to the hidden Target Controller area.
+// - v4.0cz: Restores the Target Controller popup, renames Release buttons, reorders Follow/Release/Default controls, and adds target shortcut buttons.
+// - v4.0da: Moves Grab Follow below release/default buttons and places IK Select above target shortcut buttons.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -18,7 +26,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0cq_hug_body_push_pull_depth_axis
+// Version: v4.0da_ui_follow_lower_ik_select
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -83,6 +91,9 @@
 // v4.0co: Forces final Wrist In for L/R Hand, L/R Foot, and L/R Knee final-point re-grabs.
 // v4.0cp: Keeps Hip Hold Grab Width at 1.50 and lowers other wide person auto Grab Width from 2.00 to 0.80.
 // v4.0cq: For Hug Body Push/Pull, bypasses reach/hand-position offset logic and pivots along self-to-target depth axis with opposite signs.
+// v4.0cu: Target Swoon Drop preserves only the grabbed target control(s); no support-chain keep.
+// v4.0cv: Held target grab state is explicit so Follow OFF completion does not make keep=0; Neck is also dropped; one-hand Hug Body can twist target toward the held hand.
+// v4.0cx: Target Swoon Drop keeps the current Target Controller if selected; None ignores held grab and drops all target IK.
 // v4.0bn: Uses a left/right symmetric visual base for Wrist test buttons instead of pathRight/layout basis.
 // v4.0bo: Uses the verified Grab HAND ROT fixed presets for Wrist Straight and fixes the left/right preset swap.
 // v4.0bp: Makes Wrist test buttons preset-only; no handRot offset, path/layout, target center, or current-pose basis is used.
@@ -302,8 +313,12 @@ public class TargetGrabber : MVRScript
     private UIDynamicButton grabHandUpButton;
     private UIDynamicButton grabHandDownButton;
     private UIDynamicButton grabHandOpenButton;
+    private UIDynamicButton grabHandCloseButton;
+    private UIDynamicButton grabHandLeftButton;
+    private UIDynamicButton grabHandRightButton;
     private UIDynamicButton releaseTargetButton;
     private UIDynamicButton releaseButton;
+    private UIDynamicButton swoonDropButton;
 
     private Atom selectedPerson;
     private Atom selectedTargetAtom;
@@ -322,6 +337,15 @@ public class TargetGrabber : MVRScript
     private FreeControllerV3 hipControl;
 
     private bool hasActiveGrab = false;
+    private bool hasHeldTargetGrab = false;
+    private string heldTargetGrabChoice = null;
+    private bool heldTargetGrabIncludeHands = false;
+    private bool heldTargetGrabIncludeFeet = false;
+    private bool heldTargetGrabIncludeHead = false;
+    private bool heldTargetGrabLeftHand = false;
+    private bool heldTargetGrabRightHand = false;
+    private bool heldTargetGrabLeftFoot = false;
+    private bool heldTargetGrabRightFoot = false;
     private bool suppressApply = false;
 
     // v1.8: Grab motion state.
@@ -344,6 +368,9 @@ public class TargetGrabber : MVRScript
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> temporaryRelaxPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryRelaxRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly List<FreeControllerV3> temporaryRelaxControls = new List<FreeControllerV3>();
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> swoonDropPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> swoonDropRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
+    private readonly List<FreeControllerV3> swoonDropControls = new List<FreeControllerV3>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryHandRotationOffStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly Dictionary<FreeControllerV3, PendingWristHandLock> pendingWristHandLocks = new Dictionary<FreeControllerV3, PendingWristHandLock>();
     private readonly Dictionary<FreeControllerV3, Vector3> hugBodyWristReferencePositions = new Dictionary<FreeControllerV3, Vector3>();
@@ -387,6 +414,7 @@ public class TargetGrabber : MVRScript
     private const float GRAB_HAND_OPEN_DISTANCE = 0.20f;
     private const float GRAB_HAND_PUSH_DISTANCE = 0.20f;
     private const float GRAB_HAND_VERTICAL_DISTANCE = 0.20f;
+    private const float GRAB_HAND_HORIZONTAL_DISTANCE = 0.20f;
     private const float UPPER_BODY_PIVOT_MAX_DEGREES = 12.0f;
     private const float UPPER_BODY_PIVOT_DEGREES_PER_METER = 70.0f;
     private Vector3 jobLeftBase = Vector3.zero;
@@ -398,9 +426,16 @@ public class TargetGrabber : MVRScript
     private float releaseRestoreIKTime = 0.0f;
     private ColorBlock releaseTargetDefaultColors;
     private ColorBlock releaseDefaultColors;
+    private ColorBlock swoonDropDefaultColors;
     private bool releaseTargetColorsCaptured = false;
     private bool releaseColorsCaptured = false;
+    private bool swoonDropColorsCaptured = false;
     private const float RELEASE_RESTORE_IK_DELAY = 3.00f;
+    private const float SWOON_DROP_DURATION = 3.00f;
+    private const float TARGET_SWOON_HUG_BODY_ONE_HAND_TWIST_OFFSET = 0.12f;
+    private const float HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER = 2.00f;
+    private bool swoonDropActive = false;
+    private float swoonDropEndTime = 0.0f;
 
     public override void Init()
     {
@@ -412,9 +447,10 @@ public class TargetGrabber : MVRScript
             (JSONStorableStringChooser.SetStringCallback)OnPersonChanged
         );
         RegisterStringChooser(personChooser);
-        UIDynamicPopup personPopup = CreateFilterablePopup(personChooser);
-        if (personPopup != null)
-            personPopup.popup.onOpenPopupHandlers += UpdatePersonChoices;
+        // v4.0cy: hide the top-left self Person popup. The chooser stays registered so saves/external changes still work.
+        // UIDynamicPopup personPopup = CreateFilterablePopup(personChooser);
+        // if (personPopup != null)
+        //     personPopup.popup.onOpenPopupHandlers += UpdatePersonChoices;
 
         targetTypeChooser = new JSONStorableStringChooser(
             "targetType",
@@ -454,23 +490,55 @@ public class TargetGrabber : MVRScript
             "targetPersonController",
             new List<string> { NONE },
             NONE,
-            "Target Controller",
+            "IK Select",
             (JSONStorableStringChooser.SetStringCallback)OnTargetPersonPartChanged
         );
         RegisterStringChooser(targetPersonPartChooser);
+        // v4.0da: keep the IK selection popup visible and place it above the shortcut buttons.
         UIDynamicPopup targetControllerPopup = CreateFilterablePopup(targetPersonPartChooser);
         if (targetControllerPopup != null)
             targetControllerPopup.popup.onOpenPopupHandlers += UpdateTargetPersonControllerChoices;
 
+        // v4.0da: Target shortcut buttons under IK Select.
+        CreateButton("Head", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_HEAD); });
+        CreateButton("Chest Hold", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_CHEST_HOLD); });
+        CreateButton("Hug Body", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_HUG_BODY); });
+        CreateButton("Hip Hold", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_HIP_HOLD); });
+        CreateButton("Hand Hold", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_HAND); });
+        CreateButton("Foot Hold", false).button.onClick.AddListener(delegate { SetTargetControllerShortcut(TC_FOOT); });
+
         targetControllerFilterJSON = new JSONStorableString("Target Ctrl Filter", "");
         RegisterString(targetControllerFilterJSON);
-        CreateTextField(targetControllerFilterJSON, false);
+        // Target Ctrl Filter is kept for compatibility but no longer shown.
 
-        // Left side: self/target reset helpers live directly under Target Controller.
-        CreateButton("Self IK Default", false).button.onClick.AddListener(SelfIKDefault);
-        CreateButton("Load User Defaults", false).button.onClick.AddListener(LoadUserDefaults);
+        // v4.0da: release/default controls first; the less-used follow selector is moved below them.
+        followTargetJSON = new JSONStorableBool("Follow Target", false);
+        RegisterBool(followTargetJSON);
+        followTargetJSON.setCallbackFunction = OnLegacyFollowTargetChanged;
+
+        releaseButton = CreateButton("Self Release", false);
+        releaseButton.button.onClick.AddListener(Release);
+        CaptureButtonDefaultColors(releaseButton, ref releaseDefaultColors, ref releaseColorsCaptured);
+
+        CreateButton("Self IK Defaults", false).button.onClick.AddListener(SelfIKDefault);
+        CreateButton("Self Load User Defaults", false).button.onClick.AddListener(LoadUserDefaults);
+
+        releaseTargetButton = CreateButton("Target Release", false);
+        releaseTargetButton.button.onClick.AddListener(ReleaseTarget);
+        CaptureButtonDefaultColors(releaseTargetButton, ref releaseTargetDefaultColors, ref releaseTargetColorsCaptured);
+
         CreateButton("Target IK Default", false).button.onClick.AddListener(TargetIKDefault);
         CreateButton("Target Load User Defaults", false).button.onClick.AddListener(TargetLoadUserDefaults);
+
+        followModeChooser = new JSONStorableStringChooser(
+            "Follow Mode",
+            new List<string> { FOLLOW_OFF, FOLLOW_SELF, FOLLOW_TARGET },
+            FOLLOW_OFF,
+            "Grab Follow",
+            (JSONStorableStringChooser.SetStringCallback)OnFollowModeChanged
+        );
+        RegisterStringChooser(followModeChooser);
+        CreatePopup(followModeChooser, false);
 
         debugLogJSON = CreateBool("Debug Log", false, false);
 
@@ -526,6 +594,12 @@ public class TargetGrabber : MVRScript
         grabHandDownButton.button.onClick.AddListener(GrabHandDown);
         grabHandOpenButton = CreateButton("Grab Hand Open", true);
         grabHandOpenButton.button.onClick.AddListener(GrabHandOpen);
+        grabHandCloseButton = CreateButton("Grab Hand Close", true);
+        grabHandCloseButton.button.onClick.AddListener(GrabHandClose);
+        grabHandLeftButton = CreateButton("Grab Hand Left", true);
+        grabHandLeftButton.button.onClick.AddListener(GrabHandLeft);
+        grabHandRightButton = CreateButton("Grab Hand Right", true);
+        grabHandRightButton.button.onClick.AddListener(GrabHandRight);
         leftHandJSON = CreateBool("Left Hand", true, true);
         rightHandJSON = CreateBool("Right Hand", true, true);
 
@@ -533,31 +607,12 @@ public class TargetGrabber : MVRScript
         leftFootJSON = CreateBool("Left Foot", true, true);
         rightFootJSON = CreateBool("Right Foot", true, true);
 
-        CreateButton("Grab Selected", true).button.onClick.AddListener(GrabSelected);
+        // Grab Selected remains as an external action, but the visible slot is now Target Swoon Drop.
+        swoonDropButton = CreateButton("Target Swoon Drop", true);
+        swoonDropButton.button.onClick.AddListener(ToggleSwoonDrop);
+        CaptureButtonDefaultColors(swoonDropButton, ref swoonDropDefaultColors, ref swoonDropColorsCaptured);
         CreateButton("pufupufu", true).button.onClick.AddListener(Pufupufu);
         CreateButton("job", true).button.onClick.AddListener(Job);
-        releaseTargetButton = CreateButton("Release Target", true);
-        releaseTargetButton.button.onClick.AddListener(ReleaseTarget);
-        CaptureButtonDefaultColors(releaseTargetButton, ref releaseTargetDefaultColors, ref releaseTargetColorsCaptured);
-
-        releaseButton = CreateButton("Release", true);
-        releaseButton.button.onClick.AddListener(Release);
-        CaptureButtonDefaultColors(releaseButton, ref releaseDefaultColors, ref releaseColorsCaptured);
-
-        followTargetJSON = new JSONStorableBool("Follow Target", false);
-        RegisterBool(followTargetJSON);
-        followTargetJSON.setCallbackFunction = OnLegacyFollowTargetChanged;
-
-        followModeChooser = new JSONStorableStringChooser(
-            "Follow Mode",
-            new List<string> { FOLLOW_OFF, FOLLOW_SELF, FOLLOW_TARGET },
-            FOLLOW_OFF,
-            "Follow Mode",
-            (JSONStorableStringChooser.SetStringCallback)OnFollowModeChanged
-        );
-        RegisterStringChooser(followModeChooser);
-        CreatePopup(followModeChooser, true);
-
         autoSnapPullOpenIKJSON = CreateBool("Auto Snap Pull/Open IK", true, true);
 
         handWristAngleJSON = CreateBool("Use Hand Wrist Angle", true, true);
@@ -577,7 +632,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0cn_hug_mode_no_extra_deep_center / hug-mode-no-double-depth / based-on-v4.0cm");
+        DebugLog("ready / v4.0cz_ui_restore_target_shortcuts / based-on-v4.0cy");
     }
 
     private void RegisterExternalActions()
@@ -602,23 +657,43 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Grab Hand Down", GrabHandDown));
         RegisterAction(new JSONStorableAction("Grab Down", GrabHandDown));
         RegisterAction(new JSONStorableAction("Grab Hand Open", GrabHandOpen));
+        RegisterAction(new JSONStorableAction("Grab Hand Close", GrabHandClose));
+        RegisterAction(new JSONStorableAction("Grab Close", GrabHandClose));
+        RegisterAction(new JSONStorableAction("Grab Hand Left", GrabHandLeft));
+        RegisterAction(new JSONStorableAction("Grab Left", GrabHandLeft));
+        RegisterAction(new JSONStorableAction("Grab Hand Right", GrabHandRight));
+        RegisterAction(new JSONStorableAction("Grab Right", GrabHandRight));
         RegisterAction(new JSONStorableAction("Grab Left Hand", GrabLeftHand));
         RegisterAction(new JSONStorableAction("Grab Right Hand", GrabRightHand));
         RegisterAction(new JSONStorableAction("Grab Foot", GrabFoot));
         RegisterAction(new JSONStorableAction("Grab Left Foot", GrabLeftFoot));
         RegisterAction(new JSONStorableAction("Grab Right Foot", GrabRightFoot));
         RegisterAction(new JSONStorableAction("Grab Selected", GrabSelected));
+        RegisterAction(new JSONStorableAction("Target Swoon Drop", ToggleSwoonDrop));
+        RegisterAction(new JSONStorableAction("Target Swoon Stop", StopSwoonDropAction));
+        RegisterAction(new JSONStorableAction("Swoon Drop", ToggleSwoonDrop));
+        RegisterAction(new JSONStorableAction("Swoon Stop", StopSwoonDropAction));
         RegisterAction(new JSONStorableAction("pufupufu", Pufupufu));
         RegisterAction(new JSONStorableAction("job", Job));
         RegisterAction(new JSONStorableAction("Release Target", ReleaseTarget));
+        RegisterAction(new JSONStorableAction("Target Release", ReleaseTarget));
         RegisterAction(new JSONStorableAction("Release", Release));
+        RegisterAction(new JSONStorableAction("Self Release", Release));
         RegisterAction(new JSONStorableAction("Self IK Default", SelfIKDefault));
+        RegisterAction(new JSONStorableAction("Self IK Defaults", SelfIKDefault));
         RegisterAction(new JSONStorableAction("Load User Defaults", LoadUserDefaults));
+        RegisterAction(new JSONStorableAction("Self Load User Defaults", LoadUserDefaults));
         RegisterAction(new JSONStorableAction("LoadUserDefaults", LoadUserDefaults));
         RegisterAction(new JSONStorableAction("Target IK Default", TargetIKDefault));
         RegisterAction(new JSONStorableAction("Target Load User Defaults", TargetLoadUserDefaults));
         RegisterAction(new JSONStorableAction("Target Load Defaults", TargetLoadUserDefaults));
         RegisterAction(new JSONStorableAction("TargetLoadDefaults", TargetLoadUserDefaults));
+        RegisterAction(new JSONStorableAction("Target Shortcut Head", delegate { SetTargetControllerShortcut(TC_HEAD); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Chest Hold", delegate { SetTargetControllerShortcut(TC_CHEST_HOLD); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Hug Body", delegate { SetTargetControllerShortcut(TC_HUG_BODY); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Hip Hold", delegate { SetTargetControllerShortcut(TC_HIP_HOLD); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Hand Hold", delegate { SetTargetControllerShortcut(TC_HAND); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Foot Hold", delegate { SetTargetControllerShortcut(TC_FOOT); }));
     }
 
     private void OnLegacyFollowTargetChanged(bool value)
@@ -868,6 +943,9 @@ public class TargetGrabber : MVRScript
             " key=" + NormalizeControllerKey(part) +
             " nipple=" + Bool01(IsNipplePairControlName(part)));
 
+        if (string.IsNullOrEmpty(part) || part == NONE)
+            ClearHeldTargetGrabState();
+
         ApplyAutoGrabWidthFromTargetPerson();
         UpdateGrabHandUtilityButtons();
 
@@ -942,6 +1020,24 @@ public class TargetGrabber : MVRScript
 
         if (!choices.Contains(label))
             choices.Add(label);
+    }
+
+    private void SetTargetControllerShortcut(string choice)
+    {
+        if (targetPersonPartChooser == null || string.IsNullOrEmpty(choice))
+            return;
+
+        UpdateTargetPersonControllerChoices();
+
+        if (targetPersonPartChooser.choices == null || !targetPersonPartChooser.choices.Contains(choice))
+        {
+            SetStatus("Target shortcut unavailable: " + choice);
+            return;
+        }
+
+        targetPersonPartChooser.val = choice;
+        OnTargetPersonPartChanged(choice);
+        SetStatus("Target: " + choice);
     }
 
     private bool IsAllowedTargetPersonControllerName(string name)
@@ -1569,6 +1665,7 @@ public class TargetGrabber : MVRScript
         }
 
         hasActiveGrab = false;
+        ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
         activeMoveTimeMultiplier = 1.0f;
@@ -1580,6 +1677,7 @@ public class TargetGrabber : MVRScript
         RestoreSelfFollowParentLinks();
         RestoreTemporaryRelaxLinkedIK();
         RestoreTemporaryHandRotationOffStates();
+        StopSwoonDrop(true, "self-ik-default");
         pendingAutoSnapIKControls.Clear();
 
         int changed = 0;
@@ -1610,6 +1708,9 @@ public class TargetGrabber : MVRScript
 
     private void TargetIKDefault()
     {
+        ClearHeldTargetGrabState();
+        StopSwoonDrop(true, "target-ik-default");
+
         if (selectedTargetPerson == null)
         {
             SetStatus("Target IK Default / no Target Person");
@@ -1623,6 +1724,9 @@ public class TargetGrabber : MVRScript
 
     private void TargetLoadUserDefaults()
     {
+        ClearHeldTargetGrabState();
+        StopSwoonDrop(true, "target-load-user-defaults");
+
         if (selectedTargetPerson == null)
         {
             SetStatus("Target Load User Defaults / no Target Person");
@@ -1918,6 +2022,7 @@ public class TargetGrabber : MVRScript
     {
         bool jobRunning = UpdateJobAnimation();
         UpdateReleaseRestoreIK();
+        UpdateSwoonDrop();
         UpdateReleaseButtonColors();
 
         if (jobRunning)
@@ -2264,6 +2369,118 @@ public class TargetGrabber : MVRScript
         SetStatus("Grab Hand Open");
     }
 
+    private void GrabHandClose()
+    {
+        ResolveControls();
+
+        FreeControllerV3 left;
+        FreeControllerV3 right;
+        if (TryGetGrabHandOpenTargetControls(out left, out right))
+        {
+            PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { left, right });
+            ApplyGrabHandCloseOffset(left, right);
+            UpdateGrabHandUtilityButtons();
+            StartTimedGrab(true, false, true);
+            QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { left, right });
+            QueueSelfFollowParentTargets(new List<FreeControllerV3> { left, right });
+            SetStatus("Grab Hand Close");
+            return;
+        }
+
+        FreeControllerV3 single;
+        bool singleRightSide;
+        if (!TryGetGrabHandOpenSingleTargetControl(out single, out singleRightSide))
+        {
+            SetStatus("Grab Hand Close needs closable target");
+            return;
+        }
+
+        PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { single });
+        ApplyGrabHandCloseOffset(single, singleRightSide);
+        UpdateGrabHandUtilityButtons();
+        StartTimedGrab(true, false, true);
+        QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { single });
+        QueueSelfFollowParentTargets(new List<FreeControllerV3> { single });
+        SetStatus("Grab Hand Close");
+    }
+
+    private void GrabHandLeft()
+    {
+        GrabHandHorizontal(false);
+    }
+
+    private void GrabHandRight()
+    {
+        GrabHandHorizontal(true);
+    }
+
+    private void GrabHandHorizontal(bool right)
+    {
+        ResolveControls();
+
+        List<FreeControllerV3> baseControls = GetGrabHandPullTargetControls();
+        if (baseControls.Count == 0)
+        {
+            SetStatus(right ? "Grab Hand Right needs movable target control" : "Grab Hand Left needs movable target control");
+            return;
+        }
+
+        bool upperBodyGroup = IsUpperBodyPivotTargetMode();
+        List<FreeControllerV3> movedControls = upperBodyGroup ? GetUpperBodyPivotControls(baseControls) : baseControls;
+        PrepareTemporaryRelaxLinkedIK(movedControls);
+
+        Vector3 side = GetActorViewSideAxisForControls(movedControls);
+        if (side.sqrMagnitude < 0.0001f)
+        {
+            SetStatus(right ? "Grab Hand Right / no side axis" : "Grab Hand Left / no side axis");
+            return;
+        }
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_HORIZONTAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = (right ? side : -side) * moveDistance;
+        int movedCount = ApplyGrabHandHorizontalOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+
+        UpdateGrabHandUtilityButtons();
+        StartTimedGrab(true, false, moved, false, true);
+
+        if (IsHipHoldMode() || IsPeniMode())
+        {
+            QueueAutoSnapPullOpenIK(null);
+        }
+        else
+        {
+            QueueAutoSnapPullOpenIK(movedControls);
+            QueueSelfFollowParentTargets(movedControls);
+        }
+
+        SetStatus((right ? "Grab Hand Right" : "Grab Hand Left") + (upperBodyGroup ? " Upper" : "") +
+            " / moved=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / x=" + moveDistance.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private int ApplyGrabHandHorizontalOffset(List<FreeControllerV3> controls, Vector3 offset)
+    {
+        int moved = 0;
+        if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
+            return moved;
+
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null)
+                continue;
+
+            MoveTargetControlByOffset(fc, offset);
+            LockTargetIKControl(fc);
+            moved++;
+
+            DebugLog("[HAND HORIZONTAL] target=" + fc.name +
+                " offset=" + FormatVector3(offset));
+        }
+
+        return moved;
+    }
+
     private bool IsPullToHandTargetMode()
     {
         if (!IsTargetPersonMode() || targetPersonPartChooser == null)
@@ -2546,7 +2763,15 @@ public class TargetGrabber : MVRScript
         if (angle > 180.0f)
             angle -= 360.0f;
 
-        float maxAngle = Mathf.Min(UPPER_BODY_PIVOT_MAX_DEGREES, flatOffset.magnitude * UPPER_BODY_PIVOT_DEGREES_PER_METER);
+        float pivotMaxDegrees = UPPER_BODY_PIVOT_MAX_DEGREES;
+        float pivotDegreesPerMeter = UPPER_BODY_PIVOT_DEGREES_PER_METER;
+        if (IsHugBodyTarget() && (reason == "Push" || reason == "Pull"))
+        {
+            pivotMaxDegrees *= HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER;
+            pivotDegreesPerMeter *= HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER;
+        }
+
+        float maxAngle = Mathf.Min(pivotMaxDegrees, flatOffset.magnitude * pivotDegreesPerMeter);
         if (maxAngle <= 0.0001f)
             return false;
 
@@ -2571,6 +2796,7 @@ public class TargetGrabber : MVRScript
 
         DebugLog("[UPPER PIVOT " + reason + "] moved=" + moved.ToString(CultureInfo.InvariantCulture) +
             " angle=" + clampedAngle.ToString("F2", CultureInfo.InvariantCulture) +
+            " maxAngle=" + maxAngle.ToString("F2", CultureInfo.InvariantCulture) +
             " offset=" + FormatVector3(flatOffset) +
             " pivot=" + FormatVector3(pivot) +
             " primary=" + (primary != null ? primary.name : "<none>"));
@@ -3019,6 +3245,59 @@ public class TargetGrabber : MVRScript
         MoveTargetControlByOffset(control, offset);
     }
 
+    private void ApplyGrabHandCloseOffset(FreeControllerV3 left, FreeControllerV3 right)
+    {
+        Vector3 leftPos = GetControlPosition(left);
+        Vector3 rightPos = GetControlPosition(right);
+        Vector3 axis = rightPos - leftPos;
+
+        if (axis.sqrMagnitude < 0.0001f)
+            axis = GetActorViewSideAxisForControls(new List<FreeControllerV3> { left, right });
+
+        if (axis.sqrMagnitude < 0.0001f)
+            return;
+
+        axis.Normalize();
+        MoveTargetControlByOffset(left, axis * GRAB_HAND_OPEN_DISTANCE);
+        MoveTargetControlByOffset(right, -axis * GRAB_HAND_OPEN_DISTANCE);
+    }
+
+    private void ApplyGrabHandCloseOffset(FreeControllerV3 control, bool rightSide)
+    {
+        Vector3 side = GetActorViewSideAxisForControls(new List<FreeControllerV3> { control });
+        if (side.sqrMagnitude < 0.0001f)
+            return;
+
+        Vector3 openOffset = GetSideOffset(rightSide, side.normalized, GRAB_HAND_OPEN_DISTANCE);
+        MoveTargetControlByOffset(control, -openOffset);
+    }
+
+    private Vector3 GetActorViewSideAxisForControls(List<FreeControllerV3> controls)
+    {
+        Vector3 center = Vector3.zero;
+        int count = 0;
+
+        if (controls != null)
+        {
+            foreach (FreeControllerV3 fc in controls)
+            {
+                if (fc == null)
+                    continue;
+
+                center += GetControlPosition(fc);
+                count++;
+            }
+        }
+
+        if (count > 0)
+            center /= (float)count;
+        else
+            center = GetTargetCenter();
+
+        Vector3 depthAxis = GetFinalPointDepthAxis(center);
+        return GetFinalPointSideAxis(depthAxis, GetTargetSideAxis());
+    }
+
     private void MoveTargetControlByOffset(FreeControllerV3 fc, Vector3 offset)
     {
         if (fc == null || offset.sqrMagnitude < 0.0001f)
@@ -3082,6 +3361,7 @@ public class TargetGrabber : MVRScript
         bool pullEnabled = GetGrabHandPullTargetControls().Count > 0;
         bool pushEnabled = pullEnabled;
         bool verticalEnabled = pullEnabled;
+        bool horizontalEnabled = pullEnabled;
         bool openEnabled = false;
         FreeControllerV3 left;
         FreeControllerV3 right;
@@ -3110,6 +3390,15 @@ public class TargetGrabber : MVRScript
         if (grabHandOpenButton != null && grabHandOpenButton.button != null)
             grabHandOpenButton.button.interactable = openEnabled;
 
+        if (grabHandCloseButton != null && grabHandCloseButton.button != null)
+            grabHandCloseButton.button.interactable = openEnabled;
+
+        if (grabHandLeftButton != null && grabHandLeftButton.button != null)
+            grabHandLeftButton.button.interactable = horizontalEnabled;
+
+        if (grabHandRightButton != null && grabHandRightButton.button != null)
+            grabHandRightButton.button.interactable = horizontalEnabled;
+
         if (releaseTargetButton != null && releaseTargetButton.button != null)
             releaseTargetButton.button.interactable = HasTargetReleaseState();
 
@@ -3126,6 +3415,7 @@ public class TargetGrabber : MVRScript
     private bool HasSelfReleaseState()
     {
         return hasActiveGrab ||
+               swoonDropActive ||
                pufupufuActive ||
                jobActive ||
                releaseRestoreIKPending ||
@@ -3136,13 +3426,511 @@ public class TargetGrabber : MVRScript
                pendingSelfFollowTargets.Count > 0 ||
                activeSelfFollowParentLinks.Count > 0 ||
                selfFollowOriginalLinkStates.Count > 0 ||
-               temporaryRelaxControls.Count > 0;
+               temporaryRelaxControls.Count > 0 ||
+               swoonDropControls.Count > 0;
+    }
+
+
+    private void ToggleSwoonDrop()
+    {
+        if (swoonDropActive)
+        {
+            StopSwoonDrop(true, "button");
+            return;
+        }
+
+        StartSwoonDrop();
+    }
+
+    private void StopSwoonDropAction()
+    {
+        StopSwoonDrop(true, "action");
+    }
+
+    private void StartSwoonDrop()
+    {
+        ResolveControls();
+        RestoreSwoonDropIK();
+
+        List<FreeControllerV3> allControls = GetTargetSwoonDropControls();
+        HashSet<FreeControllerV3> keepControls = GetSwoonDropKeepControls();
+        ApplyTargetSwoonHugBodyOneHandTwist(keepControls);
+
+        int dropped = 0;
+        for (int i = 0; i < allControls.Count; i++)
+        {
+            FreeControllerV3 fc = allControls[i];
+            if (fc == null || keepControls.Contains(fc))
+                continue;
+
+            if (!swoonDropControls.Contains(fc))
+                swoonDropControls.Add(fc);
+
+            if (!swoonDropPositionStates.ContainsKey(fc))
+                swoonDropPositionStates[fc] = fc.currentPositionState;
+            if (!swoonDropRotationStates.ContainsKey(fc))
+                swoonDropRotationStates[fc] = fc.currentRotationState;
+
+            try
+            {
+                fc.currentPositionState = FreeControllerV3.PositionState.Off;
+            }
+            catch { }
+
+            try
+            {
+                fc.currentRotationState = FreeControllerV3.RotationState.Off;
+            }
+            catch { }
+
+            dropped++;
+        }
+
+        if (dropped <= 0)
+        {
+            RestoreSwoonDropIK();
+            SetStatus("Target Swoon Drop / no target IK changed");
+            UpdateReleaseButtonColors();
+            return;
+        }
+
+        swoonDropActive = true;
+        swoonDropEndTime = Time.time + SWOON_DROP_DURATION;
+
+        SetStatus("Target Swoon Drop / IK off=" + dropped.ToString(CultureInfo.InvariantCulture) + " / keep=" + keepControls.Count.ToString(CultureInfo.InvariantCulture));
+        if (IsDebugEnabled())
+            DebugLog("[TARGET SWOON DROP START] dropped=" + dropped.ToString(CultureInfo.InvariantCulture) +
+                " keep=" + keepControls.Count.ToString(CultureInfo.InvariantCulture) +
+                " activeGrab=" + Bool01(hasActiveGrab) +
+                " heldGrab=" + Bool01(HasSwoonDropHeldGrabState()) +
+                " currentChoice=" + GetSwoonDropCurrentTargetChoiceForLog() +
+                " heldChoice=" + (heldTargetGrabChoice ?? "<none>") +
+                " endTime=" + swoonDropEndTime.ToString("F3", CultureInfo.InvariantCulture));
+        UpdateReleaseButtonColors();
+    }
+
+    private void UpdateSwoonDrop()
+    {
+        if (!swoonDropActive)
+            return;
+
+        if (Time.time < swoonDropEndTime)
+            return;
+
+        StopSwoonDrop(true, "timeout");
+    }
+
+    private void StopSwoonDrop(bool restore, string reason)
+    {
+        if (!swoonDropActive && swoonDropControls.Count == 0)
+            return;
+
+        int restored = restore ? RestoreSwoonDropIK() : ClearSwoonDropStateOnly();
+        swoonDropActive = false;
+        swoonDropEndTime = 0.0f;
+
+        if (IsDebugEnabled())
+            DebugLog("[TARGET SWOON DROP STOP] reason=" + reason +
+                " restore=" + Bool01(restore) +
+                " restored=" + restored.ToString(CultureInfo.InvariantCulture));
+
+        if (restore)
+            SetStatus("Target Swoon Drop stopped / restored=" + restored.ToString(CultureInfo.InvariantCulture));
+
+        UpdateReleaseButtonColors();
+    }
+
+    private int RestoreSwoonDropIK()
+    {
+        int restored = 0;
+        for (int i = 0; i < swoonDropControls.Count; i++)
+        {
+            FreeControllerV3 fc = swoonDropControls[i];
+            if (fc == null)
+                continue;
+
+            FreeControllerV3.PositionState positionState;
+            if (swoonDropPositionStates.TryGetValue(fc, out positionState))
+            {
+                try
+                {
+                    fc.currentPositionState = positionState;
+                }
+                catch { }
+            }
+
+            FreeControllerV3.RotationState rotationState;
+            if (swoonDropRotationStates.TryGetValue(fc, out rotationState))
+            {
+                try
+                {
+                    fc.currentRotationState = rotationState;
+                }
+                catch { }
+            }
+
+            restored++;
+        }
+
+        ClearSwoonDropStateOnly();
+        return restored;
+    }
+
+    private int ClearSwoonDropStateOnly()
+    {
+        int count = swoonDropControls.Count;
+        swoonDropPositionStates.Clear();
+        swoonDropRotationStates.Clear();
+        swoonDropControls.Clear();
+        return count;
+    }
+
+    private List<FreeControllerV3> GetTargetSwoonDropControls()
+    {
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+
+        if (selectedTargetPerson == null)
+            return controls;
+
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("hipControl", "hip"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("chestControl", "chest"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("neckControl", "neck"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("headControl", "head"));
+
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("lElbowControl", "leftElbowControl", "lElbow", "leftElbow"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("rElbowControl", "rightElbowControl", "rElbow", "rightElbow"));
+
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+        AddUniqueControl(controls, GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+
+        return controls;
+    }
+
+    private HashSet<FreeControllerV3> GetSwoonDropKeepControls()
+    {
+        HashSet<FreeControllerV3> keep = new HashSet<FreeControllerV3>();
+
+        if (selectedTargetPerson == null)
+            return keep;
+
+        // v4.0cx:
+        // Prefer the currently selected Target Controller. This is safer than relying only on
+        // hasActiveGrab/heldGrab, because Follow OFF completion can leave no active grab flag.
+        // If the user explicitly selects None, do not keep the last grabbed controller: drop all
+        // target IK, including neck, for the Swoon duration.
+        string currentChoice = GetSwoonDropCurrentTargetChoice();
+        if (currentChoice == NONE)
+            return keep;
+
+        if (!string.IsNullOrEmpty(currentChoice))
+        {
+            AddSwoonDropGrabbedOnlyControlsForChoice(keep, currentChoice);
+            keep.Remove(null);
+            return keep;
+        }
+
+        if (HasSwoonDropHeldGrabState())
+            AddSwoonDropGrabbedOnlyControlsForChoice(keep, heldTargetGrabChoice);
+
+        keep.Remove(null);
+        return keep;
+    }
+
+    private string GetSwoonDropCurrentTargetChoice()
+    {
+        if (!IsTargetPersonMode() || selectedTargetPerson == null || targetPersonPartChooser == null)
+            return null;
+
+        string choice = targetPersonPartChooser.val;
+        if (string.IsNullOrEmpty(choice))
+            return null;
+
+        return choice;
+    }
+
+    private string GetSwoonDropCurrentTargetChoiceForLog()
+    {
+        string choice = GetSwoonDropCurrentTargetChoice();
+        return string.IsNullOrEmpty(choice) ? "<none>" : choice;
+    }
+
+    private void CaptureHeldTargetGrabState(bool includeHands, bool includeFeet, bool includeHead)
+    {
+        string choice = targetPersonPartChooser != null ? targetPersonPartChooser.val : null;
+        bool hasChoice = !string.IsNullOrEmpty(choice) && choice != NONE;
+
+        hasHeldTargetGrab = IsTargetPersonMode() && selectedTargetPerson != null && targetPersonPartChooser != null && hasChoice && (includeHands || includeFeet || includeHead);
+        heldTargetGrabChoice = hasHeldTargetGrab ? choice : null;
+        heldTargetGrabIncludeHands = hasHeldTargetGrab && includeHands;
+        heldTargetGrabIncludeFeet = hasHeldTargetGrab && includeFeet;
+        heldTargetGrabIncludeHead = hasHeldTargetGrab && includeHead;
+        heldTargetGrabLeftHand = heldTargetGrabIncludeHands && leftHandJSON != null && leftHandJSON.val;
+        heldTargetGrabRightHand = heldTargetGrabIncludeHands && rightHandJSON != null && rightHandJSON.val;
+        heldTargetGrabLeftFoot = heldTargetGrabIncludeFeet && leftFootJSON != null && leftFootJSON.val;
+        heldTargetGrabRightFoot = heldTargetGrabIncludeFeet && rightFootJSON != null && rightFootJSON.val;
+    }
+
+    private void ClearHeldTargetGrabState()
+    {
+        hasHeldTargetGrab = false;
+        heldTargetGrabChoice = null;
+        heldTargetGrabIncludeHands = false;
+        heldTargetGrabIncludeFeet = false;
+        heldTargetGrabIncludeHead = false;
+        heldTargetGrabLeftHand = false;
+        heldTargetGrabRightHand = false;
+        heldTargetGrabLeftFoot = false;
+        heldTargetGrabRightFoot = false;
+    }
+
+    private bool HasSwoonDropHeldGrabState()
+    {
+        return hasHeldTargetGrab;
+    }
+
+    private void AddSwoonDropGrabbedOnlyControlsForChoice(HashSet<FreeControllerV3> keep, string choice)
+    {
+        if (keep == null || string.IsNullOrEmpty(choice))
+            return;
+
+        if (choice == TC_HAND)
+        {
+            keep.Add(GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand"));
+            keep.Add(GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand"));
+        }
+        else if (choice == TC_L_HAND)
+            keep.Add(GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand"));
+        else if (choice == TC_R_HAND)
+            keep.Add(GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand"));
+        else if (choice == TC_FOOT)
+        {
+            keep.Add(GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+            keep.Add(GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+        }
+        else if (choice == TC_L_FOOT)
+            keep.Add(GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+        else if (choice == TC_R_FOOT)
+            keep.Add(GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+        else if (choice == TC_KNEE)
+        {
+            keep.Add(GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+            keep.Add(GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+        }
+        else if (choice == TC_L_KNEE)
+            keep.Add(GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+        else if (choice == TC_R_KNEE)
+            keep.Add(GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+        else if (choice == TC_HIP_HOLD)
+        {
+            keep.Add(GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+            keep.Add(GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+        }
+        else if (choice == TC_HUG_BODY || choice == TC_CHEST_HOLD || choice == TC_L_NIPPLE || choice == TC_R_NIPPLE)
+            keep.Add(GetTargetPersonControlByAliases("chestControl", "chest"));
+        else if (choice == TC_ABDOMEN)
+            keep.Add(GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
+        else if (choice == TC_HIP)
+            keep.Add(GetTargetPersonControlByAliases("hipControl", "hip"));
+        else if (choice == TC_NECK)
+            keep.Add(GetTargetPersonControlByAliases("neckControl", "neck"));
+        else if (choice == TC_MOUTH)
+            keep.Add(GetTargetPersonControlByAliases("mouthControl", "mouth") ?? GetTargetPersonControlByAliases("headControl", "head"));
+        else if (choice == TC_HEAD || choice == TC_HEAD_TOP)
+            keep.Add(GetTargetPersonControlByAliases("headControl", "head"));
+        else
+            keep.Add(GetTargetPersonPartControl());
+    }
+
+    private void AddSwoonDropGrabSupportChain(HashSet<FreeControllerV3> keep)
+    {
+        if (keep == null || !IsTargetPersonMode() || selectedTargetPerson == null || targetPersonPartChooser == null)
+            return;
+
+        string choice = targetPersonPartChooser.val;
+
+        if (choice == TC_HAND)
+        {
+            AddSwoonDropHandChain(keep, false);
+            AddSwoonDropHandChain(keep, true);
+        }
+        else if (choice == TC_L_HAND)
+        {
+            AddSwoonDropHandChain(keep, false);
+        }
+        else if (choice == TC_R_HAND)
+        {
+            AddSwoonDropHandChain(keep, true);
+        }
+        else if (choice == TC_FOOT)
+        {
+            AddSwoonDropFootChain(keep, false);
+            AddSwoonDropFootChain(keep, true);
+        }
+        else if (choice == TC_L_FOOT)
+        {
+            AddSwoonDropFootChain(keep, false);
+        }
+        else if (choice == TC_R_FOOT)
+        {
+            AddSwoonDropFootChain(keep, true);
+        }
+        else if (choice == TC_KNEE)
+        {
+            AddSwoonDropKneeChain(keep, false);
+            AddSwoonDropKneeChain(keep, true);
+        }
+        else if (choice == TC_L_KNEE)
+        {
+            AddSwoonDropKneeChain(keep, false);
+        }
+        else if (choice == TC_R_KNEE)
+        {
+            AddSwoonDropKneeChain(keep, true);
+        }
+        else if (choice == TC_HIP_HOLD)
+        {
+            AddSwoonDropHipHoldKeepControls(keep);
+        }
+        else if (IsUpperBodyPivotTargetMode() || choice == TC_HIP || choice == TC_CHEST_HOLD || choice == TC_HUG_BODY || choice == TC_ABDOMEN || choice == TC_HEAD || choice == TC_HEAD_TOP || choice == TC_MOUTH || choice == TC_NECK)
+        {
+            AddSwoonDropUpperBodyKeepControls(keep, true);
+        }
+    }
+
+    private void AddSwoonDropHandChain(HashSet<FreeControllerV3> keep, bool right)
+    {
+        if (keep == null)
+            return;
+
+        if (right)
+        {
+            keep.Add(GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand"));
+            keep.Add(GetTargetPersonControlByAliases("rElbowControl", "rightElbowControl", "rElbow", "rightElbow"));
+        }
+        else
+        {
+            keep.Add(GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand"));
+            keep.Add(GetTargetPersonControlByAliases("lElbowControl", "leftElbowControl", "lElbow", "leftElbow"));
+        }
+    }
+
+    private void AddSwoonDropFootChain(HashSet<FreeControllerV3> keep, bool right)
+    {
+        if (keep == null)
+            return;
+
+        if (right)
+        {
+            keep.Add(GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+            keep.Add(GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+            keep.Add(GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+        }
+        else
+        {
+            keep.Add(GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+            keep.Add(GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+            keep.Add(GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+        }
+    }
+
+    private void AddSwoonDropKneeChain(HashSet<FreeControllerV3> keep, bool right)
+    {
+        if (keep == null)
+            return;
+
+        if (right)
+        {
+            keep.Add(GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+            keep.Add(GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+            keep.Add(GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+        }
+        else
+        {
+            keep.Add(GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+            keep.Add(GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+            keep.Add(GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+        }
+    }
+
+    private void AddSwoonDropHipHoldKeepControls(HashSet<FreeControllerV3> keep)
+    {
+        if (keep == null)
+            return;
+
+        keep.Add(GetTargetPersonControlByAliases("hipControl", "hip"));
+        keep.Add(GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+        keep.Add(GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+        keep.Add(GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+        keep.Add(GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+    }
+
+    private void AddSwoonDropUpperBodyKeepControls(HashSet<FreeControllerV3> keep, bool includeHead)
+    {
+        if (keep == null)
+            return;
+
+        keep.Add(GetTargetPersonControlByAliases("hipControl", "hip"));
+        keep.Add(GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
+        keep.Add(GetTargetPersonControlByAliases("chestControl", "chest"));
+        if (includeHead)
+            keep.Add(GetTargetPersonControlByAliases("headControl", "head"));
+    }
+
+    private void ApplyTargetSwoonHugBodyOneHandTwist(HashSet<FreeControllerV3> keepControls)
+    {
+        if (!hasHeldTargetGrab || heldTargetGrabChoice != TC_HUG_BODY || !heldTargetGrabIncludeHands)
+            return;
+
+        bool leftOnly = heldTargetGrabLeftHand && !heldTargetGrabRightHand;
+        bool rightOnly = heldTargetGrabRightHand && !heldTargetGrabLeftHand;
+        if (!leftOnly && !rightOnly)
+            return;
+
+        FreeControllerV3 hand = leftOnly ? lHandControl : rHandControl;
+        FreeControllerV3 chest = GetTargetPersonControlByAliases("chestControl", "chest");
+        if (hand == null || chest == null)
+            return;
+
+        Vector3 dir = GetControlPosition(hand) - GetControlPosition(chest);
+        dir.y = 0.0f;
+        if (dir.sqrMagnitude < 0.0001f)
+            return;
+
+        Vector3 offset = dir.normalized * TARGET_SWOON_HUG_BODY_ONE_HAND_TWIST_OFFSET;
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        AddControlIfNotNull(controls, chest);
+        ApplyUpperBodyPivotOffset(controls, offset, leftOnly ? "TargetSwoon-L" : "TargetSwoon-R");
+
+        if (keepControls != null)
+            keepControls.Add(chest);
+
+        DebugLog("[TARGET SWOON HUG TWIST] hand=" + (leftOnly ? "L" : "R") +
+            " offset=" + FormatVector3(offset) +
+            " hand=" + FormatVector3(GetControlPosition(hand)) +
+            " chest=" + FormatVector3(GetControlPosition(chest)));
+    }
+
+    private void AddUniqueControl(List<FreeControllerV3> controls, FreeControllerV3 fc)
+    {
+        if (controls == null || fc == null || controls.Contains(fc))
+            return;
+
+        controls.Add(fc);
     }
 
     private void UpdateReleaseButtonColors()
     {
         SetButtonWarningColor(releaseTargetButton, releaseTargetDefaultColors, releaseTargetColorsCaptured, HasTargetReleaseState(), new Color(1.00f, 0.62f, 0.20f, 1.0f));
         SetButtonWarningColor(releaseButton, releaseDefaultColors, releaseColorsCaptured, HasSelfReleaseState(), new Color(0.32f, 0.70f, 1.00f, 1.0f));
+        SetButtonWarningColor(swoonDropButton, swoonDropDefaultColors, swoonDropColorsCaptured, swoonDropActive, new Color(0.72f, 0.42f, 1.00f, 1.0f));
+        SetButtonText(swoonDropButton, swoonDropActive ? "Target Swoon Stop" : "Target Swoon Drop");
     }
 
     private void CaptureButtonDefaultColors(UIDynamicButton dynamicButton, ref ColorBlock colors, ref bool captured)
@@ -3173,6 +3961,16 @@ public class TargetGrabber : MVRScript
         }
 
         dynamicButton.button.colors = colors;
+    }
+
+    private void SetButtonText(UIDynamicButton dynamicButton, string text)
+    {
+        if (dynamicButton == null || dynamicButton.button == null || string.IsNullOrEmpty(text))
+            return;
+
+        Text label = dynamicButton.button.GetComponentInChildren<Text>();
+        if (label != null)
+            label.text = text;
     }
 
     private void QueueAutoSnapPullOpenIK(List<FreeControllerV3> targetControls)
@@ -3765,6 +4563,7 @@ public class TargetGrabber : MVRScript
     private void StartTimedGrab(bool includeHands, bool includeFeet, bool keepTemporaryRelaxLinkedIK = false, bool includeHead = false, bool useFinalGrabWidth = false)
     {
         ResolveControls();
+        StopSwoonDrop(true, "grab-start");
         ClearPendingWristHandLocks();
 
         RestoreSelfFollowParentLinks();
@@ -3780,6 +4579,7 @@ public class TargetGrabber : MVRScript
         activeIncludeFeet = includeFeet;
         activeIncludeHead = includeHead;
         activeMoveTimeMultiplier = includeFeet && !includeHands ? 2.0f : 1.0f;
+        CaptureHeldTargetGrabState(includeHands, includeFeet, includeHead);
         releaseRestoreIKPending = false;
         releaseRestorePositionControls.Clear();
         releaseRestoreRotationControls.Clear();
@@ -8517,6 +9317,7 @@ public class TargetGrabber : MVRScript
     private void Release()
     {
         hasActiveGrab = false;
+        ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
         activeMoveTimeMultiplier = 1.0f;
@@ -8530,6 +9331,7 @@ public class TargetGrabber : MVRScript
         RestoreSelfFollowParentLinks();
         RestoreTemporaryRelaxLinkedIK();
         RestoreTemporaryHandRotationOffStates();
+        StopSwoonDrop(true, "release");
 
         // 今回このプラグインがONにしたControlだけを、Release/復帰対象として退避する。
         // ここで退避してから作業用HashSetをClearするのが重要。
