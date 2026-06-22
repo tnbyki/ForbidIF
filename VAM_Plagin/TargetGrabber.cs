@@ -1,16 +1,13 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0cb_hand_close_ui_trim
+// Version: v4.0cn_hug_mode_no_extra_deep_center
 // Date: 2026-06-22
-// Base: TargetGrabber_v4_0ca_hand_up_down_target_defaults.cs
+// Base: TargetGrabber_v4_0cm_view_axis_all_hand_mid_in.cs
 // Summary:
-// - Adds Grab Hand Close as the opposite of Grab Hand Open.
-// - Hides Grab Selected UI while keeping the external action registered.
-// - Hides Target Ctrl Filter text field while keeping the storable registered.
-// - Hug Body final wrist: actual final front/actor side = Wrist Out; near-center/back/unknown = Wrist In.
-// - Uses the same fixed wrist-button preset rotations for final Hug Body In/Out application.
-// - Keeps Hug Body handCenter far/inside correction fade-out when Hug Mode is OFF.
-// - Keeps Final Grab Width zero/default values clamped to 0.01 internally.
+// - Prevents Hug Mode from applying the old deep-center push on top of the final-point route.
+// - Normal/person hand routes now use the target center directly; Hug Mode no longer shifts the whole hand center forward.
+// - Hug Body keeps the final-point route and uses Hug Depth only as a small final-depth offset.
+// - Keeps Pair Hand/Foot/Knee Hold Grab Width midpoint and fixed Wrist In.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -19,7 +16,7 @@
 // 指定Atomを手・足で掴む補助プラグイン
 //
 // Author : VAMT
-// Version: v4.0bz_upper_body_pivot_push_pull
+// Version: v4.0ck_hug_ik_snap
 // v3.0dh: Hug Body sends hands toward the actor's forward direction instead of target front/back.
 //          Chest Hold / Hip Hold / pair hold routes are unchanged.
 // v3.0di: Colors Release buttons when self/target restore state exists, and locks target thighs during Hip Hold.
@@ -88,7 +85,13 @@
 // v4.0br: Clears pending wrist hand locks on wrist button start / grab start / release / defaults to avoid stale 8-frame locks.
 // v4.0bx: Hug Body wrist picks Out only when the actual final hand position remains on the near/front side; near-center/back defaults to In.
 // v4.0ca: Adds Grab Hand Up/Down, moves self defaults under Target Controller, and adds target-side IK/default buttons.
-// v4.0cb: Adds Grab Hand Close, hides Grab Selected UI, and hides Target Ctrl Filter text field.
+// v4.0cl: Pair Hand/Foot/Knee Hold uses Grab Width for hand midpoint spread and fixes final wrist to In.
+// v4.0ck: Hug Body route snaps the IK control to the actual body hand at the end instead of forcing the control to finalPoint.
+// v4.0cn: Hug Mode no longer applies old deep-center push on top of final-point hand routes; Hug Depth only affects Hug Body final depth lightly.
+// v4.0ch: Hug Body uses actor-left/right midpoint from final point for the spread/open route.
+// v4.0ci: Hug Body spread/open midpoint uses self-to-target view right, not target facing or self root facing.
+// v4.0cj: Previous build force-snapped the hand control to finalPoint; superseded by v4.0ck IK snap.
+// v4.0cg: Normal Grab Hand uses final-point-first route; Hug Body final center is placed slightly beyond target and wrist is final-depth only.
 // v4.0by: Adds Grab Hand Push as the counterpart to Grab Hand Pull.
 // v4.0bz: Upper-body Push/Pull uses target hip as pivot and rotates chest/head/related controls instead of plain translation.
 // v4.0by: Adds Grab Hand Push to move movable target controls horizontally away from active self hands, then re-grab.
@@ -223,6 +226,9 @@ public class TargetGrabber : MVRScript
     private const float PENI_AUTO_Z_OFFSET = -0.03f;
     private const float HUG_BODY_HAND_WIDTH_CAP = 0.55f;
     private const float HUG_BODY_HAND_CENTER_OFFSET = 0.22f;
+    private const float HUG_BODY_FINAL_POINT_DEPTH_OFFSET = 0.18f;
+    private const float HUG_BODY_IK_SNAP_START_T = 0.985f;
+    private const float FINAL_POINT_WRIST_DEPTH_THRESHOLD = 0.025f;
     private const float HUG_BODY_WRIST_NEAR_CENTER_DISTANCE = 0.03f;
     private const float HUG_BODY_WRIST_DEPTH_THRESHOLD = 0.03f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
@@ -290,7 +296,6 @@ public class TargetGrabber : MVRScript
     private UIDynamicButton grabHandUpButton;
     private UIDynamicButton grabHandDownButton;
     private UIDynamicButton grabHandOpenButton;
-    private UIDynamicButton grabHandCloseButton;
     private UIDynamicButton releaseTargetButton;
     private UIDynamicButton releaseButton;
 
@@ -453,9 +458,7 @@ public class TargetGrabber : MVRScript
 
         targetControllerFilterJSON = new JSONStorableString("Target Ctrl Filter", "");
         RegisterString(targetControllerFilterJSON);
-        // Hidden UI: Target Ctrl Filter text field is not normally needed.
-        // The storable remains registered for save/backward compatibility and external scripted use.
-        // CreateTextField(targetControllerFilterJSON, false);
+        CreateTextField(targetControllerFilterJSON, false);
 
         // Left side: self/target reset helpers live directly under Target Controller.
         CreateButton("Self IK Default", false).button.onClick.AddListener(SelfIKDefault);
@@ -517,8 +520,6 @@ public class TargetGrabber : MVRScript
         grabHandDownButton.button.onClick.AddListener(GrabHandDown);
         grabHandOpenButton = CreateButton("Grab Hand Open", true);
         grabHandOpenButton.button.onClick.AddListener(GrabHandOpen);
-        grabHandCloseButton = CreateButton("Grab Hand Close", true);
-        grabHandCloseButton.button.onClick.AddListener(GrabHandClose);
         leftHandJSON = CreateBool("Left Hand", true, true);
         rightHandJSON = CreateBool("Right Hand", true, true);
 
@@ -526,8 +527,7 @@ public class TargetGrabber : MVRScript
         leftFootJSON = CreateBool("Left Foot", true, true);
         rightFootJSON = CreateBool("Right Foot", true, true);
 
-        // Hidden UI: Grab Selected is still available as an external action, but rarely used.
-        // CreateButton("Grab Selected", true).button.onClick.AddListener(GrabSelected);
+        CreateButton("Grab Selected", true).button.onClick.AddListener(GrabSelected);
         CreateButton("pufupufu", true).button.onClick.AddListener(Pufupufu);
         CreateButton("job", true).button.onClick.AddListener(Job);
         releaseTargetButton = CreateButton("Release Target", true);
@@ -571,7 +571,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0cb_hand_close_ui_trim / hand-close / ui-trim / based-on-v4.0ca");
+        DebugLog("ready / v4.0cn_hug_mode_no_extra_deep_center / hug-mode-no-double-depth / based-on-v4.0cm");
     }
 
     private void RegisterExternalActions()
@@ -596,8 +596,6 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Grab Hand Down", GrabHandDown));
         RegisterAction(new JSONStorableAction("Grab Down", GrabHandDown));
         RegisterAction(new JSONStorableAction("Grab Hand Open", GrabHandOpen));
-        RegisterAction(new JSONStorableAction("Grab Hand Close", GrabHandClose));
-        RegisterAction(new JSONStorableAction("Grab Close", GrabHandClose));
         RegisterAction(new JSONStorableAction("Grab Left Hand", GrabLeftHand));
         RegisterAction(new JSONStorableAction("Grab Right Hand", GrabRightHand));
         RegisterAction(new JSONStorableAction("Grab Foot", GrabFoot));
@@ -2255,41 +2253,6 @@ public class TargetGrabber : MVRScript
         SetStatus("Grab Hand Open");
     }
 
-    private void GrabHandClose()
-    {
-        ResolveControls();
-
-        FreeControllerV3 left;
-        FreeControllerV3 right;
-        if (TryGetGrabHandOpenTargetControls(out left, out right))
-        {
-            PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { left, right });
-            ApplyGrabHandCloseOffset(left, right);
-            UpdateGrabHandUtilityButtons();
-            StartTimedGrab(true, false, true, false, true);
-            QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { left, right });
-            QueueSelfFollowParentTargets(new List<FreeControllerV3> { left, right });
-            SetStatus("Grab Hand Close");
-            return;
-        }
-
-        FreeControllerV3 single;
-        bool singleRightSide;
-        if (!TryGetGrabHandOpenSingleTargetControl(out single, out singleRightSide))
-        {
-            SetStatus("Grab Hand Close needs closeable target");
-            return;
-        }
-
-        PrepareTemporaryRelaxLinkedIK(new List<FreeControllerV3> { single });
-        ApplyGrabHandCloseOffset(single, singleRightSide);
-        UpdateGrabHandUtilityButtons();
-        StartTimedGrab(true, false, true, false, true);
-        QueueAutoSnapPullOpenIK(new List<FreeControllerV3> { single });
-        QueueSelfFollowParentTargets(new List<FreeControllerV3> { single });
-        SetStatus("Grab Hand Close");
-    }
-
     private bool IsPullToHandTargetMode()
     {
         if (!IsTargetPersonMode() || targetPersonPartChooser == null)
@@ -2994,33 +2957,6 @@ public class TargetGrabber : MVRScript
         MoveTargetControlByOffset(control, offset);
     }
 
-    private void ApplyGrabHandCloseOffset(FreeControllerV3 left, FreeControllerV3 right)
-    {
-        Vector3 leftPos = GetControlPosition(left);
-        Vector3 rightPos = GetControlPosition(right);
-        Vector3 axis = rightPos - leftPos;
-
-        if (axis.sqrMagnitude < 0.0001f)
-            axis = GetTargetSideAxis();
-
-        if (axis.sqrMagnitude < 0.0001f)
-            return;
-
-        axis.Normalize();
-        MoveTargetControlByOffset(left, axis * GRAB_HAND_OPEN_DISTANCE);
-        MoveTargetControlByOffset(right, -axis * GRAB_HAND_OPEN_DISTANCE);
-    }
-
-    private void ApplyGrabHandCloseOffset(FreeControllerV3 control, bool rightSide)
-    {
-        Vector3 side = GetTargetSideAxis();
-        if (side.sqrMagnitude < 0.0001f)
-            return;
-
-        Vector3 offset = -GetSideOffset(rightSide, side.normalized, GRAB_HAND_OPEN_DISTANCE);
-        MoveTargetControlByOffset(control, offset);
-    }
-
     private void MoveTargetControlByOffset(FreeControllerV3 fc, Vector3 offset)
     {
         if (fc == null || offset.sqrMagnitude < 0.0001f)
@@ -3111,9 +3047,6 @@ public class TargetGrabber : MVRScript
 
         if (grabHandOpenButton != null && grabHandOpenButton.button != null)
             grabHandOpenButton.button.interactable = openEnabled;
-
-        if (grabHandCloseButton != null && grabHandCloseButton.button != null)
-            grabHandCloseButton.button.interactable = openEnabled;
 
         if (releaseTargetButton != null && releaseTargetButton.button != null)
             releaseTargetButton.button.interactable = HasTargetReleaseState();
@@ -3932,6 +3865,197 @@ public class TargetGrabber : MVRScript
             SetControlPositionDirect(rHandControl, jobRightBase);
     }
 
+
+    private struct HandFinalPointRoute
+    {
+        public Vector3 handCenter;
+        public Vector3 side;
+        public Vector3 actorSpreadSide;
+        public float pathWidth;
+        public bool leftPathRightSide;
+        public bool rightPathRightSide;
+        public bool useActorMidpointRoute;
+        public string mode;
+    }
+
+    private HandFinalPointRoute BuildHandFinalPointRoute(Vector3 targetCenter, Vector3 baseSide, bool swapSidePaths, bool log)
+    {
+        HandFinalPointRoute route = new HandFinalPointRoute();
+        route.mode = "normal-final-point";
+        // v4.0cn: final-point hand routes own the approach/depth logic.
+        // Do not let old Hug Mode GetHugCenter() push the whole hand center forward again.
+        route.handCenter = targetCenter;
+        route.side = GetHandSideAxis(baseSide);
+        route.actorSpreadSide = route.side;
+        route.pathWidth = GetGrabWidth();
+        route.leftPathRightSide = !swapSidePaths;
+        route.rightPathRightSide = swapSidePaths;
+        route.useActorMidpointRoute = false;
+
+        if (ShouldUseActorViewHandRoute())
+        {
+            Vector3 normalDepthAxis = GetFinalPointDepthAxis(targetCenter);
+            Vector3 normalSideAxis = GetFinalPointSideAxis(normalDepthAxis, route.side);
+
+            route.mode = "normal-final-point-view-axis";
+            route.side = normalSideAxis;
+            route.actorSpreadSide = normalSideAxis;
+            route.leftPathRightSide = false;
+            route.rightPathRightSide = true;
+            route.useActorMidpointRoute = true;
+        }
+
+        if (IsHugBodyTarget())
+        {
+            Vector3 depthAxis = GetFinalPointDepthAxis(targetCenter);
+            Vector3 sideAxis = GetFinalPointSideAxis(depthAxis, route.side);
+
+            route.mode = "hug-body-final-point-midpoint";
+            route.handCenter = targetCenter + depthAxis * GetHugBodyFinalPointDepthOffset();
+            route.side = sideAxis;
+            route.actorSpreadSide = sideAxis;
+            route.pathWidth = Mathf.Min(GetGrabWidth(), HUG_BODY_HAND_WIDTH_CAP);
+            route.useActorMidpointRoute = true;
+
+            // For the final-point route, keep actual left hand on actor-left and right hand on actor-right.
+            // This avoids sameFacing/backSide/swapPath logic from changing the destination after the final points are built.
+            route.leftPathRightSide = false;
+            route.rightPathRightSide = true;
+        }
+
+        if (log && IsDebugEnabled())
+        {
+            Vector3 finalLeft = route.handCenter + GetSideOffset(route.leftPathRightSide, route.side, GetFinalGrabWidth());
+            Vector3 finalRight = route.handCenter + GetSideOffset(route.rightPathRightSide, route.side, GetFinalGrabWidth());
+            Vector3 midLeft = GetHandRouteMidPoint(route, route.leftPathRightSide, finalLeft);
+            Vector3 midRight = GetHandRouteMidPoint(route, route.rightPathRightSide, finalRight);
+            DebugLog("[HAND FINAL ROUTE] mode=" + route.mode +
+                " targetCenter=" + FormatVector3(targetCenter) +
+                " handCenter=" + FormatVector3(route.handCenter) +
+                " side=" + FormatVector3(route.side) +
+                " actorSpreadSide=" + FormatVector3(route.actorSpreadSide) +
+                " pathWidth=" + route.pathWidth.ToString("F3", CultureInfo.InvariantCulture) +
+                " finalWidth=" + GetFinalGrabWidth().ToString("F3", CultureInfo.InvariantCulture) +
+                " hugMode=" + Bool01(IsHugMode()) +
+                " hugDepthOffset=" + (IsHugBodyTarget() ? GetHugBodyFinalPointDepthOffset().ToString("F3", CultureInfo.InvariantCulture) : "0.000") +
+                " leftPathRight=" + Bool01(route.leftPathRightSide) +
+                " rightPathRight=" + Bool01(route.rightPathRightSide) +
+                " finalL=" + FormatVector3(finalLeft) +
+                " finalR=" + FormatVector3(finalRight) +
+                " midL=" + FormatVector3(midLeft) +
+                " midR=" + FormatVector3(midRight));
+        }
+
+        return route;
+    }
+
+    private float GetHugBodyFinalPointDepthOffset()
+    {
+        // v4.0cn:
+        // Hug Mode used to push the moving hand center forward, and the final-point route also
+        // placed the final center beyond the target.  That made Hug Mode overshoot.
+        // Now Hug Depth only adjusts this final-depth offset lightly.
+        float baseOffset = HUG_BODY_FINAL_POINT_DEPTH_OFFSET;
+        if (!IsHugMode())
+            return baseOffset;
+
+        float hugDepth = hugDepthJSON != null ? Mathf.Max(0.0f, hugDepthJSON.val) : 0.0f;
+        if (hugDepth <= 0.0f)
+            return baseOffset;
+
+        // Keep the effect intentionally small; this is an offset behind chest, not another travel path.
+        return Mathf.Clamp(hugDepth * 0.18f, baseOffset, 0.22f);
+    }
+
+    private Vector3 GetFinalPointDepthAxis(Vector3 targetCenter)
+    {
+        Vector3 axis = targetCenter - GetHugOriginPosition(targetCenter);
+        axis.y = 0.0f;
+
+        if (axis.sqrMagnitude < 0.0001f && selectedPerson != null && selectedPerson.transform != null)
+        {
+            axis = selectedPerson.transform.forward;
+            axis.y = 0.0f;
+        }
+
+        if (axis.sqrMagnitude < 0.0001f)
+        {
+            axis = GetSelectedPersonForwardAxis();
+            axis.y = 0.0f;
+        }
+
+        if (axis.sqrMagnitude < 0.0001f)
+            axis = Vector3.forward;
+
+        return axis.normalized;
+    }
+
+    private Vector3 GetFinalPointSideAxis(Vector3 depthAxis, Vector3 fallbackSide)
+    {
+        Vector3 side = Vector3.Cross(Vector3.up, depthAxis);
+        side.y = 0.0f;
+
+        if (side.sqrMagnitude < 0.0001f)
+            side = fallbackSide;
+        side.y = 0.0f;
+
+        if (side.sqrMagnitude < 0.0001f && selectedPerson != null && selectedPerson.transform != null)
+            side = selectedPerson.transform.right;
+        side.y = 0.0f;
+
+        if (side.sqrMagnitude < 0.0001f)
+            side = Vector3.right;
+
+        side.Normalize();
+
+        // v4.0ci:
+        // Spread/open direction must be independent of both target facing and self root facing.
+        // The only intended frame is the actor-view frame built from self position -> target center:
+        //   depthAxis = self -> target
+        //   sideAxis  = Vector3.Cross(Vector3.up, depthAxis)
+        // Therefore do not flip this axis using selectedPerson.transform.right.
+        return side.normalized;
+    }
+
+    private bool ShouldUseActorViewHandRoute()
+    {
+        if (!IsTargetPersonMode())
+            return false;
+
+        // These small/intimate routes keep their existing dedicated motion rules.
+        if (IsPeniMode() || IsGenMode() || IsAnusMode() || IsGroinMode())
+            return false;
+
+        return true;
+    }
+
+    private bool IsSingleHandFootKneeTargetMode()
+    {
+        if (!IsTargetPersonMode() || targetPersonPartChooser == null)
+            return false;
+
+        string choice = targetPersonPartChooser.val;
+        return choice == TC_L_HAND || choice == TC_R_HAND ||
+               choice == TC_L_FOOT || choice == TC_R_FOOT ||
+               choice == TC_L_KNEE || choice == TC_R_KNEE;
+    }
+
+    private Vector3 GetHandRouteFinalPoint(HandFinalPointRoute route, bool pathRightSide)
+    {
+        return route.handCenter + GetSideOffset(pathRightSide, route.side, GetFinalGrabWidth());
+    }
+
+    private Vector3 GetHandRouteMidPoint(HandFinalPointRoute route, bool pathRightSide, Vector3 finalPoint)
+    {
+        if (!route.useActorMidpointRoute)
+            return route.handCenter + GetSideOffset(pathRightSide, route.side, route.pathWidth);
+
+        // Actor-view route: expand from the already-decided final point using self-to-target view left/right.
+        // Target facing and self root facing are ignored.
+        // Left hand: finalPoint - viewRight * GrabWidth, Right hand: finalPoint + viewRight * GrabWidth.
+        return finalPoint + GetSideOffset(pathRightSide, route.actorSpreadSide, route.pathWidth);
+    }
+
     private void ApplyGrab(bool immediate)
     {
         if (hasActiveGrab)
@@ -3973,8 +4097,6 @@ public class TargetGrabber : MVRScript
         Vector3 footCenter = (nipplePairMode || hipHoldMode || targetPairMode) ? center : GetHugCenter(ApplyFootPersonGrabOffset(center));
         Vector3 baseSide = GetTargetSideAxis();
         Vector3 handSide = GetHandSideAxis(baseSide);
-        if (IsHugBodyTarget())
-            handSide = GetHugBodyApproachSideAxis(center, handSide);
         Vector3 footSide = GetFootSideAxis(baseSide);
         LogSideDebug(center, handSide, footSide);
         bool swapSidePaths = ShouldSwapSidePaths(center);
@@ -4008,41 +4130,29 @@ public class TargetGrabber : MVRScript
 
         if (includeHands)
         {
-            bool hugBodyTarget = IsHugBodyTarget();
-            // v4.0bb:
-            // Hug Body は体を抱えるため左右幅が必要だが、Auto Grab Width の 1m 超をそのまま使うと
-            // maxReach で外側へクランプされ、片手が遠回りしてから中心へ戻る。
-            // 通常Grab/Hold系は触らず、Hug Body の通常手ルートだけ実効幅を控えめに上限化する。
-            float handPathWidth = hugBodyTarget
-                ? Mathf.Min(GetGrabWidth(), HUG_BODY_HAND_WIDTH_CAP)
-                : GetGrabWidth();
-            bool leftPathRightSideForHands = !swapSidePaths;
-            bool rightPathRightSideForHands = swapSidePaths;
-            bool effectiveSwapSidePaths = swapSidePaths;
-            if (hugBodyTarget)
-            {
-                HugBodyHandLayout layout = ResolveHugBodyHandLayout(center, handCenter, handSide, handPathWidth, logHandTargetsThisFrame);
-                handCenter = layout.handCenter;
-                leftPathRightSideForHands = layout.leftPathRightSide;
-                rightPathRightSideForHands = layout.rightPathRightSide;
-                effectiveSwapSidePaths = layout.rightPathRightSide;
-            }
+            HandFinalPointRoute handRoute = BuildHandFinalPointRoute(center, baseSide, swapSidePaths, logHandTargetsThisFrame);
+            handCenter = handRoute.handCenter;
+            handSide = handRoute.side;
+            float handPathWidth = handRoute.pathWidth;
+            bool leftPathRightSideForHands = handRoute.leftPathRightSide;
+            bool rightPathRightSideForHands = handRoute.rightPathRightSide;
+            bool effectiveSwapSidePaths = handRoute.rightPathRightSide;
 
             if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
             {
-                // v3.0al:
-                // 左右の行き先は正面/背面のワールド位置で反転しない。
-                // 正面/背面判定は回転やHug方向にだけ使い、手の実Control割当は固定する。
                 bool pathRightSide = leftPathRightSideForHands;
                 Vector3 root = GetHandRootPosition(pathRightSide);
-                Vector3 desired = handCenter + GetSideOffset(pathRightSide, handSide, handPathWidth);
-                Vector3 target = GetReachLimitedPosition(root, desired, GetMaxHandReach(), GetHandPalmOffset(), lHandControl, true, pathRightSide);
+                Vector3 finalDesired = GetHandRouteFinalPoint(handRoute, pathRightSide);
+                Vector3 midDesired = GetHandRouteMidPoint(handRoute, pathRightSide, finalDesired);
+                Vector3 target = handRoute.useActorMidpointRoute
+                    ? finalDesired
+                    : GetReachLimitedPosition(root, finalDesired, GetMaxHandReach(), GetHandPalmOffset(), lHandControl, true, pathRightSide);
+                Vector3 midTarget = handRoute.useActorMidpointRoute
+                    ? midDesired
+                    : GetReachLimitedPosition(root, midDesired, GetMaxHandReach(), GetHandPalmOffset(), lHandControl, true, pathRightSide);
                 if (logHandTargetsThisFrame)
-                    LogHandTargetDebug(false, lHandControl, root, desired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
-                // v3.0ag:
-                // 回転の正面/背面判定は Hug で動く handCenter ではなく、元のTarget centerで固定する。
-                // Hug中にhandCenterが奥へ送られても、正面右手の当たり回転が背面扱いに化けないようにする。
-                MoveHandControlThenRotate(lHandControl, target, center, pathRightSide, false, immediate);
+                    LogHandTargetDebug(false, lHandControl, root, midDesired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
+                MoveHandControlThenRotateViaMidpoint(lHandControl, midTarget, target, center, pathRightSide, false, immediate, handRoute.useActorMidpointRoute);
                 moved++;
             }
 
@@ -4050,14 +4160,17 @@ public class TargetGrabber : MVRScript
             {
                 bool pathRightSide = rightPathRightSideForHands;
                 Vector3 root = GetHandRootPosition(pathRightSide);
-                Vector3 desired = handCenter + GetSideOffset(pathRightSide, handSide, handPathWidth);
-                Vector3 target = GetReachLimitedPosition(root, desired, GetMaxHandReach(), GetHandPalmOffset(), rHandControl, true, pathRightSide);
+                Vector3 finalDesired = GetHandRouteFinalPoint(handRoute, pathRightSide);
+                Vector3 midDesired = GetHandRouteMidPoint(handRoute, pathRightSide, finalDesired);
+                Vector3 target = handRoute.useActorMidpointRoute
+                    ? finalDesired
+                    : GetReachLimitedPosition(root, finalDesired, GetMaxHandReach(), GetHandPalmOffset(), rHandControl, true, pathRightSide);
+                Vector3 midTarget = handRoute.useActorMidpointRoute
+                    ? midDesired
+                    : GetReachLimitedPosition(root, midDesired, GetMaxHandReach(), GetHandPalmOffset(), rHandControl, true, pathRightSide);
                 if (logHandTargetsThisFrame)
-                    LogHandTargetDebug(true, rHandControl, root, desired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
-                // v3.0ag:
-                // 右手回転の正面/背面判定も元のTarget centerで固定する。
-                // 正面右手はv3.0ab/afの当たりを維持し、背面右手だけ別プリセットへ切り替えられるようにする。
-                MoveHandControlThenRotate(rHandControl, target, center, pathRightSide, true, immediate);
+                    LogHandTargetDebug(true, rHandControl, root, midDesired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
+                MoveHandControlThenRotateViaMidpoint(rHandControl, midTarget, target, center, pathRightSide, true, immediate, handRoute.useActorMidpointRoute);
                 moved++;
             }
         }
@@ -4562,7 +4675,7 @@ public class TargetGrabber : MVRScript
                 Vector3 sideTarget = GetPairOutsidePoint(leftHandTarget, center, side, PAIR_FINAL_OUTSIDE_OFFSET);
                 Vector3 target = GetNipplePairHandTarget(leftRoot, sideTarget, lHandControl, false);
                 LogHoldHandTarget(controller, mode, false, leftHandTarget, sideTarget, target, leftRoot, side, targetRightSide, center, immediate);
-                MovePairHandControlWithMidpoint(lHandControl, target, center, side, immediate);
+                MovePairHandControlWithGrabWidthMidpoint(lHandControl, target, center, false, immediate);
                 moved++;
             }
 
@@ -4573,7 +4686,7 @@ public class TargetGrabber : MVRScript
                 Vector3 sideTarget = GetPairOutsidePoint(rightHandTarget, center, side, PAIR_FINAL_OUTSIDE_OFFSET);
                 Vector3 target = GetNipplePairHandTarget(rightRoot, sideTarget, rHandControl, true);
                 LogHoldHandTarget(controller, mode, true, rightHandTarget, sideTarget, target, rightRoot, side, targetRightSide, center, immediate);
-                MovePairHandControlWithMidpoint(rHandControl, target, center, side, immediate);
+                MovePairHandControlWithGrabWidthMidpoint(rHandControl, target, center, true, immediate);
                 moved++;
             }
         }
@@ -6856,20 +6969,24 @@ public class TargetGrabber : MVRScript
             fc.control.position = next;
     }
 
-    private void MovePairHandControlWithMidpoint(FreeControllerV3 fc, Vector3 finalTarget, Vector3 center, Vector3 side, bool immediate)
+    private void MovePairHandControlWithGrabWidthMidpoint(FreeControllerV3 fc, Vector3 finalTarget, Vector3 center, bool actualRightHand, bool immediate)
     {
         if (fc == null)
             return;
 
-        if (immediate || side.sqrMagnitude < 0.0001f)
+        Vector3 depthAxis = GetFinalPointDepthAxis(center);
+        Vector3 viewRight = GetFinalPointSideAxis(depthAxis, Vector3.right);
+        float openWidth = GetGrabWidth();
+        Vector3 midTarget = finalTarget + (actualRightHand ? viewRight : -viewRight) * openWidth;
+
+        if (immediate)
         {
-            MoveControl(fc, finalTarget, Quaternion.identity, false, immediate);
+            MoveControl(fc, finalTarget, Quaternion.identity, false, true);
+            ApplyPairFinalWristIn(fc, center, actualRightHand, true);
             return;
         }
 
         EnsurePositionStateOn(fc);
-
-        Vector3 midTarget = GetPairOutsidePoint(finalTarget, center, side, PAIR_HAND_MID_OUTSIDE_OFFSET);
 
         float t = GetMoveTLinear();
 
@@ -6892,6 +7009,56 @@ public class TargetGrabber : MVRScript
         fc.transform.position = next;
         if (fc.control != null)
             fc.control.position = next;
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[PAIR HAND MID ROUTE] hand=" + (actualRightHand ? "R" : "L") +
+                " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " openWidth=" + openWidth.ToString("F3", CultureInfo.InvariantCulture) +
+                " viewRight=" + FormatVector3(viewRight) +
+                " mid=" + FormatVector3(midTarget) +
+                " final=" + FormatVector3(finalTarget) +
+                " current=" + FormatVector3(GetControlPosition(fc)));
+        }
+
+        if (t >= 1.0f)
+            ApplyPairFinalWristIn(fc, center, actualRightHand, false);
+    }
+
+    private void ApplyPairFinalWristIn(FreeControllerV3 fc, Vector3 center, bool actualRightHand, bool immediate)
+    {
+        if (fc == null)
+            return;
+
+        if (!ShouldAlignHandPalm())
+        {
+            if (IsDebugEnabled())
+                DebugLog("[PAIR WRIST IN SKIP] reason=align-hand-palm-off hand=" + (actualRightHand ? "R" : "L"));
+            return;
+        }
+
+        Vector3 movedPosition = GetControlPosition(fc);
+        bool frontSide = IsTargetPersonMode() && selectedTargetPerson != null
+            ? IsGrabberInFrontOfTargetPerson(center)
+            : false;
+        Quaternion baseRotation = GetFixedHandBaseRotation(GetHandRotationOffset(), actualRightHand, actualRightHand, frontSide);
+        Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, "In");
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, "In", fallbackRotation);
+
+        MoveControl(fc, movedPosition, finalRotation, true, true);
+
+        if (IsDebugEnabled())
+        {
+            Vector3 finalEuler = finalRotation.eulerAngles;
+            DebugLog("[PAIR WRIST IN] hand=" + (actualRightHand ? "R" : "L") +
+                " apply=button-preset" +
+                " immediate=" + Bool01(immediate) +
+                " pos=" + FormatVector3(movedPosition) +
+                " center=" + FormatVector3(center) +
+                " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
+        }
     }
 
     private Vector3 GetSideOffset(bool rightSide, Vector3 side, float width)
@@ -7581,8 +7748,8 @@ public class TargetGrabber : MVRScript
 
     private Quaternion ApplyAutoPalmFacingWristRotation(Quaternion baseRotation, Vector3 controlPosition, Vector3 startPosition, Vector3 center, bool pathRightSide, bool actualRightHand, bool frontSide)
     {
-        if (IsHugBodyTarget())
-            return ApplyHugBodyDirectionalWristRotation(baseRotation, controlPosition, startPosition, center, pathRightSide, actualRightHand, frontSide);
+        if (ShouldUseFinalPointWristRoute())
+            return ApplyFinalPointDepthWristRotation(baseRotation, controlPosition, startPosition, center, pathRightSide, actualRightHand, frontSide);
 
         Vector3 targetDir = center - controlPosition;
         if (targetDir.sqrMagnitude < 0.0001f)
@@ -7673,6 +7840,71 @@ public class TargetGrabber : MVRScript
         Quaternion targetLocalRot = actualRightHand ? pose.RHand.LocalRot : pose.LHand.LocalRot;
         targetLocalRot = NormalizeQuaternion(targetLocalRot);
         return rootT.rotation * targetLocalRot;
+    }
+
+
+    private bool ShouldUseFinalPointWristRoute()
+    {
+        if (!IsTargetPersonMode())
+            return false;
+
+        // Keep these specialized intimate/small-target routes as-is.  They have their own palm/rotation rules.
+        if (IsPeniMode() || IsGenMode() || IsAnusMode() || IsGroinMode())
+            return false;
+
+        return true;
+    }
+
+    private Quaternion ApplyFinalPointDepthWristRotation(Quaternion baseRotation, Vector3 handPos, Vector3 startPosition, Vector3 center, bool pathRightSide, bool actualRightHand, bool frontSide)
+    {
+        // LogHandRotationDebug calls rotation calculation with Vector3.zero.
+        // Do not let that debug probe decide the final-point wrist direction.
+        if (handPos.sqrMagnitude < 0.0001f)
+            return baseRotation;
+
+        Vector3 depthAxis = GetFinalPointDepthAxis(center);
+        float depth = Vector3.Dot(handPos - center, depthAxis);
+
+        // depthAxis is actor/self -> target.
+        //   depth < -threshold : hand is still before the target from actor view => Wrist Out.
+        //   otherwise          : hand reached target center or beyond => Wrist In.
+        string mode = "In";
+        string reason = "center-or-beyond-in";
+        if (IsSingleHandFootKneeTargetMode())
+        {
+            mode = "In";
+            reason = "single-limb-target-fixed-in";
+        }
+        else if (depth < -FINAL_POINT_WRIST_DEPTH_THRESHOLD)
+        {
+            mode = "Out";
+            reason = "front-before-target-out";
+        }
+
+        Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, mode);
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, mode, fallbackRotation);
+
+        if (IsDebugEnabled())
+        {
+            Vector3 finalEuler = finalRotation.eulerAngles;
+            DebugLog("[WRIST FINALPOINT] hand=" + (actualRightHand ? "R" : "L") +
+                " mode=" + mode +
+                " apply=button-preset" +
+                " reason=" + reason +
+                " depth=" + depth.ToString("F3", CultureInfo.InvariantCulture) +
+                " threshold=" + FINAL_POINT_WRIST_DEPTH_THRESHOLD.ToString("F3", CultureInfo.InvariantCulture) +
+                " pathRight=" + Bool01(pathRightSide) +
+                " front=" + Bool01(frontSide) +
+                " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")" +
+                " start=" + FormatVector3(startPosition) +
+                " handPos=" + FormatVector3(handPos) +
+                " center=" + FormatVector3(center) +
+                " depthAxis=" + FormatVector3(depthAxis));
+        }
+
+        return finalRotation;
     }
 
     private Quaternion ApplyHugBodyDirectionalWristRotation(Quaternion baseRotation, Vector3 handPos, Vector3 startPosition, Vector3 center, bool pathRightSide, bool actualRightHand, bool frontSide)
@@ -7950,6 +8182,109 @@ public class TargetGrabber : MVRScript
         return baseRot * Quaternion.Euler(xOffset, yOffset, zOffset);
     }
 
+
+    private void SnapHandControlPosition(FreeControllerV3 handControl, Vector3 target)
+    {
+        if (handControl == null)
+            return;
+
+        EnsurePositionStateOn(handControl);
+        handControl.transform.position = target;
+        if (handControl.control != null)
+            handControl.control.position = target;
+    }
+
+    private void MoveHandControlThenRotateViaMidpoint(FreeControllerV3 handControl, Vector3 midTarget, Vector3 finalTarget, Vector3 center, bool pathRightSide, bool actualRightHand, bool immediate, bool useMidpointRoute)
+    {
+        if (handControl == null)
+            return;
+
+        if (!useMidpointRoute)
+        {
+            MoveHandControlThenRotate(handControl, finalTarget, center, pathRightSide, actualRightHand, immediate);
+            return;
+        }
+
+        if (immediate)
+        {
+            MoveHandControlThenRotate(handControl, finalTarget, center, pathRightSide, actualRightHand, true);
+            return;
+        }
+
+        EnsurePositionStateOn(handControl);
+
+        float t = GetMoveTLinear();
+        Vector3 start;
+        if (!grabStartPositions.TryGetValue(handControl, out start))
+            start = GetControlPosition(handControl);
+
+        Vector3 routePosition;
+        if (t < 0.50f)
+        {
+            float u = Mathf.Clamp01(t / 0.50f);
+            routePosition = Vector3.Lerp(start, midTarget, u);
+        }
+        else
+        {
+            float u = Mathf.Clamp01((t - 0.50f) / 0.50f);
+            routePosition = Vector3.Lerp(midTarget, finalTarget, u);
+        }
+
+        handControl.transform.position = routePosition;
+        if (handControl.control != null)
+            handControl.control.position = routePosition;
+
+        bool doIkSnap = t >= HUG_BODY_IK_SNAP_START_T;
+        if (doIkSnap)
+        {
+            Vector3 beforeSnap = GetControlPosition(handControl);
+            bool snapped = SnapIKControlToBody(selectedPerson, handControl);
+            if (IsDebugEnabled())
+                DebugLog("[HAND IK SNAP] hand=" + (actualRightHand ? "R" : "L") +
+                    " snapped=" + Bool01(snapped) +
+                    " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                    " snapStart=" + HUG_BODY_IK_SNAP_START_T.ToString("F3", CultureInfo.InvariantCulture) +
+                    " route=" + FormatVector3(beforeSnap) +
+                    " ik=" + FormatVector3(GetControlPosition(handControl)) +
+                    " final=" + FormatVector3(finalTarget));
+        }
+
+        if (IsDebugEnabled())
+            DebugLog("[HAND MID ROUTE] hand=" + (actualRightHand ? "R" : "L") +
+                " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " pathRight=" + Bool01(pathRightSide) +
+                " mid=" + FormatVector3(midTarget) +
+                " final=" + FormatVector3(finalTarget) +
+                " current=" + FormatVector3(GetControlPosition(handControl)));
+
+        if (t < 1.0f && !doIkSnap)
+        {
+            if (IsDebugEnabled())
+                DebugLog("[WRIST AUTO WAIT] hand=" + (actualRightHand ? "R" : "L") +
+                    " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                    " target=" + FormatVector3(finalTarget) +
+                    " current=" + FormatVector3(GetControlPosition(handControl)));
+            return;
+        }
+
+        if (IsPeniMode())
+            return;
+
+        if (!ShouldAlignHandPalm())
+        {
+            LogWristAutoSkipDebug("align-hand-palm-off", GetControlPosition(handControl), center, pathRightSide, actualRightHand, false);
+            return;
+        }
+
+        Vector3 movedPosition = GetControlPosition(handControl);
+        Vector3 startPosition;
+        if (!grabStartPositions.TryGetValue(handControl, out startPosition))
+            startPosition = movedPosition;
+
+        Quaternion rotation = GetPalmOrSoleRotation(movedPosition, startPosition, center, GetHandRotationOffset(), true, pathRightSide, actualRightHand);
+        MoveControl(handControl, movedPosition, rotation, true, true);
+    }
+
     private void MoveHandControlThenRotate(FreeControllerV3 handControl, Vector3 target, Vector3 center, bool pathRightSide, bool actualRightHand, bool immediate)
     {
         if (handControl == null)
@@ -7982,6 +8317,11 @@ public class TargetGrabber : MVRScript
                     " current=" + FormatVector3(GetControlPosition(handControl)));
             return;
         }
+
+        // Final IK snap means snapping the IK control to the actual body hand, not forcing the
+        // control onto the requested target point.  Only do this for Hug Body fallback paths.
+        if ((immediate || GetMoveTLinear() >= 1.0f) && IsHugBodyTarget())
+            SnapIKControlToBody(selectedPerson, handControl);
 
         Vector3 movedPosition = GetControlPosition(handControl);
         Vector3 startPosition;
