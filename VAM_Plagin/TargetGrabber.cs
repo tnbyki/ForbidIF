@@ -1,8 +1,8 @@
 // ============================================================
 // TargetGrabber.cs
-// Version: v4.0da_ui_follow_lower_ik_select
+// Version: V5h_hug_body_snap_position_clamp
 // Date: 2026-06-23
-// Base: TargetGrabber_v4_0cq_hug_body_push_pull_depth_axis.cs
+// Base: TargetGrabber_v4_0de_chest_hold_button_release_only.cs
 // Summary:
 // - Keeps Hip Hold Auto Grab Width at 1.50.
 // - Changes other wide person targets that previously auto-set Grab Width to 2.00 down to 0.80.
@@ -18,6 +18,14 @@
 // - v4.0cy: Adds Grab Hand Close/Left/Right and moves Release/Follow controls to the hidden Target Controller area.
 // - v4.0cz: Restores the Target Controller popup, renames Release buttons, reorders Follow/Release/Default controls, and adds target shortcut buttons.
 // - v4.0da: Moves Grab Follow below release/default buttons and places IK Select above target shortcut buttons.
+// - v4.0db: Adds explicit Chest Hold routes for Grab Hand Pull/Push/Up/Down/Open/Close/Left/Right buttons.
+// - v4.0de: Defers Grab Hand utility-button interactable refresh for Chest Hold button routes so Unity/VaM buttons visually release after click.
+// - v4.0df: Compile fix: uses System.Collections.IEnumerator for the deferred button update coroutine.
+// - V5: Chest Hold utility buttons move nipple IK controls directly, and Chest Hold keeps those buttons enabled.
+// - V5b: Adds a strong Hug Body Wrist In bias by increasing the final-point Out threshold for Hug Body only.
+// - V5c: Strengthens the Hug Body Wrist In bias further by raising the Hug Body Out threshold from 0.120m to 0.200m.
+// - V5g: For Hug Body Auto Snap, self hand controls snap position only and keep the final Wrist In rotation.
+// - V5b: Biases Hug Body final wrist strongly toward Wrist In; Out is used only when the final hand remains far on the actor/front side.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -246,6 +254,8 @@ public class TargetGrabber : MVRScript
     private const float HUG_BODY_FINAL_POINT_DEPTH_OFFSET = 0.18f;
     private const float HUG_BODY_IK_SNAP_START_T = 0.985f;
     private const float FINAL_POINT_WRIST_DEPTH_THRESHOLD = 0.025f;
+    private const float HUG_BODY_FINALPOINT_OUT_THRESHOLD = 0.200f;
+    private const float HUG_BODY_IK_SNAP_MAX_OFFSET = 0.040f;
     private const float HUG_BODY_WRIST_NEAR_CENTER_DISTANCE = 0.03f;
     private const float HUG_BODY_WRIST_DEPTH_THRESHOLD = 0.03f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
@@ -319,6 +329,7 @@ public class TargetGrabber : MVRScript
     private UIDynamicButton releaseTargetButton;
     private UIDynamicButton releaseButton;
     private UIDynamicButton swoonDropButton;
+    private Coroutine deferredGrabHandUtilityButtonUpdateRoutine;
 
     private Atom selectedPerson;
     private Atom selectedTargetAtom;
@@ -374,6 +385,7 @@ public class TargetGrabber : MVRScript
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryHandRotationOffStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly Dictionary<FreeControllerV3, PendingWristHandLock> pendingWristHandLocks = new Dictionary<FreeControllerV3, PendingWristHandLock>();
     private readonly Dictionary<FreeControllerV3, Vector3> hugBodyWristReferencePositions = new Dictionary<FreeControllerV3, Vector3>();
+    private readonly Dictionary<FreeControllerV3, Vector3> hugBodyHandSnapAnchorPositions = new Dictionary<FreeControllerV3, Vector3>();
     private readonly List<FreeControllerV3> completedWristHandLocks = new List<FreeControllerV3>();
     private readonly List<FreeControllerV3> pendingSelfFollowTargets = new List<FreeControllerV3>();
     private readonly List<SelfFollowParentLink> activeSelfFollowParentLinks = new List<SelfFollowParentLink>();
@@ -2114,6 +2126,9 @@ public class TargetGrabber : MVRScript
     {
         ResolveControls();
 
+        if (TryRunChestHoldGrabHandPull())
+            return;
+
         List<FreeControllerV3> pullControls = GetGrabHandPullTargetControls();
         if (pullControls.Count == 0)
         {
@@ -2192,6 +2207,9 @@ public class TargetGrabber : MVRScript
     private void GrabHandPush()
     {
         ResolveControls();
+
+        if (TryRunChestHoldGrabHandPush())
+            return;
 
         List<FreeControllerV3> pushControls = GetGrabHandPullTargetControls();
         if (pushControls.Count == 0)
@@ -2274,6 +2292,9 @@ public class TargetGrabber : MVRScript
     {
         ResolveControls();
 
+        if (TryRunChestHoldGrabHandVertical(up))
+            return;
+
         List<FreeControllerV3> baseControls = GetGrabHandPullTargetControls();
         if (baseControls.Count == 0)
         {
@@ -2338,6 +2359,9 @@ public class TargetGrabber : MVRScript
     {
         ResolveControls();
 
+        if (TryRunChestHoldGrabHandOpenClose(true))
+            return;
+
         FreeControllerV3 left;
         FreeControllerV3 right;
         if (TryGetGrabHandOpenTargetControls(out left, out right))
@@ -2372,6 +2396,9 @@ public class TargetGrabber : MVRScript
     private void GrabHandClose()
     {
         ResolveControls();
+
+        if (TryRunChestHoldGrabHandOpenClose(false))
+            return;
 
         FreeControllerV3 left;
         FreeControllerV3 right;
@@ -2417,6 +2444,9 @@ public class TargetGrabber : MVRScript
     private void GrabHandHorizontal(bool right)
     {
         ResolveControls();
+
+        if (TryRunChestHoldGrabHandHorizontal(right))
+            return;
 
         List<FreeControllerV3> baseControls = GetGrabHandPullTargetControls();
         if (baseControls.Count == 0)
@@ -2611,6 +2641,276 @@ public class TargetGrabber : MVRScript
             return chest;
 
         return GetTargetPersonPartControl();
+    }
+
+
+    private bool IsChestHoldTarget()
+    {
+        return IsTargetPersonMode() &&
+               targetPersonPartChooser != null &&
+               targetPersonPartChooser.val == TC_CHEST_HOLD;
+    }
+
+    private bool TryGetChestHoldNippleIKControls(out List<FreeControllerV3> controls, out FreeControllerV3 left, out FreeControllerV3 right)
+    {
+        controls = new List<FreeControllerV3>();
+        left = null;
+        right = null;
+
+        if (!IsChestHoldTarget() || selectedTargetPerson == null)
+            return false;
+
+        left = GetTargetPersonControlByAliases("lNippleControl", "leftNippleControl", "lNipple", "lnipple", "leftNipple", "LeftNipple", "nipple_l", "nippleL");
+        right = GetTargetPersonControlByAliases("rNippleControl", "rightNippleControl", "rNipple", "rnipple", "rightNipple", "RightNipple", "nipple_r", "nippleR");
+
+        AddControlIfNotNull(controls, left);
+        AddControlIfNotNull(controls, right);
+
+        if (controls.Count == 0)
+            AddControlIfNotNull(controls, GetTargetPersonControlByAliases(LRNIPPLE, "lrNipple", "nipplePair", "pairNipple", "nipple"));
+
+        return controls.Count > 0;
+    }
+
+    private bool TryGetChestHoldNippleMoveControls(out List<FreeControllerV3> controls)
+    {
+        FreeControllerV3 left;
+        FreeControllerV3 right;
+        return TryGetChestHoldNippleIKControls(out controls, out left, out right);
+    }
+
+    private List<FreeControllerV3> GetChestHoldUtilityControls()
+    {
+        List<FreeControllerV3> baseControls = new List<FreeControllerV3>();
+        AddControlIfNotNull(baseControls, GetTargetPersonControlByAliases("chestControl", "chest"));
+        return GetUpperBodyPivotControls(baseControls);
+    }
+
+    private FreeControllerV3 GetChestHoldPrimaryControl()
+    {
+        FreeControllerV3 chest = GetTargetPersonControlByAliases("chestControl", "chest");
+        if (chest != null)
+            return chest;
+        return GetUpperBodyPivotPrimaryControl();
+    }
+
+    private bool TryGetChestHoldDepthOffset(bool push, out Vector3 offset, out float amount, out int snappedHands)
+    {
+        offset = Vector3.zero;
+        amount = 0.0f;
+        snappedHands = 0;
+
+        if (!IsChestHoldTarget() || selectedPerson == null || selectedTargetPerson == null)
+            return false;
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        if (!leftActive && !rightActive)
+            return false;
+
+        if (leftActive && SnapIKControlToBody(selectedPerson, lHandControl))
+            snappedHands++;
+        if (rightActive && SnapIKControlToBody(selectedPerson, rHandControl))
+            snappedHands++;
+
+        FreeControllerV3 primary = GetChestHoldPrimaryControl();
+        Vector3 targetPos = primary != null ? GetControlPosition(primary) : GetTargetCenter();
+        Vector3 depthAxis = GetFinalPointDepthAxis(targetPos);
+        depthAxis.y = 0.0f;
+        if (depthAxis.sqrMagnitude < 0.0001f)
+            return false;
+        depthAxis.Normalize();
+
+        amount = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        if (amount <= 0.0001f)
+            return false;
+
+        // Chest Hold uses the same clear pair semantics as Hug Body:
+        // Push = away from the actor, Pull = toward the actor.
+        offset = (push ? depthAxis : -depthAxis) * amount;
+
+        DebugLog("[CHEST HOLD BUTTON " + (push ? "Push" : "Pull") + "]" +
+            " amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+            " offset=" + FormatVector3(offset) +
+            " depthAxis=" + FormatVector3(depthAxis) +
+            " target=" + FormatVector3(targetPos) +
+            " snappedHands=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+
+        return offset.sqrMagnitude > 0.0001f;
+    }
+
+    private int ApplyChestHoldNippleOffset(List<FreeControllerV3> controls, Vector3 offset)
+    {
+        if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
+            return 0;
+
+        PrepareTemporaryRelaxLinkedIK(controls);
+
+        int moved = 0;
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null)
+                continue;
+
+            MoveTargetControlByOffset(fc, offset);
+            if (IsDebugEnabled())
+                DebugLog("[CHEST HOLD NIPPLE MOVE] control=" + fc.name +
+                    " offset=" + FormatVector3(offset) +
+                    " next=" + FormatVector3(GetControlPosition(fc)));
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private void FinishChestHoldNippleButton(bool moved)
+    {
+        RequestDeferredGrabHandUtilityButtonUpdate();
+        StartTimedGrab(true, false, moved, false, true);
+        QueueAutoSnapPullOpenIK(null);
+    }
+
+    private bool TryRunChestHoldGrabHandPull()
+    {
+        Vector3 offset;
+        float amount;
+        int snappedHands;
+        if (!TryGetChestHoldDepthOffset(false, out offset, out amount, out snappedHands))
+            return false;
+
+        List<FreeControllerV3> movedControls;
+        if (!TryGetChestHoldNippleMoveControls(out movedControls))
+        {
+            SetStatus("Chest Hold Pull needs nipple IK");
+            return true;
+        }
+
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+        FinishChestHoldNippleButton(moved);
+
+        SetStatus("Chest Hold Pull / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+        return true;
+    }
+
+    private bool TryRunChestHoldGrabHandPush()
+    {
+        Vector3 offset;
+        float amount;
+        int snappedHands;
+        if (!TryGetChestHoldDepthOffset(true, out offset, out amount, out snappedHands))
+            return false;
+
+        List<FreeControllerV3> movedControls;
+        if (!TryGetChestHoldNippleMoveControls(out movedControls))
+        {
+            SetStatus("Chest Hold Push needs nipple IK");
+            return true;
+        }
+
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+        FinishChestHoldNippleButton(moved);
+
+        SetStatus("Chest Hold Push / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
+        return true;
+    }
+
+    private bool TryRunChestHoldGrabHandVertical(bool up)
+    {
+        if (!IsChestHoldTarget())
+            return false;
+
+        List<FreeControllerV3> movedControls;
+        if (!TryGetChestHoldNippleMoveControls(out movedControls))
+        {
+            SetStatus(up ? "Chest Hold Up needs nipple IK" : "Chest Hold Down needs nipple IK");
+            return true;
+        }
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_VERTICAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = new Vector3(0.0f, up ? moveDistance : -moveDistance, 0.0f);
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+
+        FinishChestHoldNippleButton(moved);
+
+        SetStatus((up ? "Chest Hold Up" : "Chest Hold Down") +
+            " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / y=" + offset.y.ToString("F3", CultureInfo.InvariantCulture));
+        return true;
+    }
+
+    private bool TryRunChestHoldGrabHandHorizontal(bool right)
+    {
+        if (!IsChestHoldTarget())
+            return false;
+
+        List<FreeControllerV3> movedControls;
+        if (!TryGetChestHoldNippleMoveControls(out movedControls))
+        {
+            SetStatus(right ? "Chest Hold Right needs nipple IK" : "Chest Hold Left needs nipple IK");
+            return true;
+        }
+
+        Vector3 side = GetActorViewSideAxisForControls(movedControls);
+        if (side.sqrMagnitude < 0.0001f)
+        {
+            SetStatus(right ? "Chest Hold Right / no side axis" : "Chest Hold Left / no side axis");
+            return true;
+        }
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_HORIZONTAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = (right ? side.normalized : -side.normalized) * moveDistance;
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        bool moved = movedCount > 0;
+
+        FinishChestHoldNippleButton(moved);
+
+        SetStatus((right ? "Chest Hold Right" : "Chest Hold Left") +
+            " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / x=" + moveDistance.ToString("F3", CultureInfo.InvariantCulture));
+        return true;
+    }
+
+    private bool TryRunChestHoldGrabHandOpenClose(bool open)
+    {
+        if (!IsChestHoldTarget())
+            return false;
+
+        List<FreeControllerV3> movedControls;
+        FreeControllerV3 left;
+        FreeControllerV3 right;
+        if (!TryGetChestHoldNippleIKControls(out movedControls, out left, out right))
+        {
+            SetStatus(open ? "Chest Hold Open needs nipple IK" : "Chest Hold Close needs nipple IK");
+            return true;
+        }
+
+        if (left == null || right == null || left == right)
+        {
+            SetStatus(open ? "Chest Hold Open needs L/R nipple IK" : "Chest Hold Close needs L/R nipple IK");
+            return true;
+        }
+
+        PrepareTemporaryRelaxLinkedIK(movedControls);
+        if (open)
+            ApplyGrabHandOpenOffset(left, right);
+        else
+            ApplyGrabHandCloseOffset(left, right);
+
+        FinishChestHoldNippleButton(true);
+
+        SetStatus((open ? "Chest Hold Open" : "Chest Hold Close") +
+            " / nipple=2" +
+            " / distance=" + GRAB_HAND_OPEN_DISTANCE.ToString("F3", CultureInfo.InvariantCulture));
+        DebugLog("[CHEST HOLD BUTTON " + (open ? "Open" : "Close") + "]" +
+            " nipple=2 distance=" + GRAB_HAND_OPEN_DISTANCE.ToString("F3", CultureInfo.InvariantCulture));
+        return true;
     }
 
     private bool TryGetUpperBodyPivotPushOffset(out Vector3 pushOffset, out float maxDistance, out int snappedHands)
@@ -3356,6 +3656,27 @@ public class TargetGrabber : MVRScript
             " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture));
     }
 
+    private void RequestDeferredGrabHandUtilityButtonUpdate()
+    {
+        if (deferredGrabHandUtilityButtonUpdateRoutine != null)
+        {
+            try { StopCoroutine(deferredGrabHandUtilityButtonUpdateRoutine); }
+            catch { }
+            deferredGrabHandUtilityButtonUpdateRoutine = null;
+        }
+
+        deferredGrabHandUtilityButtonUpdateRoutine = StartCoroutine(DeferredGrabHandUtilityButtonUpdateRoutine());
+    }
+
+    private System.Collections.IEnumerator DeferredGrabHandUtilityButtonUpdateRoutine()
+    {
+        // Do not change Button.interactable while the Unity/VaM button is still processing its click.
+        // If interactable is toggled inside the onClick call stack, the button can remain visually pressed.
+        yield return null;
+        deferredGrabHandUtilityButtonUpdateRoutine = null;
+        UpdateGrabHandUtilityButtons();
+    }
+
     private void UpdateGrabHandUtilityButtons()
     {
         bool pullEnabled = GetGrabHandPullTargetControls().Count > 0;
@@ -3363,16 +3684,32 @@ public class TargetGrabber : MVRScript
         bool verticalEnabled = pullEnabled;
         bool horizontalEnabled = pullEnabled;
         bool openEnabled = false;
+
+        if (IsChestHoldTarget())
+        {
+            pullEnabled = true;
+            pushEnabled = true;
+            verticalEnabled = true;
+            horizontalEnabled = true;
+            openEnabled = true;
+
+            if (IsDebugEnabled())
+                DebugLog("[CHEST HOLD BUTTON ENABLE V5] pull=1 push=1 vertical=1 horizontal=1 openClose=1");
+        }
+
         FreeControllerV3 left;
         FreeControllerV3 right;
-        if (TryGetGrabHandOpenTargetControls(out left, out right))
-            openEnabled = true;
-        else
+        if (!IsChestHoldTarget())
         {
-            FreeControllerV3 single;
-            bool singleRightSide;
-            if (TryGetGrabHandOpenSingleTargetControl(out single, out singleRightSide))
+            if (TryGetGrabHandOpenTargetControls(out left, out right))
                 openEnabled = true;
+            else
+            {
+                FreeControllerV3 single;
+                bool singleRightSide;
+                if (TryGetGrabHandOpenSingleTargetControl(out single, out singleRightSide))
+                    openEnabled = true;
+            }
         }
 
         if (grabHandPullButton != null && grabHandPullButton.button != null)
@@ -4058,15 +4395,65 @@ public class TargetGrabber : MVRScript
         if (best == null)
             return false;
 
-        fc.transform.position = best.position;
-        fc.transform.rotation = best.rotation;
+        bool hugBodySelfHandPositionOnly = IsHugBodyTarget() && atom == selectedPerson && IsSelfHandControl(fc);
+
+        Vector3 snapPosition = best.position;
+        bool snapClamped = false;
+        float rawSnapDistance = 0.0f;
+        Vector3 snapAnchor = current;
+
+        // V5h:
+        // For Hug Body self hands, copying the real body hand position 100% can pull the IK
+        // away from the chest-side final route when the body hand is still on the far/deep side.
+        // Keep the final Wrist In rotation, but clamp the position snap from the route final
+        // toward the real body hand. This preserves chest approach while still doing a small
+        // VaM body-hand resync.
+        if (hugBodySelfHandPositionOnly)
+        {
+            if (!hugBodyHandSnapAnchorPositions.TryGetValue(fc, out snapAnchor))
+                snapAnchor = current;
+
+            rawSnapDistance = Vector3.Distance(snapAnchor, best.position);
+            if (rawSnapDistance > HUG_BODY_IK_SNAP_MAX_OFFSET && rawSnapDistance > 0.0001f)
+            {
+                snapPosition = snapAnchor + (best.position - snapAnchor).normalized * HUG_BODY_IK_SNAP_MAX_OFFSET;
+                snapClamped = true;
+            }
+        }
+
+        fc.transform.position = snapPosition;
+        if (!hugBodySelfHandPositionOnly)
+            fc.transform.rotation = best.rotation;
+
         if (fc.control != null)
         {
-            fc.control.position = best.position;
-            fc.control.rotation = best.rotation;
+            fc.control.position = snapPosition;
+            if (!hugBodySelfHandPositionOnly)
+                fc.control.rotation = best.rotation;
+        }
+
+        if (hugBodySelfHandPositionOnly && IsDebugEnabled())
+        {
+            Vector3 e = GetControlRotation(fc).eulerAngles;
+            DebugLog("[HAND IK SNAP POS CLAMP] hand=" + (fc == rHandControl ? "R" : "L") +
+                " reason=hug-body-keep-final-wrist-in" +
+                " clamp=" + Bool01(snapClamped) +
+                " max=" + HUG_BODY_IK_SNAP_MAX_OFFSET.ToString("F3", CultureInfo.InvariantCulture) +
+                " rawDist=" + rawSnapDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                " anchor=" + FormatVector3(snapAnchor) +
+                " body=" + FormatVector3(best.position) +
+                " applied=" + FormatVector3(snapPosition) +
+                " keepEuler=(" + e.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    e.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    e.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
         }
 
         return true;
+    }
+
+    private bool IsSelfHandControl(FreeControllerV3 fc)
+    {
+        return fc != null && (fc == lHandControl || fc == rHandControl);
     }
 
     private void PrepareTemporaryRelaxLinkedIK(List<FreeControllerV3> targetControls)
@@ -8076,6 +8463,7 @@ public class TargetGrabber : MVRScript
         pendingWristHandLocks.Clear();
         completedWristHandLocks.Clear();
         hugBodyWristReferencePositions.Clear();
+        hugBodyHandSnapAnchorPositions.Clear();
     }
 
     private void ApplyBothHandWristTest(string mode)
@@ -8734,17 +9122,23 @@ public class TargetGrabber : MVRScript
         // depthAxis is actor/self -> target.
         //   depth < -threshold : hand is still before the target from actor view => Wrist Out.
         //   otherwise          : hand reached target center or beyond => Wrist In.
+        // V5b:
+        //   Hug Body closes around the torso and often ends near the center line.
+        //   The generic 0.025m threshold was too eager and made the final wrist pick Out.
+        //   For Hug Body, keep Wrist In unless the final hand is very clearly far on the actor/front side.
+        bool hugBodyWristBias = IsHugBodyTarget();
+        float outThreshold = hugBodyWristBias ? HUG_BODY_FINALPOINT_OUT_THRESHOLD : FINAL_POINT_WRIST_DEPTH_THRESHOLD;
         string mode = "In";
-        string reason = "center-or-beyond-in";
+        string reason = hugBodyWristBias ? "hug-body-in-biased" : "center-or-beyond-in";
         if (IsSingleHandFootKneeTargetMode())
         {
             mode = "In";
             reason = "single-limb-hand-foot-knee-fixed-in";
         }
-        else if (depth < -FINAL_POINT_WRIST_DEPTH_THRESHOLD)
+        else if (depth < -outThreshold)
         {
             mode = "Out";
-            reason = "front-before-target-out";
+            reason = hugBodyWristBias ? "hug-body-far-front-out" : "front-before-target-out";
         }
 
         Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, mode);
@@ -8758,7 +9152,8 @@ public class TargetGrabber : MVRScript
                 " apply=button-preset" +
                 " reason=" + reason +
                 " depth=" + depth.ToString("F3", CultureInfo.InvariantCulture) +
-                " threshold=" + FINAL_POINT_WRIST_DEPTH_THRESHOLD.ToString("F3", CultureInfo.InvariantCulture) +
+                " threshold=" + outThreshold.ToString("F3", CultureInfo.InvariantCulture) +
+                " hugBias=" + Bool01(hugBodyWristBias) +
                 " pathRight=" + Bool01(pathRightSide) +
                 " front=" + Bool01(frontSide) +
                 " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
@@ -9101,6 +9496,8 @@ public class TargetGrabber : MVRScript
             handControl.control.position = routePosition;
 
         bool doIkSnap = t >= HUG_BODY_IK_SNAP_START_T;
+        if (IsHugBodyTarget() && IsSelfHandControl(handControl))
+            hugBodyHandSnapAnchorPositions[handControl] = finalTarget;
         if (doIkSnap)
         {
             Vector3 beforeSnap = GetControlPosition(handControl);
@@ -9187,7 +9584,11 @@ public class TargetGrabber : MVRScript
         // Final IK snap means snapping the IK control to the actual body hand, not forcing the
         // control onto the requested target point.  Only do this for Hug Body fallback paths.
         if ((immediate || GetMoveTLinear() >= 1.0f) && IsHugBodyTarget())
+        {
+            if (IsSelfHandControl(handControl))
+                hugBodyHandSnapAnchorPositions[handControl] = target;
             SnapIKControlToBody(selectedPerson, handControl);
+        }
 
         Vector3 movedPosition = GetControlPosition(handControl);
         Vector3 startPosition;

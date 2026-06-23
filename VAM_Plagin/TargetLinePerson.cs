@@ -1,3 +1,17 @@
+// DEPTH_AUTO_RAWHUD_RESTORE_BUILD 2026-06-24: Renames Depth Probe Rate ON to Auto, keeps Performance Mode-linked probe pacing, and restores internal Raw HUD Probe for the HUD graph/FX while keeping debug toggles hidden.
+// HUD_GRAPH_FX_DEFAULT_ON_BUILD 2026-06-24: Keeps Performance Mode and Depth Probe Rate visible, keeps Depth HUD graph and HUD FX visible, and defaults HUD graph/FX ON for screen-following HUD operation.
+// DEPTH_RATE_ON_HUD_SYNC_BUILD 2026-06-24: Adds Depth Probe Rate=Auto mode driven by Performance Mode; Quality/Balanced update HUD/probe pacing fast enough for screen-following HUD, while Light remains throttled.
+// UI_CLEANUP_RUNTIME_PERF_TOGGLES_BUILD 2026-06-24: Hides runtime perf feature toggles and keeps those features always enabled; Depth Probe Rate and Perf Probe Timing Log remain visible. Performance Mode remains active.
+// UI_FINAL_DEPTH_RATE_BUILD 2026-06-24: Keeps existing probe/HUD/reaction features, hides ineffective debug toggles from UI, keeps Depth Probe Rate and Perf Probe Timing Log visible; Transform Cache remains always ON.
+// PROBE_RAW_TOGGLES_RATE_BUILD 2026-06-24: Adds lower probe rates and separate Raw HUD/Event probe toggles to isolate duplicate heavy sampling.
+// PERF_PROBE_DEEP_DIVE_BUILD 2026-06-24: Removes ineffective raw-event toggle, adds transform-cache/body-gate/bookkeeping switches, and logs main probe sub-timings.
+// DEPTH_PROBE_RATE_TIMING_BUILD 2026-06-24: Adds 5/2/1 FPS depth-probe rates plus Perf Probe Timing Log for coarse block timing.
+// DEPTH_PROBE_RATE_BUILD 2026-06-24: Adds Depth Probe Rate chooser to throttle expensive probe/event/HUD sampling without disabling motion.
+// RUNTIME_FEATURE_TOGGLE_SPLIT_BUILD 2026-06-24: Splits broad Perf Motion Update into Placement/Upper Lower/P Follow/Depth Probe toggles for performance isolation.
+// RUNTIME_FEATURE_TOGGLES_BUILD 2026-06-24: Replaces Feature Cut Mode combo with individual runtime feature toggles for performance isolation.
+// FEATURE_CUT_MODES_BUILD 2026-06-24: Adds Feature Cut Mode combo (Full/No HUD/No Reactions/Motion Only/Docking Only) to isolate heavy runtime features.
+// PROBE_UI_CLEANUP_BUILD 2026-06-24: Hides ineffective/developer perf toggles, forces transform cache ON, keeps only useful probe controls.
+// P_MID_G_ALIGN_BUTTON_BUILD 2026-06-23: Adds a PUSH-adjacent button that places P Mid and P Tip onto the live genital G line.
 // P_MID_AXIS_ASSIST_TRIGGER_CONFIRM_BUILD 2026-06-22: Uses BodyTouchTriggerProbe Gen contact to confirm/scale P Mid Axis Assist.
 // P_MID_AXIS_ASSIST_BUILD 2026-06-22: Nudges P Mid/Base toward the Gen axis when Tip is already entering, reducing side-entry look from behind.
 // TARGET_SWITCH_KEEP_DISTANCE_BUILD 2026-06-22: Keeps Distance when switching directly between Gen and Anus targets.
@@ -150,6 +164,30 @@ public class TargetLinePerson : MVRScript
     JSONStorableStringChooser targetPersonChooser;
     JSONStorableStringChooser targetControllerChooser;
     JSONStorableStringChooser performanceModeChooser;
+    JSONStorableBool runtimePlacement;
+    JSONStorableBool runtimeUpperLower;
+    JSONStorableBool runtimePFollow;
+    JSONStorableBool runtimeDepthProbe;
+    JSONStorableStringChooser depthProbeRateChooser;
+    JSONStorableBool perfProbeTimingLog;
+    JSONStorableBool perfRawHudProbe;
+    JSONStorableBool perfRawEventProbe; // hidden/forced off in v199: raw event probe had no measurable effect
+    JSONStorableBool perfReactionFallbackProbe;
+    JSONStorableBool perfTransformCache;
+    JSONStorableBool perfMainBodyGate;
+    JSONStorableBool perfMainBookkeeping;
+    float lastPerfProbeTimingLogTime = -999.0f;
+    float lastDepthProbeUpdateTime = -999.0f;
+    int lastDepthProbeDecisionFrame = -1;
+    bool lastDepthProbeDecisionRun = true;
+    float lastPerfMainLineMs = 0.0f;
+    float lastPerfMainCalcMs = 0.0f;
+    float lastPerfMainGateMs = 0.0f;
+    float lastPerfMainBookMs = 0.0f;
+    JSONStorableBool runtimeHud;
+    JSONStorableBool runtimeReactions;
+    JSONStorableBool runtimePushAuto;
+    JSONStorableBool runtimeDynamicVisuals;
 
     JSONStorableFloat distance;
     JSONStorableFloat orbitAngle;
@@ -504,6 +542,8 @@ public class TargetLinePerson : MVRScript
     const float PMidAxisAssistBaseScale = 0.38f;
     const float PMidAxisAssistUnconfirmedScale = 0.35f;
     const float PMidAxisAssistLogInterval = 2.5f;
+    const float PMidGAlignBaseFollowScale = 0.35f;
+    const float PMidGAlignBaseMaxMove = 0.035f;
     const float PDynamicForwardKeepShapeMinUpAngleDegrees = 8.0f;
     const float PTipYellowGuideTangentSmoothDistance = 0.055f;
     const float PTipYellowGuideEndExtendMax = 0.45f;
@@ -610,6 +650,25 @@ public class TargetLinePerson : MVRScript
     const string PerformanceModeQuality = "Quality";
     const string PerformanceModeBalanced = "Balanced";
     const string PerformanceModeLight = "Light";
+    const string DepthProbeRateOn = "Auto";
+    const string DepthProbeRateEveryFrame = "Every Frame";
+    const string DepthProbeRate30Fps = "30 FPS";
+    const string DepthProbeRate20Fps = "20 FPS";
+    const string DepthProbeRate10Fps = "10 FPS";
+    const string DepthProbeRate5Fps = "5 FPS";
+    const string DepthProbeRate2Fps = "2 FPS";
+    const string DepthProbeRate1Fps = "1 FPS";
+    const string DepthProbeRateHalfFps = "0.5 FPS";
+    const string DepthProbeRateQuarterFps = "0.25 FPS";
+    const string DepthProbeRateTenthFps = "0.1 FPS";
+    const string DepthProbeRateTwentiethFps = "0.05 FPS";
+    const string DepthProbeRateOff = "Off";
+    const float PerfProbeTimingLogInterval = 1.00f;
+    const string FeatureCutModeFull = "Full";
+    const string FeatureCutModeNoHud = "No HUD";
+    const string FeatureCutModeNoReactions = "No Reactions";
+    const string FeatureCutModeMotionOnly = "Motion Only";
+    const string FeatureCutModeDockingOnly = "Docking Only";
     const float GenDepthHudSampleInterval = 0.050f;
     const float DebugLineRenderInterval = 0.050f;
     const float GenDepthHudGContactDotBelowScale = 1.45f;
@@ -756,6 +815,8 @@ public class TargetLinePerson : MVRScript
     bool genHeadDepthDeepActive;
     bool genHeadDepthHadInside;
     float lastGenHeadDepthSourceLogTime = -999.0f;
+    string lastFeatureCutClearKey = "";
+    string lastFeatureCutReactionClearKey = "";
 
     class GenTgRuntime
     {
@@ -780,6 +841,8 @@ public class TargetLinePerson : MVRScript
     readonly Dictionary<string, Atom> atomCache = new Dictionary<string, Atom>();
     readonly Dictionary<string, FreeControllerV3> controllerContainsCache = new Dictionary<string, FreeControllerV3>();
     readonly Dictionary<string, FreeControllerV3> controllerExactCache = new Dictionary<string, FreeControllerV3>();
+    readonly Dictionary<string, Transform> childTransformExactCache = new Dictionary<string, Transform>();
+    readonly Dictionary<string, Transform> childTransformSuffixCache = new Dictionary<string, Transform>();
 
     class GenDepthBurstParticle
     {
@@ -866,6 +929,11 @@ public class TargetLinePerson : MVRScript
             ActionPushP();
         });
 
+        CreateButton("P Mid G Align", true).button.onClick.AddListener(delegate
+        {
+            ActionPMidGAlign();
+        });
+
         pushAutoMode = new JSONStorableStringChooser(
             "PUSH Auto Mode",
             new List<string>()
@@ -948,6 +1016,87 @@ public class TargetLinePerson : MVRScript
         );
         RegisterStringChooser(performanceModeChooser);
         CreateScrollablePopup(performanceModeChooser);
+
+        runtimePlacement = new JSONStorableBool("Perf Placement", true);
+        RegisterBool(runtimePlacement);
+
+        runtimeUpperLower = new JSONStorableBool("Perf Upper Lower", true);
+        RegisterBool(runtimeUpperLower);
+
+        runtimePFollow = new JSONStorableBool("Perf P Follow", true);
+        RegisterBool(runtimePFollow);
+
+        runtimeDepthProbe = new JSONStorableBool("Perf Depth Probe", true);
+        RegisterBool(runtimeDepthProbe);
+        // v202: runtime feature toggles are hidden and forced ON in IsRuntime*Enabled().
+        // Depth Probe Rate remains the visible control for probe pacing/off.
+
+        depthProbeRateChooser = new JSONStorableStringChooser(
+            "Depth Probe Rate",
+            new List<string>()
+            {
+                DepthProbeRateOn,
+                DepthProbeRateEveryFrame,
+                DepthProbeRate30Fps,
+                DepthProbeRate20Fps,
+                DepthProbeRate10Fps,
+                DepthProbeRate5Fps,
+                DepthProbeRate2Fps,
+                DepthProbeRate1Fps,
+                DepthProbeRateHalfFps,
+                DepthProbeRateQuarterFps,
+                DepthProbeRateTenthFps,
+                DepthProbeRateTwentiethFps,
+                DepthProbeRateOff
+            },
+            DepthProbeRateOn,
+            "Depth Probe Rate"
+        );
+        depthProbeRateChooser.setCallbackFunction = OnDepthProbeRateChanged;
+        RegisterStringChooser(depthProbeRateChooser);
+        CreateScrollablePopup(depthProbeRateChooser);
+
+        perfProbeTimingLog = new JSONStorableBool("Perf Probe Timing Log", false);
+        RegisterBool(perfProbeTimingLog);
+        CreateToggle(perfProbeTimingLog);
+
+        // v201: keep the feature paths, but hide debug toggles that showed no practical runtime value.
+        // v205: keep this hidden, but restore it internally so the HUD graph/FX value path stays live.
+        // Transform Cache stays forced ON, so this no longer takes the old heavy transform-scan path.
+        perfRawHudProbe = new JSONStorableBool("Perf Raw HUD Probe", true);
+        RegisterBool(perfRawHudProbe);
+
+        // Raw Event Probe stayed near 0ms in testing, so it is hidden and forced off.
+        perfRawEventProbe = new JSONStorableBool("Perf Raw Event Probe", false);
+        RegisterBool(perfRawEventProbe);
+
+        // Reaction fallback path is retained, but hidden and normally OFF.
+        perfReactionFallbackProbe = new JSONStorableBool("Perf Reaction Fallback Probe", false);
+        RegisterBool(perfReactionFallbackProbe);
+
+        // Transform Cache was the decisive win in testing, so keep it always ON and hide the toggle.
+        perfTransformCache = new JSONStorableBool("Perf Transform Cache", true);
+        RegisterBool(perfTransformCache);
+
+        // Body Gate / Bookkeeping are retained with normal behavior and hidden.
+        perfMainBodyGate = new JSONStorableBool("Perf Main Body Gate", true);
+        RegisterBool(perfMainBodyGate);
+
+        perfMainBookkeeping = new JSONStorableBool("Perf Main Bookkeeping", true);
+        RegisterBool(perfMainBookkeeping);
+
+        runtimeHud = new JSONStorableBool("Perf HUD", true);
+        RegisterBool(runtimeHud);
+
+        runtimeReactions = new JSONStorableBool("Perf Reactions", true);
+        RegisterBool(runtimeReactions);
+
+        runtimePushAuto = new JSONStorableBool("Perf PUSH Auto", true);
+        RegisterBool(runtimePushAuto);
+
+        runtimeDynamicVisuals = new JSONStorableBool("Perf Dynamic Visuals", true);
+        RegisterBool(runtimeDynamicVisuals);
+        // v202: hidden; keep dynamic visuals enabled under normal operation.
 
         switchRetractOnTargetChange = new JSONStorableBool(
             "Switch Retract",
@@ -1174,7 +1323,7 @@ public class TargetLinePerson : MVRScript
 
         genDepthHudFx = new JSONStorableBool(
             "HUD FX",
-            false
+            true
         );
         RegisterBool(genDepthHudFx);
         CreateToggle(genDepthHudFx);
@@ -1354,7 +1503,7 @@ public class TargetLinePerson : MVRScript
 
         RegisterExternalActions();
 
-        LogMessageIfDebug("[TargetLinePerson] Ready / v190 Switch Retract horizontal hip/root + silent HBA clear / Anus HBA common event / Auto Line Slow linear / no TG/Head UI");
+        LogMessageIfDebug("[TargetLinePerson] Ready / v194 runtime feature split toggles / P Mid G Align button");
     }
 
 
@@ -1403,6 +1552,7 @@ public class TargetLinePerson : MVRScript
     void RegisterExternalActions()
     {
         RegisterAction(new JSONStorableAction("PUSH", ActionPushP));
+        RegisterAction(new JSONStorableAction("P Mid G Align", ActionPMidGAlign));
         RegisterAction(new JSONStorableAction("Now Docking", ActionNowDocking));
         RegisterAction(new JSONStorableAction("Smart Docking", ActionSmartDocking));
         RegisterAction(new JSONStorableAction("Reverse Smart Docking", ActionReverseSmartDocking));
@@ -1846,9 +1996,29 @@ public class TargetLinePerson : MVRScript
                 ProcessDelayedGuideRefresh();
             }
 
-            UpdateDynamicRedLineDisplayIfNeeded();
-            UpdatePushAutoGDepthTrigger();
-            UpdateDebugLines(showLines.val);
+            if (!IsFeatureCutNoDynamicVisuals())
+            {
+                UpdateDynamicRedLineDisplayIfNeeded();
+            }
+            else
+            {
+                hasDynamicRedLineDisplay = false;
+                dynamicYellowEndFrozen = false;
+            }
+
+            if (!IsFeatureCutNoPushAuto())
+            {
+                if (ShouldRunDepthProbeNow())
+                {
+                    UpdatePushAutoGDepthTrigger();
+                }
+            }
+            else
+            {
+                ResetPushAutoGDepthTriggerState("feature cut no push auto");
+            }
+
+            UpdateDebugLines(!IsFeatureCutNoDynamicVisuals() && showLines.val);
             UpdateInsertDebugText();
             return;
         }
@@ -1857,9 +2027,28 @@ public class TargetLinePerson : MVRScript
 
         if (followTarget.val && !isAvoidMoving && !targetSwitchRetractBusy)
         {
-            ApplyPlacement();
-            ApplyUpperBodyLowerByYellowPathIfNeeded("update");
-            ApplyPAngleAtYellowP3IfNeeded("update");
+            if (IsRuntimePlacementEnabled())
+            {
+                ApplyPlacement();
+            }
+
+            if (IsRuntimeUpperLowerEnabled())
+            {
+                ApplyUpperBodyLowerByYellowPathIfNeeded("update");
+            }
+            else
+            {
+                ResetUpperBodyLowerIfApplied("perf upper lower off");
+            }
+
+            if (IsRuntimePFollowEnabled())
+            {
+                ApplyPAngleAtYellowP3IfNeeded("update");
+            }
+            else
+            {
+                ResetPAngleAtYellowP3IfApplied("perf p follow off");
+            }
         }
         else
         {
@@ -1867,9 +2056,29 @@ public class TargetLinePerson : MVRScript
             ResetPAngleAtYellowP3IfApplied("follow off or avoid or switch retract");
         }
 
-        UpdateDynamicRedLineDisplayIfNeeded();
-        UpdatePushAutoGDepthTrigger();
-        UpdateDebugLines(showLines.val);
+        if (!IsFeatureCutNoDynamicVisuals())
+        {
+            UpdateDynamicRedLineDisplayIfNeeded();
+        }
+        else
+        {
+            hasDynamicRedLineDisplay = false;
+            dynamicYellowEndFrozen = false;
+        }
+
+        if (!IsFeatureCutNoPushAuto())
+        {
+            if (ShouldRunDepthProbeNow())
+            {
+                UpdatePushAutoGDepthTrigger();
+            }
+        }
+        else
+        {
+            ResetPushAutoGDepthTriggerState("feature cut no push auto");
+        }
+
+        UpdateDebugLines(!IsFeatureCutNoDynamicVisuals() && showLines.val);
         UpdateInsertDebugText();
     }
 
@@ -1888,6 +2097,357 @@ public class TargetLinePerson : MVRScript
         return performanceModeChooser.val;
     }
 
+    bool IsRuntimePlacementEnabled()
+    {
+        // v202: hidden runtime perf toggle; normal placement remains enabled.
+        return true;
+    }
+
+    bool IsRuntimeUpperLowerEnabled()
+    {
+        // v202: hidden runtime perf toggle; normal upper-lower processing remains enabled.
+        return true;
+    }
+
+    bool IsRuntimePFollowEnabled()
+    {
+        // v202: hidden runtime perf toggle; normal P-follow processing remains enabled.
+        return true;
+    }
+
+    bool IsRuntimeDepthProbeEnabled()
+    {
+        // v202: hidden runtime perf toggle; Depth Probe Rate is the visible on/off/pacing control.
+        return !IsDepthProbeRateOff();
+    }
+
+    bool IsDepthProbeRateOff()
+    {
+        return depthProbeRateChooser != null && depthProbeRateChooser.val == DepthProbeRateOff;
+    }
+
+    float GetDepthProbeInterval()
+    {
+        if (depthProbeRateChooser == null || string.IsNullOrEmpty(depthProbeRateChooser.val))
+        {
+            return GetAutoDepthProbeIntervalFromPerformanceMode();
+        }
+
+        string mode = depthProbeRateChooser.val;
+        if (mode == DepthProbeRateOn || mode == "ON") return GetAutoDepthProbeIntervalFromPerformanceMode();
+        if (mode == DepthProbeRateEveryFrame) return 0.0f;
+        if (mode == DepthProbeRate30Fps) return 1.0f / 30.0f;
+        if (mode == DepthProbeRate20Fps) return 1.0f / 20.0f;
+        if (mode == DepthProbeRate10Fps) return 1.0f / 10.0f;
+        if (mode == DepthProbeRate5Fps) return 1.0f / 5.0f;
+        if (mode == DepthProbeRate2Fps) return 1.0f / 2.0f;
+        if (mode == DepthProbeRate1Fps) return 1.0f;
+        if (mode == DepthProbeRateHalfFps) return 2.0f;
+        if (mode == DepthProbeRateQuarterFps) return 4.0f;
+        if (mode == DepthProbeRateTenthFps) return 10.0f;
+        if (mode == DepthProbeRateTwentiethFps) return 20.0f;
+        if (mode == DepthProbeRateOff) return 999999.0f;
+        return GetAutoDepthProbeIntervalFromPerformanceMode();
+    }
+
+    float GetAutoDepthProbeIntervalFromPerformanceMode()
+    {
+        string mode = GetPerformanceMode();
+        if (mode == PerformanceModeQuality)
+        {
+            return 0.0f; // follow the rendered frame as closely as possible
+        }
+        if (mode == PerformanceModeLight)
+        {
+            return 1.0f / 5.0f;
+        }
+        return 1.0f / 30.0f; // Balanced: fast enough for HUD/screen-following without every-frame probing
+    }
+
+    string GetDepthProbeRateLogLabel()
+    {
+        if (depthProbeRateChooser == null || string.IsNullOrEmpty(depthProbeRateChooser.val))
+        {
+            return DepthProbeRateOn + "(" + GetPerformanceMode() + ")";
+        }
+        if (depthProbeRateChooser.val == DepthProbeRateOn || depthProbeRateChooser.val == "ON")
+        {
+            return DepthProbeRateOn + "(" + GetPerformanceMode() + ")";
+        }
+        return depthProbeRateChooser.val;
+    }
+
+    bool ShouldRunDepthProbeNow()
+    {
+        if (lastDepthProbeDecisionFrame == Time.frameCount)
+        {
+            return lastDepthProbeDecisionRun;
+        }
+
+        lastDepthProbeDecisionFrame = Time.frameCount;
+
+        float interval = GetDepthProbeInterval();
+        if (interval <= 0.0001f)
+        {
+            lastDepthProbeUpdateTime = Time.time;
+            lastDepthProbeDecisionRun = true;
+            return true;
+        }
+
+        if (Time.time - lastDepthProbeUpdateTime >= interval)
+        {
+            lastDepthProbeUpdateTime = Time.time;
+            lastDepthProbeDecisionRun = true;
+            return true;
+        }
+
+        lastDepthProbeDecisionRun = false;
+        return false;
+    }
+
+    void OnDepthProbeRateChanged(string value)
+    {
+        lastDepthProbeUpdateTime = -999.0f;
+        lastDepthProbeDecisionFrame = -1;
+        lastDepthProbeDecisionRun = true;
+        ClearRuntimeFeatureOutputs("depth-probe-rate-changed");
+        if (IsDebugLogEnabled())
+        {
+            SuperController.LogMessage("[TargetLinePerson] Depth Probe Rate = " + value);
+        }
+    }
+
+    bool IsPerfProbeTimingLogEnabled()
+    {
+        return perfProbeTimingLog != null && perfProbeTimingLog.val;
+    }
+
+    bool IsRuntimeRawHudProbeEnabled()
+    {
+        // v205: hidden and forced ON so the HUD graph / HUD FX sample path stays active.
+        // Perf Transform Cache remains forced ON, which avoids the old expensive transform scan.
+        return true;
+    }
+
+    bool IsRuntimeRawEventProbeEnabled()
+    {
+        // v199: hidden and forced off because it did not move eventProbe timing in tests.
+        return false;
+    }
+
+    bool IsRuntimeReactionFallbackProbeEnabled()
+    {
+        // v205: hidden and normally OFF. Keep fallback code available, but do not run it in normal operation.
+        return false;
+    }
+
+    bool IsPerfTransformCacheEnabled()
+    {
+        // v200: always ON. Disabling it caused the heavy transform scan path.
+        return true;
+    }
+
+    bool IsPerfMainBodyGateEnabled()
+    {
+        // v200: keep normal behavior; no useful perf difference was observed.
+        return true;
+    }
+
+    bool IsPerfMainBookkeepingEnabled()
+    {
+        // v200: keep normal behavior; no useful perf difference was observed.
+        return true;
+    }
+
+    double PerfNow()
+    {
+        return (double)System.Diagnostics.Stopwatch.GetTimestamp() / (double)System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    float PerfMs(double start)
+    {
+        return Mathf.Max(0.0f, (float)((PerfNow() - start) * 1000.0));
+    }
+
+    void LogDepthProbePerfTiming(float totalMs, float mainProbeMs, float hudSampleMs, float eventProbeMs, float hudRenderMs, float reactionMs)
+    {
+        if (!IsPerfProbeTimingLogEnabled())
+        {
+            return;
+        }
+
+        if (Time.time - lastPerfProbeTimingLogTime < PerfProbeTimingLogInterval)
+        {
+            return;
+        }
+        lastPerfProbeTimingLogTime = Time.time;
+
+        string rate = GetDepthProbeRateLogLabel();
+        SuperController.LogMessage(
+            "[TargetLinePerson] [PERF PROBE]" +
+            " rate=" + rate +
+            " / rawHud=" + (IsRuntimeRawHudProbeEnabled() ? "1" : "0") +
+            " / fallback=" + (IsRuntimeReactionFallbackProbeEnabled() ? "1" : "0") +
+            " / tCache=1" +
+            " / total=" + totalMs.ToString("F2") + "ms" +
+            " / main=" + mainProbeMs.ToString("F2") + "ms" +
+            " / mainLine=" + lastPerfMainLineMs.ToString("F2") + "ms" +
+            " / mainCalc=" + lastPerfMainCalcMs.ToString("F2") + "ms" +
+            " / mainGate=" + lastPerfMainGateMs.ToString("F2") + "ms" +
+            " / mainBook=" + lastPerfMainBookMs.ToString("F2") + "ms" +
+            " / hudSample=" + hudSampleMs.ToString("F2") + "ms" +
+            " / eventProbe=" + eventProbeMs.ToString("F2") + "ms" +
+            " / hudRender=" + hudRenderMs.ToString("F2") + "ms" +
+            " / reactions=" + reactionMs.ToString("F2") + "ms"
+        );
+    }
+
+    bool IsRuntimeHudEnabled()
+    {
+        // v202: hidden runtime perf toggle; HUD remains enabled.
+        return true;
+    }
+
+    bool IsRuntimeReactionsEnabled()
+    {
+        // v202: hidden runtime perf toggle; reactions remain enabled.
+        return true;
+    }
+
+    bool IsRuntimePushAutoEnabled()
+    {
+        // v202: hidden runtime perf toggle; PUSH Auto remains enabled.
+        return true;
+    }
+
+    bool IsRuntimeDynamicVisualsEnabled()
+    {
+        // v202: hidden runtime perf toggle; dynamic visuals remain enabled.
+        return true;
+    }
+
+    string GetFeatureCutMode()
+    {
+        // Legacy name kept internally so the existing clear/log keys remain simple.
+        // UI is now split into individual Perf toggles instead of a Feature Cut Mode combo.
+        return "PL" + (IsRuntimePlacementEnabled() ? "1" : "0")
+            + "UL" + (IsRuntimeUpperLowerEnabled() ? "1" : "0")
+            + "PF" + (IsRuntimePFollowEnabled() ? "1" : "0")
+            + "DP" + (IsRuntimeDepthProbeEnabled() ? "1" : "0")
+            + "H" + (IsRuntimeHudEnabled() ? "1" : "0")
+            + "R" + (IsRuntimeReactionsEnabled() ? "1" : "0")
+            + "PA" + (IsRuntimePushAutoEnabled() ? "1" : "0")
+            + "V" + (IsRuntimeDynamicVisualsEnabled() ? "1" : "0");
+    }
+
+    bool IsFeatureCutDockingOnly()
+    {
+        return !IsRuntimePlacementEnabled()
+            && !IsRuntimeUpperLowerEnabled()
+            && !IsRuntimePFollowEnabled()
+            && !IsRuntimeDepthProbeEnabled()
+            && !IsRuntimeHudEnabled()
+            && !IsRuntimeReactionsEnabled()
+            && !IsRuntimePushAutoEnabled()
+            && !IsRuntimeDynamicVisualsEnabled();
+    }
+
+    bool IsFeatureCutMotionOnly()
+    {
+        return !IsRuntimeHudEnabled()
+            && !IsRuntimeReactionsEnabled()
+            && !IsRuntimePushAutoEnabled()
+            && !IsRuntimeDepthProbeEnabled();
+    }
+
+    bool IsFeatureCutNoHud()
+    {
+        return !IsRuntimeHudEnabled() || !IsRuntimeDepthProbeEnabled();
+    }
+
+    bool IsFeatureCutNoReactions()
+    {
+        return !IsRuntimeReactionsEnabled() || !IsRuntimeDepthProbeEnabled();
+    }
+
+    bool IsFeatureCutNoPushAuto()
+    {
+        return !IsRuntimePushAutoEnabled() || !IsRuntimeDepthProbeEnabled();
+    }
+
+    bool IsFeatureCutNoDynamicVisuals()
+    {
+        return !IsRuntimeDynamicVisualsEnabled();
+    }
+
+    bool IsFeatureCutNoDepthProbe()
+    {
+        return !IsRuntimeDepthProbeEnabled();
+    }
+
+    void OnRuntimeFeatureToggleChanged(bool value)
+    {
+        lastDepthProbeUpdateTime = -999.0f;
+        lastDepthProbeDecisionFrame = -1;
+        lastDepthProbeDecisionRun = true;
+        lastFeatureCutClearKey = "";
+        lastFeatureCutReactionClearKey = "";
+        ClearRuntimeFeatureOutputs("runtime-feature-toggle-changed");
+        if (IsDebugLogEnabled())
+        {
+            LogMessageIfDebug("[TargetLinePerson] Runtime feature toggles changed / key=" + GetFeatureCutMode());
+        }
+    }
+
+    void ClearRuntimeFeatureOutputs(string reason)
+    {
+        string key = GetFeatureCutMode() + "/" + reason;
+        if (lastFeatureCutClearKey == key)
+        {
+            return;
+        }
+        lastFeatureCutClearKey = key;
+
+        ForceAllGenTgOff();
+        genTgStartActive = false;
+        genTgInsideActive = false;
+        genTgDeepActive = false;
+        genTgHadInside = false;
+        ResetGenHeadReactionState(reason);
+        ResetPushAutoGDepthTriggerState(reason);
+        cachedHudDepthKnown = false;
+        cachedAnusHudDepthKnown = false;
+        if (IsFeatureCutNoHud())
+        {
+            UpdateDepthHudThrottled(0.0f, GetGenDepthMax(), 0.0f, 0.0f, GetGenDepthMax(), 0.0f, false);
+        }
+        if (insertDebugText != null && IsFeatureCutMotionOnly())
+        {
+            string text = "Perf Toggles: " + GetFeatureCutMode();
+            if (insertDebugText.val != text)
+            {
+                insertDebugText.val = text;
+            }
+        }
+    }
+
+    void ClearReactionOutputsOnce(string reason)
+    {
+        string key = GetFeatureCutMode() + "/" + reason;
+        if (lastFeatureCutReactionClearKey == key)
+        {
+            return;
+        }
+        lastFeatureCutReactionClearKey = key;
+
+        ForceAllGenTgOff();
+        genTgStartActive = false;
+        genTgInsideActive = false;
+        genTgDeepActive = false;
+        genTgHadInside = false;
+        ResetGenHeadReactionState(reason);
+    }
+
     float GetHudSampleInterval()
     {
         string mode = GetPerformanceMode();
@@ -1899,7 +2459,7 @@ public class TargetLinePerson : MVRScript
         {
             return 0.120f;
         }
-        return 0.080f;
+        return 0.033f; // Balanced: HUD should keep up with the visible screen
     }
 
     float GetDebugLineRenderInterval()
@@ -1907,13 +2467,13 @@ public class TargetLinePerson : MVRScript
         string mode = GetPerformanceMode();
         if (mode == PerformanceModeQuality)
         {
-            return 0.025f;
+            return 0.016f;
         }
         if (mode == PerformanceModeLight)
         {
             return 0.150f;
         }
-        return 0.080f;
+        return 0.033f;
     }
 
     float GetDynamicRedLineMinInterval()
@@ -1921,13 +2481,13 @@ public class TargetLinePerson : MVRScript
         string mode = GetPerformanceMode();
         if (mode == PerformanceModeQuality)
         {
-            return 0.100f;
+            return 0.033f;
         }
         if (mode == PerformanceModeLight)
         {
             return 0.350f;
         }
-        return 0.180f;
+        return 0.050f;
     }
 
     float GetGenDepthUiTextInterval()
@@ -1935,13 +2495,13 @@ public class TargetLinePerson : MVRScript
         string mode = GetPerformanceMode();
         if (mode == PerformanceModeQuality)
         {
-            return 0.200f;
+            return 0.050f;
         }
         if (mode == PerformanceModeLight)
         {
             return 0.500f;
         }
-        return 0.300f;
+        return 0.075f;
     }
 
     float GetHbaSharedStatusInterval()
@@ -1949,13 +2509,13 @@ public class TargetLinePerson : MVRScript
         string mode = GetPerformanceMode();
         if (mode == PerformanceModeQuality)
         {
-            return HbaSharedStatusInterval;
+            return 0.033f;
         }
         if (mode == PerformanceModeLight)
         {
             return 0.120f;
         }
-        return 0.075f;
+        return 0.050f;
     }
 
     void SetPlacementControlsInteractable(bool interactable)
@@ -2006,7 +2566,6 @@ public class TargetLinePerson : MVRScript
             UpdateDebugLines(showLines != null && showLines.val);
             return;
         }
-
         ApplyPlacement();
         RequestDelayedGuideRefresh(reason, rebuildGuide);
         UpdateDebugLines(showLines != null && showLines.val);
@@ -2105,8 +2664,23 @@ public class TargetLinePerson : MVRScript
 
         if (hasYellowPPath && hasCapturedMoveLine)
         {
-            ApplyUpperBodyLowerByYellowPathIfNeeded("delayed " + reason);
-            ApplyPAngleAtYellowP3IfNeeded("delayed " + reason);
+            if (IsRuntimeUpperLowerEnabled())
+            {
+                ApplyUpperBodyLowerByYellowPathIfNeeded("delayed " + reason);
+            }
+            else
+            {
+                ResetUpperBodyLowerIfApplied("perf upper lower off");
+            }
+
+            if (IsRuntimePFollowEnabled())
+            {
+                ApplyPAngleAtYellowP3IfNeeded("delayed " + reason);
+            }
+            else
+            {
+                ResetPAngleAtYellowP3IfApplied("perf p follow off");
+            }
         }
         else
         {
@@ -2553,15 +3127,33 @@ public class TargetLinePerson : MVRScript
 
     Transform FindChildTransform(Atom atom, string childName)
     {
-        if (atom == null)
+        if (atom == null || string.IsNullOrEmpty(childName))
         {
             return null;
+        }
+
+        string key = atom.uid + "|exact|" + childName;
+        if (IsPerfTransformCacheEnabled())
+        {
+            Transform cached;
+            if (childTransformExactCache.TryGetValue(key, out cached))
+            {
+                if (cached != null)
+                {
+                    return cached;
+                }
+                childTransformExactCache.Remove(key);
+            }
         }
 
         foreach (Transform t in atom.GetComponentsInChildren<Transform>(true))
         {
             if (t != null && t.name == childName)
             {
+                if (IsPerfTransformCacheEnabled())
+                {
+                    childTransformExactCache[key] = t;
+                }
                 return t;
             }
         }
@@ -2581,6 +3173,20 @@ public class TargetLinePerson : MVRScript
             return null;
         }
 
+        string key = atom.uid + "|suffix|" + pathSuffix;
+        if (IsPerfTransformCacheEnabled())
+        {
+            Transform cached;
+            if (childTransformSuffixCache.TryGetValue(key, out cached))
+            {
+                if (cached != null)
+                {
+                    return cached;
+                }
+                childTransformSuffixCache.Remove(key);
+            }
+        }
+
         foreach (Transform t in atom.GetComponentsInChildren<Transform>(true))
         {
             if (t == null)
@@ -2590,6 +3196,10 @@ public class TargetLinePerson : MVRScript
 
             if (TransformPathEndsWith(t, pathSuffix))
             {
+                if (IsPerfTransformCacheEnabled())
+                {
+                    childTransformSuffixCache[key] = t;
+                }
                 return t;
             }
         }
@@ -8736,34 +9346,84 @@ bool IsTargetRideLikePose()
 
     void UpdateInsertDebugText()
     {
+        double perfTotalStart = PerfNow();
+        float perfMainProbeMs = 0.0f;
+        float perfHudSampleMs = 0.0f;
+        float perfEventProbeMs = 0.0f;
+        float perfHudRenderMs = 0.0f;
+        float perfReactionMs = 0.0f;
+        double perfSectionStart = 0.0;
+
+        if (IsFeatureCutNoDepthProbe())
+        {
+            ClearRuntimeFeatureOutputs("perf depth probe off");
+            UpdateDepthHudThrottled(0.0f, GetGenDepthMax(), 0.0f, 0.0f, GetGenDepthMax(), 0.0f, false);
+            if (insertDebugText != null)
+            {
+                string text = "Perf Depth Probe OFF";
+                if (insertDebugText.val != text)
+                {
+                    insertDebugText.val = text;
+                }
+            }
+            return;
+        }
+
+        if (!ShouldRunDepthProbeNow())
+        {
+            // Keep the previous HUD/reaction state until the next scheduled probe tick.
+            // This throttles the expensive live projection/sampling group without changing placement motion.
+            return;
+        }
+
+        if (!IsFeatureCutNoReactions())
+        {
+            lastFeatureCutReactionClearKey = "";
+        }
+
         float depth = 0.0f;
         float length = GetGenDepthMax();
         float percent = 0.0f;
+        lastPerfMainLineMs = 0.0f;
+        lastPerfMainCalcMs = 0.0f;
+        lastPerfMainGateMs = 0.0f;
+        lastPerfMainBookMs = 0.0f;
+        perfSectionStart = PerfNow();
         bool hasDepth = TryGetLiveGenDepth(out depth, out length, out percent);
+        perfMainProbeMs += PerfMs(perfSectionStart);
         float hudDepth = depth;
         float hudLength = length;
         float hudPercent = percent;
-        bool visible = showInsertDebug != null && showInsertDebug.val;
+        bool visible = showInsertDebug != null && showInsertDebug.val && !IsFeatureCutNoHud();
         bool hasHudDepth = hasDepth;
         float anusHudDepth = 0.0f;
         float anusHudLength = GetGenDepthMax();
         float anusHudPercent = 0.0f;
         bool hasAnusHudDepth = false;
         bool anusHudVisible = visible && targetControllerChooser != null && targetControllerChooser.val == "anus";
+        perfSectionStart = PerfNow();
         if (visible && (!cachedHudDepthKnown || Time.time - lastGenDepthHudSampleTime >= GetHudSampleInterval()))
         {
             cachedHudDepth = hudDepth;
             cachedHudLength = hudLength;
             cachedHudPercent = hudPercent;
-            cachedHudHasDepth = TryGetLiveGenDepthForHud(out cachedHudDepth, out cachedHudLength, out cachedHudPercent);
+            cachedHudHasDepth = hasDepth;
             cachedAnusHudDepth = anusHudDepth;
             cachedAnusHudLength = anusHudLength;
             cachedAnusHudPercent = anusHudPercent;
-            cachedAnusHudHasDepth = anusHudVisible && TryGetLiveAnusDepthForHud(out cachedAnusHudDepth, out cachedAnusHudLength, out cachedAnusHudPercent);
+            cachedAnusHudHasDepth = false;
+
+            if (IsRuntimeRawHudProbeEnabled())
+            {
+                cachedHudHasDepth = TryGetLiveGenDepthForHud(out cachedHudDepth, out cachedHudLength, out cachedHudPercent);
+                cachedAnusHudHasDepth = anusHudVisible && TryGetLiveAnusDepthForHud(out cachedAnusHudDepth, out cachedAnusHudLength, out cachedAnusHudPercent);
+            }
+
             cachedHudDepthKnown = true;
             cachedAnusHudDepthKnown = true;
             lastGenDepthHudSampleTime = Time.time;
         }
+        perfHudSampleMs += PerfMs(perfSectionStart);
         if (visible && cachedHudDepthKnown)
         {
             hudDepth = cachedHudDepth;
@@ -8805,33 +9465,61 @@ bool IsTargetRideLikePose()
         float eventPercent = 0.0f;
         bool hasEventDepth = false;
 
+        perfSectionStart = PerfNow();
         if (eventTargetMode == "anus")
         {
-            float rawAnusDepth;
-            float rawAnusLength;
-            float rawAnusPercent;
-            if (TryGetLiveAnusDepthForHud(out rawAnusDepth, out rawAnusLength, out rawAnusPercent))
+            if (IsRuntimeRawEventProbeEnabled())
             {
-                eventPercent = rawAnusPercent;
-                hasEventDepth = true;
-                eventDepthSource = "anus-hud-depth";
+                if (cachedAnusHudDepthKnown && cachedAnusHudHasDepth)
+                {
+                    eventPercent = cachedAnusHudPercent;
+                    hasEventDepth = true;
+                    eventDepthSource = "anus-hud-depth-cache";
+                }
+                else
+                {
+                    float rawAnusDepth;
+                    float rawAnusLength;
+                    float rawAnusPercent;
+                    if (TryGetLiveAnusDepthForHud(out rawAnusDepth, out rawAnusLength, out rawAnusPercent))
+                    {
+                        eventPercent = rawAnusPercent;
+                        hasEventDepth = true;
+                        eventDepthSource = "anus-hud-depth";
+                    }
+                }
             }
         }
         else
         {
-            // Genital keeps the previous HUD/raw fallback. Mouth currently has no common HBA depth event source.
+            // Genital keeps the previous control-depth source, with optional raw/HUD fallback.
             if (eventTargetMode == "genital")
             {
                 eventPercent = percent;
                 hasEventDepth = hasDepth;
                 eventDepthSource = hasEventDepth ? "gen-control-depth" : "gen-no-depth";
 
-                float rawHudDepth;
-                float rawHudLength;
-                float rawHudPercent;
-                if (TryGetLiveGenDepthForHud(out rawHudDepth, out rawHudLength, out rawHudPercent))
+                if (IsRuntimeRawEventProbeEnabled())
                 {
-                    if (!hasEventDepth || rawHudPercent > eventPercent + 0.0005f)
+                    float rawHudPercent = -1.0f;
+                    bool hasRawHud = false;
+
+                    if (cachedHudDepthKnown && cachedHudHasDepth)
+                    {
+                        rawHudPercent = cachedHudPercent;
+                        hasRawHud = true;
+                    }
+                    else
+                    {
+                        float rawHudDepth;
+                        float rawHudLength;
+                        if (TryGetLiveGenDepthForHud(out rawHudDepth, out rawHudLength, out rawHudPercent))
+                        {
+                            hasRawHud = true;
+                        }
+                    }
+
+                    if (hasRawHud && (!hasEventDepth || rawHudPercent > eventPercent + 0.0005f))
                     {
                         eventPercent = rawHudPercent;
                         hasEventDepth = true;
@@ -8840,10 +9528,27 @@ bool IsTargetRideLikePose()
                 }
             }
         }
+        perfEventProbeMs += PerfMs(perfSectionStart);
 
+        perfSectionStart = PerfNow();
         UpdateDepthHudThrottled(hudDepth, hudLength, hudPercent, anusHudDepth, anusHudLength, anusHudPercent, visible);
-        UpdateGenDepthUiText(hasEventDepth, eventPercent, eventTargetMode);
-        UpdateGenTgTriggers(hasEventDepth, eventPercent, eventDepthSource);
+        perfHudRenderMs += PerfMs(perfSectionStart);
+        if (!IsFeatureCutNoHud())
+        {
+            UpdateGenDepthUiText(hasEventDepth, eventPercent, eventTargetMode);
+        }
+        perfSectionStart = PerfNow();
+        if (IsFeatureCutNoReactions())
+        {
+            ClearReactionOutputsOnce("feature cut no reactions");
+        }
+        else
+        {
+            UpdateGenTgTriggers(hasEventDepth, eventPercent, eventDepthSource);
+        }
+        perfReactionMs += PerfMs(perfSectionStart);
+
+        LogDepthProbePerfTiming(PerfMs(perfTotalStart), perfMainProbeMs, perfHudSampleMs, perfEventProbeMs, perfHudRenderMs, perfReactionMs);
     }
 
     void UpdateDepthHudThrottled(float hudDepth, float hudLength, float hudPercent, float anusHudDepth, float anusHudLength, float anusHudPercent, bool visible)
@@ -9173,6 +9878,12 @@ bool IsTargetRideLikePose()
     {
         percent = 0.0f;
         source = "none";
+
+        if (!IsRuntimeReactionFallbackProbeEnabled())
+        {
+            source = "fallback-probe-off";
+            return false;
+        }
 
         string targetMode = GetTargetModeName();
         float depth;
@@ -10039,9 +10750,11 @@ bool IsTargetRideLikePose()
         length = GetGenDepthMax();
         percent = 0.0f;
 
+        double sectionStart = PerfNow();
         FreeControllerV3 tip = GetOwnPenisTip();
         if (tip == null || tip.transform == null)
         {
+            lastPerfMainLineMs += PerfMs(sectionStart);
             return false;
         }
 
@@ -10051,14 +10764,18 @@ bool IsTargetRideLikePose()
         float purpleLength;
         if (!TryGetLiveGenitalInsideLine(out purpleOrigin, out purpleDir, out purpleLength))
         {
+            lastPerfMainLineMs += PerfMs(sectionStart);
             return false;
         }
 
         if (purpleDir.sqrMagnitude < 0.0001f)
         {
+            lastPerfMainLineMs += PerfMs(sectionStart);
             return false;
         }
+        lastPerfMainLineMs += PerfMs(sectionStart);
 
+        sectionStart = PerfNow();
         length = Mathf.Max(0.0001f, purpleLength);
         Vector3 purpleDirNorm = purpleDir.normalized;
         float gDepthAngle = Mathf.Abs(Mathf.Asin(Mathf.Clamp(purpleDirNorm.y, -1.0f, 1.0f)) * Mathf.Rad2Deg);
@@ -10066,14 +10783,20 @@ bool IsTargetRideLikePose()
         float rawDepth = Vector3.Dot(tipFromOrigin, purpleDirNorm);
         Vector3 closestOnAxis = purpleOrigin + purpleDirNorm * rawDepth;
         float lateralDistance = Vector3.Distance(tipPos, closestOnAxis);
+        lastPerfMainCalcMs += PerfMs(sectionStart);
 
         if (gDepthAngle > GenDepthAngleGateLimitDegrees)
         {
             depth = 0.0f;
             percent = 0.0f;
-            RememberGenDepthSample(rawDepth, lateralDistance, -1.0f, percent);
-            LogGenDepthProbe(rawDepth, lateralDistance, -1.0f, length, percent, false, false, true, gDepthAngle);
-            ApplyGenBodyGatePReleaseIfNeeded(false);
+            sectionStart = PerfNow();
+            if (IsPerfMainBookkeepingEnabled())
+            {
+                RememberGenDepthSample(rawDepth, lateralDistance, -1.0f, percent);
+                LogGenDepthProbe(rawDepth, lateralDistance, -1.0f, length, percent, false, false, true, gDepthAngle);
+                ApplyGenBodyGatePReleaseIfNeeded(false);
+            }
+            lastPerfMainBookMs += PerfMs(sectionStart);
             return true;
         }
 
@@ -10081,28 +10804,54 @@ bool IsTargetRideLikePose()
         {
             depth = 0.0f;
             percent = 0.0f;
-            RememberGenDepthSample(rawDepth, lateralDistance, -1.0f, percent);
-            LogGenDepthProbe(rawDepth, lateralDistance, -1.0f, length, percent, true, false, false, gDepthAngle);
-            ApplyGenBodyGatePReleaseIfNeeded(false);
+            sectionStart = PerfNow();
+            if (IsPerfMainBookkeepingEnabled())
+            {
+                RememberGenDepthSample(rawDepth, lateralDistance, -1.0f, percent);
+                LogGenDepthProbe(rawDepth, lateralDistance, -1.0f, length, percent, true, false, false, gDepthAngle);
+                ApplyGenBodyGatePReleaseIfNeeded(false);
+            }
+            lastPerfMainBookMs += PerfMs(sectionStart);
             return true;
         }
 
-        float bodyDistance;
-        if (IsGenBodyGated(purpleOrigin, out bodyDistance))
+        float bodyDistance = -1.0f;
+        bool bodyGated = false;
+        sectionStart = PerfNow();
+        if (IsPerfMainBodyGateEnabled())
+        {
+            bodyGated = IsGenBodyGated(purpleOrigin, out bodyDistance);
+        }
+        lastPerfMainGateMs += PerfMs(sectionStart);
+
+        if (bodyGated)
         {
             depth = 0.0f;
             percent = 0.0f;
-            RememberGenDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
-            LogGenDepthProbe(rawDepth, lateralDistance, bodyDistance, length, percent, false, true, false, gDepthAngle);
-            ApplyGenBodyGatePReleaseIfNeeded(true);
+            sectionStart = PerfNow();
+            if (IsPerfMainBookkeepingEnabled())
+            {
+                RememberGenDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
+                LogGenDepthProbe(rawDepth, lateralDistance, bodyDistance, length, percent, false, true, false, gDepthAngle);
+                ApplyGenBodyGatePReleaseIfNeeded(true);
+            }
+            lastPerfMainBookMs += PerfMs(sectionStart);
             return true;
         }
 
+        sectionStart = PerfNow();
         percent = Mathf.Clamp(rawDepth / length, 0.0f, GenDepthHudDisplayMaxPercent);
         depth = Mathf.Clamp(rawDepth, 0.0f, length * GenDepthHudDisplayMaxPercent);
-        RememberGenDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
-        LogGenDepthProbe(rawDepth, lateralDistance, bodyDistance, length, percent, false, false, false, gDepthAngle);
-        ApplyGenBodyGatePReleaseIfNeeded(false);
+        lastPerfMainCalcMs += PerfMs(sectionStart);
+
+        sectionStart = PerfNow();
+        if (IsPerfMainBookkeepingEnabled())
+        {
+            RememberGenDepthSample(rawDepth, lateralDistance, bodyDistance, percent);
+            LogGenDepthProbe(rawDepth, lateralDistance, bodyDistance, length, percent, false, false, false, gDepthAngle);
+            ApplyGenBodyGatePReleaseIfNeeded(false);
+        }
+        lastPerfMainBookMs += PerfMs(sectionStart);
 
         return true;
     }
@@ -12525,6 +13274,86 @@ bool IsTargetRideLikePose()
         pushReleasePIkOnDone = false;
         pushPRoutine = StartCoroutine(PushPCoroutine());
         UpdatePushButtonUi();
+    }
+
+    void ActionPMidGAlign()
+    {
+        if (pushPRoutine != null)
+        {
+            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=PUSH running");
+            return;
+        }
+
+        FreeControllerV3 penisBase = GetOwnPenisBase();
+        FreeControllerV3 penisMid = GetOwnPenisMid();
+        FreeControllerV3 penisTip = GetOwnPenisTip();
+
+        if (penisMid == null || penisTip == null)
+        {
+            DebugLog(
+                "[TargetLinePerson] P Mid G Align skipped / reason=missing P controller" +
+                " / base=" + (penisBase != null ? "1" : "0") +
+                " / mid=" + (penisMid != null ? "1" : "0") +
+                " / tip=" + (penisTip != null ? "1" : "0")
+            );
+            return;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        {
+            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=no genital G line");
+            return;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=bad G direction");
+            return;
+        }
+
+        dir.Normalize();
+
+        float midDepth;
+        float midLateral;
+        Vector3 midCorrection = GetLateralCorrectionToInsideLine(penisMid.transform.position, origin, dir, out midDepth, out midLateral);
+
+        float tipDepth;
+        float tipLateral;
+        Vector3 tipCorrection = GetLateralCorrectionToInsideLine(penisTip.transform.position, origin, dir, out tipDepth, out tipLateral);
+
+        Vector3 baseCorrection = Vector3.zero;
+        if (penisBase != null)
+        {
+            baseCorrection = Vector3.ClampMagnitude(midCorrection * PMidGAlignBaseFollowScale, PMidGAlignBaseMaxMove);
+            ApplyControllerPositionOffsetIfChanged(penisBase, baseCorrection);
+        }
+
+        ApplyControllerPositionOffsetIfChanged(penisMid, midCorrection);
+        ApplyControllerPositionOffsetIfChanged(penisTip, tipCorrection);
+        pMidAxisAssistApplied = true;
+
+        DebugLog(
+            "[TargetLinePerson] P Mid G Align" +
+            " / midMove=" + midCorrection.magnitude.ToString("F3") +
+            " / tipMove=" + tipCorrection.magnitude.ToString("F3") +
+            " / baseMove=" + baseCorrection.magnitude.ToString("F3") +
+            " / midDepth=" + midDepth.ToString("F3") +
+            " / tipDepth=" + tipDepth.ToString("F3") +
+            " / midLat=" + midLateral.ToString("F3") +
+            " / tipLat=" + tipLateral.ToString("F3")
+        );
+    }
+
+    Vector3 GetLateralCorrectionToInsideLine(Vector3 position, Vector3 origin, Vector3 dir, out float depth, out float lateralDistance)
+    {
+        depth = Vector3.Dot(position - origin, dir);
+        Vector3 closest = origin + dir * depth;
+        Vector3 correction = closest - position;
+        lateralDistance = correction.magnitude;
+        return correction;
     }
 
     void CapturePushButtonUi()
