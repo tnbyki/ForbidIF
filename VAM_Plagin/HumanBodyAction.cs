@@ -1,3 +1,4 @@
+// HBA_HEAD_ROTATION_STATE_ONLY_BUILD 2026-06-23: Head actions are rotation-only; do not force or restore headControl position/positionState, only rotation/rotationState.
 // HBA_MANUAL_BUTTONS_LEFT_BUILD 2026-06-22: Moves all manual trial buttons (Twitch and Head) to the left column; Event/TG settings remain on the right.
 // HBA_DEFAULT_ACTIONS_TG_ATOM_BUILD 2026-06-22: Sets practical default Action/TG routing: Slow uses HBA_Twitch_Slow, Fast uses Strong, and TG Atom defaults to HBA Head button-pulse actions.
 // HBA_TG_ATOM_ONLY_SLOW_TWITCH_BUILD 2026-06-22: Highlights only TG Atom labels and adds HBA_Twitch_Slow, a slower graceful body/eyes/mouth reaction.
@@ -2968,7 +2969,10 @@ public class HumanBodyAction : MVRScript
     void ApplyHeadControlOn()
     {
         if (headControl == null) return;
-        headControl.currentPositionState = FreeControllerV3.PositionState.On;
+
+        // v026: HeadAction is rotation-only.
+        // Do not force PositionState ON here; that can pin headControl position while
+        // TargetGrabber/Target Swoon Drop is trying to release body IK.
         headControl.currentRotationState = FreeControllerV3.RotationState.On;
     }
 
@@ -2976,9 +2980,10 @@ public class HumanBodyAction : MVRScript
     {
         if (headControl == null || snapshot == null) return;
 
-        headControl.transform.position = snapshot.position;
+        // v026: HeadAction only owns rotation.
+        // Leave position and PositionState exactly as other plugins/physics currently have them.
+        // This prevents a completed HeadAction from re-pinning the head position after Swoon Drop.
         headControl.transform.rotation = snapshot.rotation;
-        headControl.currentPositionState = snapshot.positionState;
         headControl.currentRotationState = snapshot.rotationState;
     }
 
