@@ -1,3 +1,4 @@
+// HBA_RAW_DEPTH_FALLBACK_RESTORE_BUILD 2026-06-24: Restores raw/HUD depth fallback for HBA reactions when control GenDepth is angle-gated to 0%.
 // LINE_SLOW_SPEED_TUNE_BUILD 2026-06-24: Slows Auto Line and Auto Line Slow defaults for the higher-FPS feel while keeping Auto Line Fast unchanged.
 // AXIS_ALIGN_FAR_GUARD_NO_STRETCH_BUILD 2026-06-24: Prevents repeated far Axis Align from stretching P by skipping distant/out-of-segment line projections and limiting Mid/Tip correction relative to Base.
 // AXIS_ALIGN_SAFE_CLAMP_BUILD 2026-06-24: Clamps Axis Align P Mid/Tip movement and clamps depth to the live line segment with small slack to prevent large one-shot jumps.
@@ -2343,8 +2344,11 @@ public class TargetLinePerson : MVRScript
 
     bool IsRuntimeReactionFallbackProbeEnabled()
     {
-        // v205: hidden and normally OFF. Keep fallback code available, but do not run it in normal operation.
-        return false;
+        // v219: ON again for HBA reactions.
+        // The main control depth can be angle-gated to 0% while raw/HUD depth is valid.
+        // HBA reactions need the raw/HUD fallback so Auto Line motion still reaches
+        // HumanBodyAction when the live Gen axis is steep.
+        return true;
     }
 
     bool IsPerfTransformCacheEnabled()
