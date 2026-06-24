@@ -1,3 +1,11 @@
+// HBA_LINE_CLASSIFIER_STABLE_BUILD 2026-06-24: Raises Fast classification to Auto Line Fast-level peaks and adds a slow-entry grace so normal Auto Line stays Active instead of Fast->Slow.
+// HBA_TW_TUNED_DEFAULTS_BUILD 2026-06-24: Sets TW slider defaults to the user-tuned high-FPS values: Motion 1.25, Up 1.07, Side 1.52, Forward 1.42, Chest 1.69, Hip 1.81, Limb 1.43.
+// HBA_TW_SLIDERS_TUNABLE_BUILD 2026-06-24: Adds visible TW axis/part strength sliders and expands TW Motion Scale range so high-FPS twitch can be tuned in-scene.
+// HBA_HEAD_SLOW_STABLE_TIMING_BUILD 2026-06-24: Slows Head actions for high-FPS scenes, removes centerRot rebase snap, adds Head Time Scale, and syncs headControl transform/control rotation.
+// HBA_TW_SOFT_TUNED_BUILD 2026-06-24: Softens Twitch presets for high-FPS playback, lowers vertical/body multipliers, and adds TW Motion Scale.
+// HBA_HEAD_SLOW_STABLE_TIMING_BUILD 2026-06-24: Restores near-original head pose timing, adds Head Time Scale, uses startRot as head baseline, and syncs transform/control rotations.
+// HBA_FAST_PEAK_LATCH_BUILD 2026-06-24: Latches short Fast inward progress peaks so Auto Line Fast cannot finish before Start/Inside classification sees it.
+// HBA_LINE_FAST_LESS_STICKY_BUILD 2026-06-24: Raises Fast thresholds, shortens the Fast peak latch, and stops previous Fast actions from keeping Inside classification sticky so Auto Line stays Active more often.
 // HBA_HEAD_ROTATION_STATE_ONLY_BUILD 2026-06-23: Head actions are rotation-only; do not force or restore headControl position/positionState, only rotation/rotationState.
 // HBA_MANUAL_BUTTONS_LEFT_BUILD 2026-06-22: Moves all manual trial buttons (Twitch and Head) to the left column; Event/TG settings remain on the right.
 // HBA_DEFAULT_ACTIONS_TG_ATOM_BUILD 2026-06-22: Sets practical default Action/TG routing: Slow uses HBA_Twitch_Slow, Fast uses Strong, and TG Atom defaults to HBA Head button-pulse actions.
@@ -65,6 +73,14 @@ public class HumanBodyAction : MVRScript
     JSONStorableStringChooser headNormalPreset;
     JSONStorableStringChooser headStrongPreset;
     JSONStorableStringChooser headOnlyPreset;
+    JSONStorableFloat headTimeScale;
+    JSONStorableFloat twitchMotionScale;
+    JSONStorableFloat twitchSideScale;
+    JSONStorableFloat twitchUpScale;
+    JSONStorableFloat twitchForwardScale;
+    JSONStorableFloat twitchChestScale;
+    JSONStorableFloat twitchHipScale;
+    JSONStorableFloat twitchLimbScale;
 
     JSONStorableBool useBodyAxes;
     JSONStorableBool twitchChest;
@@ -147,40 +163,59 @@ public class HumanBodyAction : MVRScript
     float currentMouthOpenMax = NormalMouthOpenMax;
     float currentMouthOpenMin = NormalMouthOpenMin;
 
-    const float BodySideScale = 0.55f;
-    const float BodyUpScale = 1.65f;
-    const float BodyForwardScale = 1.05f;
-    const float ChestScale = 1.60f;
-    const float HipScale = 1.20f;
+    const float BodySideScale = 0.45f; // v027: less side snap at high FPS
+    const float BodyUpScale = 0.90f; // v027: vertical twitch was the most visible/harsh part
+    const float BodyForwardScale = 0.80f; // v027: soften forward/back kick
+    const float ChestScale = 1.05f; // v027: high-FPS peak no longer hidden by 10fps sampling
+    const float HipScale = 0.85f; // v027: reduce hip impulse
     const float HeadMicroScale = 0.55f;
-    const float LimbScale = 0.35f;
+    const float LimbScale = 0.22f; // v027: keep hands/feet from popping
 
-    const float ReturnToStartDuration = 0.16f; // v005: faster return, head action feels less heavy
-    const float HeadEntryDuration = 0.06f; // v005: almost immediate entry
+    const float ReturnToStartDuration = 0.30f; // v026: slower return; high-FPS scenes made the old 0.16 snap too visible
+    const float HeadEntryDuration = 0.12f; // v026: avoid immediate entry snap
     const int HeadPlaybackStartIndex = 1; // first keyframe is reference pose, not a visible wait
-    const float HeadDurationScale = 0.55f; // v005: compress imported HumanHeadOpenControl timings
-    const float HeadSegmentMinDuration = 0.07f;
-    const float HeadSegmentMaxDuration = 0.55f; // v005: cap long hold frames such as Tilt/UpEyes/RapidOrgasm
+    const float HeadDurationScale = 1.00f; // v026: stop compressing imported HumanHeadOpenControl timings by default
+    const float HeadSegmentMinDuration = 0.12f;
+    const float HeadSegmentMaxDuration = 2.20f; // v026: keep long head poses from being crushed into a 0.55s burst
     const float HeadSkipAngleDegrees = 0.25f;
-    const float HeadSmoothEaseMix = 0.35f; // 0=linear, 1=SmoothStep; lower feels sharper/lighter
+    const float HeadSmoothEaseMix = 0.55f; // v026: smoother high-FPS interpolation
+    const float HeadTimeScaleDefault = 1.50f;
+    const float HeadTimeScaleMin = 0.50f;
+    const float HeadTimeScaleMax = 3.00f;
+    const float TwitchMotionScaleDefault = 1.25f; // v029: user-tuned high-FPS TW default
+    const float TwitchMotionScaleMin = 0.00f;
+    const float TwitchMotionScaleMax = 3.00f;
+    const float TwitchSideScaleDefault = 1.52f; // v029: user-tuned high-FPS TW default
+    const float TwitchUpScaleDefault = 1.07f; // v029: user-tuned high-FPS TW default
+    const float TwitchForwardScaleDefault = 1.42f; // v029: user-tuned high-FPS TW default
+    const float TwitchChestScaleDefault = 1.69f; // v029: user-tuned high-FPS TW default
+    const float TwitchHipScaleDefault = 1.81f; // v029: user-tuned high-FPS TW default
+    const float TwitchLimbScaleDefault = 1.43f; // v029: user-tuned high-FPS TW default
+    const float TwitchAxisScaleMin = 0.00f;
+    const float TwitchAxisScaleMax = 2.50f;
+    const float TwitchPartScaleMin = 0.00f;
+    const float TwitchPartScaleMax = 3.00f;
     const float DebugPoseDuration = 0.20f;
     const float HbaStatusUpdateInterval = 0.10f;
     const float HbaStatusSpeedIdle = 0.030f;
     // v017: Progress-speed classifier is calibrated from Auto Line speeds 6.5 / 10.5 / 15.0.
     // Boundaries are the midpoints 8.5 and 12.75, mapped to HBA Progress-speed bands.
     const float HbaStatusSpeedSlow = 0.300f;      // Slow / Active boundary
-    const float HbaStatusSpeedFastEnter = 0.450f; // Active -> Fast boundary
-    const float HbaStatusSpeedFastExit = 0.360f;  // Fast -> Active hysteresis boundary
+    const float HbaStatusSpeedFastEnter = 1.050f; // v032: stronger Fast gate; normal Auto Line should stay Active, Fast is for true fast peaks
+    const float HbaStatusSpeedFastExit = 0.620f;  // v032: exit threshold below enter to avoid Active/Fast flapping after a real Fast
     const float HbaInSpeedSmoothing = 0.35f;
     const float HbaStatusHoldSeconds = 0.60f;
     const float HbaStartDecisionDelay = 0.25f;
     const float HbaStartSlowSpeed = 0.20f;
-    const float HbaStartFastSpeed = 0.80f;
+    const float HbaStartFastSpeed = 1.20f; // v032: avoid classifying normal Auto Line start as Fast
     const float HbaInsideFirstDelay = 0.25f;
     const float HbaInsideMotionCooldown = 1.00f;
     const float HbaInsideHoldDelay = 0.60f;
-    const float HbaInsideFastEnterSeconds = 0.25f;
+    const float HbaInsideFastEnterSeconds = 0.35f; // v032: require Fast to persist a little longer before switching from Active
     const float HbaInsideFastExitSeconds = 0.35f;
+    const float HbaInsideSlowEnterSeconds = 0.35f; // v031: do not let normal Auto Line tail immediately become Slow
+    const float HbaFastPeakLatchSeconds = 0.25f; // v032: shorter latch so normal Line initial peaks do not keep forcing Fast
+    const float HbaFastPeakMinProgress = 0.18f; // v032: avoid latching shallow/synthetic Start/Inside progress floors
     const float HbaInsideTurnCooldown = 0.75f;
     const float HbaInsideHoldPulseCooldown = 1.20f;
     const float HbaInsideReactionEnergyThreshold = 0.34f;
@@ -213,6 +248,9 @@ public class HumanBodyAction : MVRScript
     float hbaDepthSpeed = 0.0f;
     float hbaDepthInSpeedRaw = 0.0f;
     float hbaDepthInSpeedAvg = 0.0f;
+    float hbaFastPeakTime = -999.0f;
+    float hbaFastPeakSpeed = 0.0f;
+    float hbaFastPeakProgress = 0.0f;
     int hbaDepthDirection = 0;
     float hbaHoldSince = -1.0f;
     string hbaMotionState = "Idle";
@@ -251,6 +289,7 @@ public class HumanBodyAction : MVRScript
     float hbaLastInsideActionTime = -999.0f;
     float hbaInsideFastEnterSince = -1.0f;
     float hbaInsideFastExitSince = -1.0f;
+    float hbaInsideSlowEnterSince = -1.0f;
     float hbaInsideReactionEnergy = 0.0f;
     float hbaInsideHoldEnergy = 0.0f;
     float hbaLastInsideEnergyUpdateTime = -1.0f;
@@ -546,7 +585,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v025 default actions TG atom / manual buttons left / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v029 tw tuned defaults / head slow stable / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -576,7 +615,7 @@ public class HumanBodyAction : MVRScript
 
         // Bridge marker used by TargetLinePerson to prefer the currently loaded HBA build
         // instead of a stale/old HBA instance when scripts are swapped during testing.
-        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 25.0f, 0.0f, 999.0f, true);
+        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 26.0f, 0.0f, 999.0f, true);
         RegisterFloat(hbaBridgeVersion);
 
         hbaTgTriggers = new JSONStorableBool("TG Triggers", true);
@@ -659,6 +698,30 @@ public class HumanBodyAction : MVRScript
 
         twitchMouth = new JSONStorableBool("Mouth", true);
         RegisterBool(twitchMouth);
+
+        headTimeScale = new JSONStorableFloat("Head Time Scale", HeadTimeScaleDefault, HeadTimeScaleMin, HeadTimeScaleMax);
+        RegisterFloat(headTimeScale);
+
+        twitchMotionScale = new JSONStorableFloat("TW Motion Scale", TwitchMotionScaleDefault, TwitchMotionScaleMin, TwitchMotionScaleMax);
+        RegisterFloat(twitchMotionScale);
+
+        twitchSideScale = new JSONStorableFloat("TW Side Scale", TwitchSideScaleDefault, TwitchAxisScaleMin, TwitchAxisScaleMax);
+        RegisterFloat(twitchSideScale);
+
+        twitchUpScale = new JSONStorableFloat("TW Up Scale", TwitchUpScaleDefault, TwitchAxisScaleMin, TwitchAxisScaleMax);
+        RegisterFloat(twitchUpScale);
+
+        twitchForwardScale = new JSONStorableFloat("TW Forward Scale", TwitchForwardScaleDefault, TwitchAxisScaleMin, TwitchAxisScaleMax);
+        RegisterFloat(twitchForwardScale);
+
+        twitchChestScale = new JSONStorableFloat("TW Chest Scale", TwitchChestScaleDefault, TwitchPartScaleMin, TwitchPartScaleMax);
+        RegisterFloat(twitchChestScale);
+
+        twitchHipScale = new JSONStorableFloat("TW Hip Scale", TwitchHipScaleDefault, TwitchPartScaleMin, TwitchPartScaleMax);
+        RegisterFloat(twitchHipScale);
+
+        twitchLimbScale = new JSONStorableFloat("TW Limb Scale", TwitchLimbScaleDefault, TwitchPartScaleMin, TwitchPartScaleMax);
+        RegisterFloat(twitchLimbScale);
 
         queueLastAction = new JSONStorableBool("Queue Last Action", true);
         RegisterBool(queueLastAction);
@@ -748,8 +811,16 @@ public class HumanBodyAction : MVRScript
     {
         // Left column: runtime TW/log controls, directly below Twitch buttons.
         CreateToggle(twitchBody, false);
+        CreateSlider(twitchMotionScale, false);
+        CreateSlider(twitchUpScale, false);
+        CreateSlider(twitchSideScale, false);
+        CreateSlider(twitchForwardScale, false);
+        CreateSlider(twitchChestScale, false);
+        CreateSlider(twitchHipScale, false);
+        CreateSlider(twitchLimbScale, false);
         CreateToggle(twitchEyes, false);
         CreateToggle(twitchMouth, false);
+        CreateSlider(headTimeScale, false);
         CreateToggle(queueLastAction, false);
         CreateToggle(debugLog, false);
 
@@ -1252,6 +1323,8 @@ public class HumanBodyAction : MVRScript
         float nowProgress = hbaProgress != null ? hbaProgress.val : 0.0f;
         float dt = Mathf.Max(0.001f, Time.time - startTime);
         float speed = Mathf.Max(0.0f, nowProgress - startProgress) / dt;
+        float peakSpeed = GetFreshFastPeakSpeed();
+        if (peakSpeed > speed) speed = peakSpeed;
         string startType = "Normal";
         if (speed < HbaStartSlowSpeed) startType = "Slow";
         else if (speed >= HbaStartFastSpeed) startType = "Fast";
@@ -1259,7 +1332,7 @@ public class HumanBodyAction : MVRScript
         string actionName = GetConfiguredStartAction(startType);
         hbaLastEvent = "Start " + startType;
         HighlightActionLabel("Start " + startType);
-        hbaLastBlock = "StartSpeed=" + speed.ToString("F2");
+        hbaLastBlock = "StartSpeed=" + speed.ToString("F2") + " Peak=" + peakSpeed.ToString("F2");
         TriggerConfiguredAction("event:HBA_Event_Start:" + startType, actionName);
         UpdateHbaStatus(true);
     }
@@ -1277,6 +1350,8 @@ public class HumanBodyAction : MVRScript
         hbaLastInsideActionTime = -999.0f;
         hbaInsideFastEnterSince = -1.0f;
         hbaInsideFastExitSince = -1.0f;
+        hbaInsideSlowEnterSince = -1.0f;
+        // v030: keep any Fast peak that happened just before Inside event/monitor startup.
         hbaInsideReactionEnergy = 0.0f;
         hbaInsideHoldEnergy = 0.0f;
         hbaLastInsideEnergyUpdateTime = -1.0f;
@@ -1297,6 +1372,8 @@ public class HumanBodyAction : MVRScript
         hbaLastInsideActionMotion = "None";
         hbaInsideFastEnterSince = -1.0f;
         hbaInsideFastExitSince = -1.0f;
+        hbaInsideSlowEnterSince = -1.0f;
+        ClearFastPeakLatch();
         hbaInsideReactionEnergy = 0.0f;
         hbaInsideHoldEnergy = 0.0f;
         hbaLastInsideEnergyUpdateTime = -1.0f;
@@ -1454,21 +1531,28 @@ public class HumanBodyAction : MVRScript
     {
         if (hbaActive == null || !hbaActive.val) return "";
 
-        // v017: classify Inside motion from HBA-side Progress only.
-        // Use inward averaged speed for Slow / Active / Fast, and ignore the return/outward stroke
-        // so Auto Line Slow does not become Fast because of a quick return or one-frame spike.
+        // v030: Auto Line Fast can complete and begin returning before the old 0.25s Inside classifier wakes up.
+        // Keep a short inward-speed peak latch so Fast is not missed just because the live direction is already outward.
+        float peakSpeed = GetFreshFastPeakSpeed();
         if (hbaDepthDirection < 0)
         {
             hbaInsideFastEnterSince = -1.0f;
             hbaInsideFastExitSince = -1.0f;
+            hbaInsideSlowEnterSince = -1.0f;
+            if (peakSpeed >= HbaStatusSpeedFastEnter)
+            {
+                hbaLastBlock = "FastPeakLatch return-dir speed=" + peakSpeed.ToString("F2");
+                return "Fast";
+            }
             return "";
         }
 
-        float classifySpeed = hbaDepthInSpeedAvg;
+        float classifySpeed = Mathf.Max(hbaDepthInSpeedAvg, peakSpeed);
 
         if (classifySpeed < HbaStatusSpeedIdle)
         {
             hbaInsideFastEnterSince = -1.0f;
+            hbaInsideSlowEnterSince = -1.0f;
             if (hbaHoldSince >= 0.0f && Time.time - hbaHoldSince >= HbaInsideHoldDelay)
             {
                 return "Hold";
@@ -1480,10 +1564,29 @@ public class HumanBodyAction : MVRScript
         {
             hbaInsideFastEnterSince = -1.0f;
             hbaInsideFastExitSince = -1.0f;
+
+            bool comingFromMovingLine = hbaInsideMotionState == "Active" ||
+                hbaInsideMotionState == "Fast" ||
+                hbaLastInsideActionMotion == "Active" ||
+                hbaLastInsideActionMotion == "Fast";
+            if (comingFromMovingLine)
+            {
+                if (hbaInsideSlowEnterSince < 0.0f) hbaInsideSlowEnterSince = Time.time;
+                if (Time.time - hbaInsideSlowEnterSince < HbaInsideSlowEnterSeconds)
+                {
+                    hbaLastBlock = "SlowGrace speed=" + classifySpeed.ToString("F2");
+                    return "Active";
+                }
+            }
+            else
+            {
+                hbaInsideSlowEnterSince = -1.0f;
+            }
             return "Slow";
         }
 
-        bool currentlyFast = hbaInsideMotionState == "Fast" || hbaLastInsideActionMotion == "Fast";
+        hbaInsideSlowEnterSince = -1.0f;
+        bool currentlyFast = hbaInsideMotionState == "Fast"; // v032: previous Fast action should not keep the classifier sticky-Fast
         if (currentlyFast)
         {
             hbaInsideFastEnterSince = -1.0f;
@@ -1519,6 +1622,34 @@ public class HumanBodyAction : MVRScript
         }
 
         return "Active";
+    }
+
+    void ClearFastPeakLatch()
+    {
+        hbaFastPeakTime = -999.0f;
+        hbaFastPeakSpeed = 0.0f;
+        hbaFastPeakProgress = 0.0f;
+    }
+
+    void UpdateFastPeakLatch(float progress, float rawSpeed, float avgSpeed)
+    {
+        if (hbaActive == null || !hbaActive.val) return;
+        if (hbaDepthDirection <= 0) return;
+        if (progress < HbaFastPeakMinProgress) return;
+
+        float speed = Mathf.Max(rawSpeed, avgSpeed);
+        if (speed < HbaStatusSpeedFastEnter) return;
+
+        hbaFastPeakTime = Time.time;
+        hbaFastPeakSpeed = speed;
+        hbaFastPeakProgress = progress;
+    }
+
+    float GetFreshFastPeakSpeed()
+    {
+        if (hbaFastPeakTime < 0.0f) return 0.0f;
+        if (Time.time - hbaFastPeakTime > HbaFastPeakLatchSeconds) return 0.0f;
+        return hbaFastPeakSpeed;
     }
 
     void RunConfiguredEventAction(string eventName)
@@ -1679,6 +1810,7 @@ public class HumanBodyAction : MVRScript
             hbaDepthDirection = delta > 0.002f ? 1 : (delta < -0.002f ? -1 : 0);
             hbaDepthInSpeedRaw = hbaDepthDirection > 0 ? Mathf.Max(0.0f, delta) / dt : 0.0f;
             hbaDepthInSpeedAvg = Mathf.Lerp(hbaDepthInSpeedAvg, hbaDepthInSpeedRaw, HbaInSpeedSmoothing);
+            UpdateFastPeakLatch(progress, hbaDepthInSpeedRaw, hbaDepthInSpeedAvg);
         }
         else
         {
@@ -1690,6 +1822,7 @@ public class HumanBodyAction : MVRScript
         {
             hbaDepthInSpeedRaw = 0.0f;
             hbaDepthInSpeedAvg = 0.0f;
+            ClearFastPeakLatch();
         }
 
         hbaLastProgressSampleTime = now;
@@ -1708,6 +1841,7 @@ public class HumanBodyAction : MVRScript
                 "\nProgress: " + Mathf.RoundToInt(progress * 100.0f) + "%" +
                 "  Speed: " + hbaDepthSpeed.ToString("F2") +
                 "  InAvg: " + hbaDepthInSpeedAvg.ToString("F2") +
+                "  Peak: " + GetFreshFastPeakSpeed().ToString("F2") +
                 "  Dir: " + GetDirectionLabel(hbaDepthDirection) +
                 "  E/H: " + hbaInsideReactionEnergy.ToString("F2") + "/" + hbaInsideHoldEnergy.ToString("F2") +
                 "\nEvent: " + hbaLastEvent +
@@ -2308,25 +2442,25 @@ public class HumanBodyAction : MVRScript
     void ApplySlowPreset()
     {
         ApplySlowFacePreset();
-        ApplyPresetCore(1.05f, 0.050f, 1.15f, 0.15f, 0.12f);
+        ApplyPresetCore(1.15f, 0.030f, 1.05f, 0.10f, 0.08f);
     }
 
     void ApplyWeakPreset()
     {
         ApplyWeakFacePreset();
-        ApplyPresetCore(0.48f, 0.090f, 2.10f, 0.78f, 0.30f);
+        ApplyPresetCore(0.55f, 0.045f, 1.70f, 0.55f, 0.20f);
     }
 
     void ApplyNormalPreset()
     {
         ApplyNormalFacePreset();
-        ApplyPresetCore(0.56f, 0.150f, 2.40f, 0.90f, 0.45f);
+        ApplyPresetCore(0.68f, 0.070f, 1.85f, 0.65f, 0.28f);
     }
 
     void ApplyStrongPreset()
     {
         ApplyStrongFacePreset();
-        ApplyPresetCore(0.58f, 0.205f, 2.60f, 0.94f, 0.52f);
+        ApplyPresetCore(0.70f, 0.110f, 2.00f, 0.72f, 0.32f);
     }
 
     void ApplySlowFacePreset()
@@ -2393,7 +2527,12 @@ public class HumanBodyAction : MVRScript
         float start = Time.time;
         float dur = Mathf.Max(0.05f, GetFloat(duration, DefaultDuration));
 
-        DebugMessage("[HumanBodyAction] Body twitch start / duration=" + dur.ToString("0.00") + " / strength=" + GetFloat(strength, DefaultStrength).ToString("0.000"));
+        DebugMessage("[HumanBodyAction] Body twitch start / duration=" + dur.ToString("0.00") +
+            " / strength=" + GetFloat(strength, DefaultStrength).ToString("0.000") +
+            " / motionScale=" + GetFloat(twitchMotionScale, TwitchMotionScaleDefault).ToString("0.00") +
+            " / up=" + GetFloat(twitchUpScale, TwitchUpScaleDefault).ToString("0.00") +
+            " / side=" + GetFloat(twitchSideScale, TwitchSideScaleDefault).ToString("0.00") +
+            " / forward=" + GetFloat(twitchForwardScale, TwitchForwardScaleDefault).ToString("0.00"));
 
         while (Time.time - start < dur)
         {
@@ -2414,7 +2553,10 @@ public class HumanBodyAction : MVRScript
         Vector3 forwardAxis;
         GetAxes(out sideAxis, out upAxis, out forwardAxis);
 
-        float amp = GetFloat(strength, DefaultStrength);
+        float amp = GetFloat(strength, DefaultStrength) * Mathf.Clamp(GetFloat(twitchMotionScale, TwitchMotionScaleDefault), TwitchMotionScaleMin, TwitchMotionScaleMax);
+        float sideScale = Mathf.Clamp(GetFloat(twitchSideScale, TwitchSideScaleDefault), TwitchAxisScaleMin, TwitchAxisScaleMax);
+        float upScale = Mathf.Clamp(GetFloat(twitchUpScale, TwitchUpScaleDefault), TwitchAxisScaleMin, TwitchAxisScaleMax);
+        float forwardScale = Mathf.Clamp(GetFloat(twitchForwardScale, TwitchForwardScaleDefault), TwitchAxisScaleMin, TwitchAxisScaleMax);
         float hits = Mathf.Max(1.0f, GetFloat(hitCount, DefaultHitCount));
         float sharp = Mathf.Clamp01(GetFloat(sharpness, DefaultSharpness));
         float rnd = Mathf.Clamp01(GetFloat(randomness, DefaultRandomness));
@@ -2448,9 +2590,9 @@ public class HumanBodyAction : MVRScript
                 float localPulse = envelope * Mathf.Clamp(mixed, -1.0f, 1.0f);
 
                 Vector3 dir =
-                    sideAxis * (p.direction.x * BodySideScale) +
-                    upAxis * (p.direction.y * BodyUpScale) +
-                    forwardAxis * (p.direction.z * BodyForwardScale);
+                    sideAxis * (p.direction.x * sideScale) +
+                    upAxis * (p.direction.y * upScale) +
+                    forwardAxis * (p.direction.z * forwardScale);
 
                 if (dir.sqrMagnitude > 0.000001f) dir.Normalize();
                 else dir = upAxis;
@@ -2563,10 +2705,10 @@ public class HumanBodyAction : MVRScript
 
     float GetPartScale(TwitchPart p)
     {
-        if (p.label == "Chest") return p.weight * ChestScale;
-        if (p.label == "Hip") return p.weight * HipScale;
+        if (p.label == "Chest") return p.weight * Mathf.Clamp(GetFloat(twitchChestScale, TwitchChestScaleDefault), TwitchPartScaleMin, TwitchPartScaleMax);
+        if (p.label == "Hip") return p.weight * Mathf.Clamp(GetFloat(twitchHipScale, TwitchHipScaleDefault), TwitchPartScaleMin, TwitchPartScaleMax);
         if (p.label == "Head") return p.weight * HeadMicroScale;
-        return p.weight * LimbScale;
+        return p.weight * Mathf.Clamp(GetFloat(twitchLimbScale, TwitchLimbScaleDefault), TwitchPartScaleMin, TwitchPartScaleMax);
     }
 
     void GetAxes(out Vector3 sideAxis, out Vector3 upAxis, out Vector3 forwardAxis)
@@ -2916,16 +3058,18 @@ public class HumanBodyAction : MVRScript
 
         activeHeadSnapshot = CaptureHeadControlSnapshot();
         HeadControlSnapshot restoreSnapshot = activeHeadSnapshot;
-        Vector3 currentPos = headControl.transform.position;
-        Quaternion currentRot = headControl.transform.rotation;
+        Vector3 currentPos = GetHeadControlPosition();
+        Quaternion currentRot = GetHeadControlRotation();
 
         ApplyHeadControlOn();
 
         Vector3 startPos = restoreSnapshot.position;
         Quaternion startRot = restoreSnapshot.rotation;
-        Quaternion centerRot = Quaternion.LookRotation(currentRot * Vector3.forward, Vector3.up);
+        // v026: use the captured start rotation as the neutral base.
+        // The old LookRotation(..., Vector3.up) rebuilt the base rotation and could create a snap.
+        Quaternion centerRot = startRot;
 
-        yield return StartCoroutine(MoveHeadSmooth(currentPos, currentRot, startPos, centerRot, HeadEntryDuration));
+        yield return StartCoroutine(MoveHeadSmooth(currentPos, currentRot, startPos, centerRot, ScaleHeadDuration(HeadEntryDuration)));
 
         Quaternion firstRot = frames[0].rotation;
         Quaternion prevRot = centerRot;
@@ -2945,13 +3089,13 @@ public class HumanBodyAction : MVRScript
                 continue;
             }
 
-            float dur = Mathf.Clamp(kf.duration * HeadDurationScale, HeadSegmentMinDuration, HeadSegmentMaxDuration);
+            float dur = ScaleHeadDuration(Mathf.Clamp(kf.duration * HeadDurationScale, HeadSegmentMinDuration, HeadSegmentMaxDuration));
             LogHeadPoseIfDebug("PLAY", dur, startPos, targetRot);
             yield return StartCoroutine(MoveHeadSmooth(startPos, prevRot, startPos, targetRot, dur));
             prevRot = targetRot;
         }
 
-        yield return StartCoroutine(MoveHeadSmooth(startPos, prevRot, startPos, startRot, ReturnToStartDuration));
+        yield return StartCoroutine(MoveHeadSmooth(startPos, prevRot, startPos, startRot, ScaleHeadDuration(ReturnToStartDuration)));
         RestoreHeadControlState(restoreSnapshot);
         activeHeadSnapshot = null;
     }
@@ -2959,8 +3103,8 @@ public class HumanBodyAction : MVRScript
     HeadControlSnapshot CaptureHeadControlSnapshot()
     {
         HeadControlSnapshot snapshot = new HeadControlSnapshot();
-        snapshot.position = headControl.transform.position;
-        snapshot.rotation = headControl.transform.rotation;
+        snapshot.position = GetHeadControlPosition();
+        snapshot.rotation = GetHeadControlRotation();
         snapshot.positionState = headControl.currentPositionState;
         snapshot.rotationState = headControl.currentRotationState;
         return snapshot;
@@ -2983,7 +3127,7 @@ public class HumanBodyAction : MVRScript
         // v026: HeadAction only owns rotation.
         // Leave position and PositionState exactly as other plugins/physics currently have them.
         // This prevents a completed HeadAction from re-pinning the head position after Swoon Drop.
-        headControl.transform.rotation = snapshot.rotation;
+        SetHeadControlRotation(snapshot.rotation);
         headControl.currentRotationState = snapshot.rotationState;
     }
 
@@ -3033,17 +3177,55 @@ public class HumanBodyAction : MVRScript
             float ease = Mathf.Lerp(linear, smooth, HeadSmoothEaseMix);
             if (movePosition)
             {
-                tr.position = Vector3.Lerp(startPos, targetPos, ease);
+                SetHeadControlPosition(Vector3.Lerp(startPos, targetPos, ease));
             }
-            tr.rotation = Quaternion.Slerp(startRot, targetRot, ease);
+            SetHeadControlRotation(Quaternion.Slerp(startRot, targetRot, ease));
             yield return null;
         }
 
         if (movePosition)
         {
-            tr.position = targetPos;
+            SetHeadControlPosition(targetPos);
         }
-        tr.rotation = targetRot;
+        SetHeadControlRotation(targetRot);
+    }
+
+    float GetHeadTimeScale()
+    {
+        return Mathf.Clamp(headTimeScale != null ? headTimeScale.val : HeadTimeScaleDefault, HeadTimeScaleMin, HeadTimeScaleMax);
+    }
+
+    float ScaleHeadDuration(float seconds)
+    {
+        return Mathf.Max(0.01f, seconds * GetHeadTimeScale());
+    }
+
+    Vector3 GetHeadControlPosition()
+    {
+        if (headControl == null) return Vector3.zero;
+        if (headControl.control != null) return headControl.control.position;
+        return headControl.transform.position;
+    }
+
+    Quaternion GetHeadControlRotation()
+    {
+        if (headControl == null) return Quaternion.identity;
+        if (headControl.control != null) return headControl.control.rotation;
+        return headControl.transform.rotation;
+    }
+
+    void SetHeadControlPosition(Vector3 position)
+    {
+        if (headControl == null) return;
+        if (headControl.control != null) headControl.control.position = position;
+        if (headControl.transform != null) headControl.transform.position = position;
+    }
+
+    void SetHeadControlRotation(Quaternion rotation)
+    {
+        if (headControl == null) return;
+        if (headControl.control != null) headControl.control.rotation = rotation;
+        if (headControl.transform != null) headControl.transform.rotation = rotation;
     }
 
     void LogHeadPoseIfDebug(string label, float dur, Vector3 position, Quaternion rotation)

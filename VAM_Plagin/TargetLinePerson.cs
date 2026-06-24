@@ -1,3 +1,11 @@
+// LINE_SLOW_SPEED_TUNE_BUILD 2026-06-24: Slows Auto Line and Auto Line Slow defaults for the higher-FPS feel while keeping Auto Line Fast unchanged.
+// AXIS_ALIGN_FAR_GUARD_NO_STRETCH_BUILD 2026-06-24: Prevents repeated far Axis Align from stretching P by skipping distant/out-of-segment line projections and limiting Mid/Tip correction relative to Base.
+// AXIS_ALIGN_SAFE_CLAMP_BUILD 2026-06-24: Clamps Axis Align P Mid/Tip movement and clamps depth to the live line segment with small slack to prevent large one-shot jumps.
+// TARGET_PELVIS_AUTO_ONESHOT_FACE_SELF_BUILD 2026-06-24: Axis Align runs Target Pelvis Auto as one-shot only; sets pelvis X plus Face Self Yaw, with logs behind Debug Log.
+// AXIS_ALIGN_INCLUDES_PELVIS_AUTO_BUILD 2026-06-24: Removes the standalone Target Pelvis Auto UI button and runs the same pelvis auto/hold step at the start of Axis Align.
+// TARGET_PELVIS_AUTO_HOLD_BUILD 2026-06-24: Keeps Target Pelvis Auto rotation applied each frame after the button, matching the TargetGrabber hold behavior so VaM does not immediately restore it.
+// TARGET_PELVIS_AUTO_AXIS_ALIGN_BUILD 2026-06-24: Adds Target Pelvis Auto button before Axis Align and renames P Mid G Align UI/action/logs to Axis Align.
+// YELLOW_DIP_ANGLE_SLIDERS_BUILD 2026-06-24: Adds Yellow Dip Angle Min/Max sliders; defaults to 60-115 degrees so shallower target axes can use the existing dip guide.
 // HUD_FX_STATE_HYSTERESIS_BUILD 2026-06-24: Uses a single enter/exit FX state with hysteresis so only one HUD FX event fires per transition.
 // HUD_FX_ENTER_EXIT_COLORS_BUILD 2026-06-24: Uses warm triangle bursts for entering threshold and blue circle/ring bursts for exit threshold; HUD FX Test shows both paths.
 // HUD_FX_TEST_BUTTON_BUILD 2026-06-24: Adds a HUD FX Test button/action to verify burst rendering independently from threshold timing. Keeps Depth Probe Rate Auto, Raw HUD internal path restored, and Transform Cache forced ON.
@@ -256,6 +264,8 @@ public class TargetLinePerson : MVRScript
     JSONStorableFloat upperBodyYellowLowerScale;
     JSONStorableBool pAngleAtYellowP3;
     JSONStorableFloat yellowButtGuideScale;
+    JSONStorableFloat yellowDipAngleMin;
+    JSONStorableFloat yellowDipAngleMax;
     JSONStorableFloat pushDepthScale;
     JSONStorableStringChooser pushAutoMode;
     JSONStorableBool pushAutoGDepthTrigger;
@@ -267,6 +277,8 @@ public class TargetLinePerson : MVRScript
     UIDynamicSlider distanceSlider;
     UIDynamicSlider hipYOffsetSlider;
     UIDynamicSlider yellowButtGuideScaleSlider;
+    UIDynamicSlider yellowDipAngleMinSlider;
+    UIDynamicSlider yellowDipAngleMaxSlider;
     UIDynamicButton pushButton;
 
     readonly Dictionary<string, FreeControllerV3.PositionState> upperBodyLowerBasePositionStates = new Dictionary<string, FreeControllerV3.PositionState>();
@@ -307,6 +319,10 @@ public class TargetLinePerson : MVRScript
     bool pushModeLinearSlow;
     float pushModeSpiralAngle;
     float pushModeSpiralStartAngle;
+    bool targetPelvisAutoHoldActive;
+    float targetPelvisAutoHoldX = 180.0f;
+    bool targetPelvisAutoHoldFrontSide;
+    string targetPelvisAutoHoldAtomUid = "";
     float pushAutoGDepthEnterSince = -1.0f;
     float pushAutoGDepthExitSince = -1.0f;
     float pushAutoGDepthStartDistance;
@@ -329,10 +345,10 @@ public class TargetLinePerson : MVRScript
     const float PushPDepthScaleMin = 1.00f;
     const float PushPDepthScaleMax = 2.00f;
     const float PushPMinMoveDistance = 0.010f;
-    const float PushPFollowSpeed = 10.5f;
-    const float PushPReturnSeconds = 0.22f;
+    const float PushPFollowSpeed = 8.0f;
+    const float PushPReturnSeconds = 0.30f;
     const float PushPHoldSeconds = 0.00f;
-    const float PushPLineSlowLinearSpeed = 0.12f;
+    const float PushPLineSlowLinearSpeed = 0.09f;
     const string PushModeNone = "None";
     const string PushModeAutoLine = "Auto Line";
     const string PushModeAutoLineSlow = "Auto Line Slow";
@@ -547,6 +563,11 @@ public class TargetLinePerson : MVRScript
     const float PMidAxisAssistLogInterval = 2.5f;
     const float PMidGAlignBaseFollowScale = 0.35f;
     const float PMidGAlignBaseMaxMove = 0.035f;
+    const float AxisAlignMidMaxMove = 0.045f;
+    const float AxisAlignTipMaxMove = 0.060f;
+    const float AxisAlignDepthSlack = 0.050f;
+    const float AxisAlignMaxRawLateral = 0.180f;
+    const float AxisAlignMaxStretchIncrease = 0.004f;
     const float PDynamicForwardKeepShapeMinUpAngleDegrees = 8.0f;
     const float PTipYellowGuideTangentSmoothDistance = 0.055f;
     const float PTipYellowGuideEndExtendMax = 0.45f;
@@ -558,8 +579,12 @@ public class TargetLinePerson : MVRScript
     const float POwnTiltGuardMidAngleMaxDegrees = 50.0f;
     const float POwnTiltGuardTipMinUpDegrees = 60.0f;
 
-    const float YellowGuideDipAngleMinDegrees = 75.0f;
-    const float YellowGuideDipAngleMaxDegrees = 115.0f;
+    const float YellowGuideDipAngleMinDefaultDegrees = 60.0f;
+    const float YellowGuideDipAngleMaxDefaultDegrees = 115.0f;
+    const float YellowGuideDipAngleMinSliderMinDegrees = 45.0f;
+    const float YellowGuideDipAngleMinSliderMaxDegrees = 90.0f;
+    const float YellowGuideDipAngleMaxSliderMinDegrees = 90.0f;
+    const float YellowGuideDipAngleMaxSliderMaxDegrees = 135.0f;
     const float YellowGuideLieVerticalDotThreshold = 0.55f;
     const float PFlatGuideStartDistance = 0.40f; // no-dip guide: start P follow when Distance reaches this value
     const float LowTargetLegUnlockMinDrop = 0.100f;
@@ -942,9 +967,9 @@ public class TargetLinePerson : MVRScript
             ActionPushP();
         });
 
-        CreateButton("P Mid G Align", true).button.onClick.AddListener(delegate
+        CreateButton("Axis Align", true).button.onClick.AddListener(delegate
         {
-            ActionPMidGAlign();
+            ActionAxisAlign();
         });
 
         pushAutoMode = new JSONStorableStringChooser(
@@ -1176,6 +1201,26 @@ public class TargetLinePerson : MVRScript
         yellowButtGuideScale.setCallbackFunction = OnYellowButtGuideScaleChanged;
         RegisterFloat(yellowButtGuideScale);
         yellowButtGuideScaleSlider = CreateSlider(yellowButtGuideScale, true);
+
+        yellowDipAngleMin = new JSONStorableFloat(
+            "Yellow Dip Angle Min",
+            YellowGuideDipAngleMinDefaultDegrees,
+            YellowGuideDipAngleMinSliderMinDegrees,
+            YellowGuideDipAngleMinSliderMaxDegrees
+        );
+        yellowDipAngleMin.setCallbackFunction = OnYellowDipAngleChanged;
+        RegisterFloat(yellowDipAngleMin);
+        yellowDipAngleMinSlider = CreateSlider(yellowDipAngleMin, true);
+
+        yellowDipAngleMax = new JSONStorableFloat(
+            "Yellow Dip Angle Max",
+            YellowGuideDipAngleMaxDefaultDegrees,
+            YellowGuideDipAngleMaxSliderMinDegrees,
+            YellowGuideDipAngleMaxSliderMaxDegrees
+        );
+        yellowDipAngleMax.setCallbackFunction = OnYellowDipAngleChanged;
+        RegisterFloat(yellowDipAngleMax);
+        yellowDipAngleMaxSlider = CreateSlider(yellowDipAngleMax, true);
 
         hipYOffset = new JSONStorableFloat(
             "Hip Y Offset",
@@ -1521,7 +1566,7 @@ public class TargetLinePerson : MVRScript
 
         RegisterExternalActions();
 
-        LogMessageIfDebug("[TargetLinePerson] Ready / v194 runtime feature split toggles / P Mid G Align button");
+        LogMessageIfDebug("[TargetLinePerson] Ready / v212 Axis Align includes pelvis auto");
     }
 
 
@@ -1570,7 +1615,9 @@ public class TargetLinePerson : MVRScript
     void RegisterExternalActions()
     {
         RegisterAction(new JSONStorableAction("PUSH", ActionPushP));
-        RegisterAction(new JSONStorableAction("P Mid G Align", ActionPMidGAlign));
+        RegisterAction(new JSONStorableAction("Target Pelvis Auto", ActionTargetPelvisAuto)); // hidden compatibility action; UI button removed in v212
+        RegisterAction(new JSONStorableAction("Axis Align", ActionAxisAlign));
+        RegisterAction(new JSONStorableAction("P Mid G Align", ActionAxisAlign)); // compatibility alias
         RegisterAction(new JSONStorableAction("Now Docking", ActionNowDocking));
         RegisterAction(new JSONStorableAction("Smart Docking", ActionSmartDocking));
         RegisterAction(new JSONStorableAction("Reverse Smart Docking", ActionReverseSmartDocking));
@@ -2029,6 +2076,8 @@ public class TargetLinePerson : MVRScript
 
     void Update()
     {
+        // v215: Target Pelvis Auto is one-shot only; do not hold pelvis in Update.
+
         if (!captured)
         {
             CancelDelayedGuideRefresh("not captured");
@@ -2595,6 +2644,16 @@ public class TargetLinePerson : MVRScript
         if (yellowButtGuideScaleSlider != null && yellowButtGuideScaleSlider.slider != null)
         {
             yellowButtGuideScaleSlider.slider.interactable = interactable;
+        }
+
+        if (yellowDipAngleMinSlider != null && yellowDipAngleMinSlider.slider != null)
+        {
+            yellowDipAngleMinSlider.slider.interactable = interactable;
+        }
+
+        if (yellowDipAngleMaxSlider != null && yellowDipAngleMaxSlider.slider != null)
+        {
+            yellowDipAngleMaxSlider.slider.interactable = interactable;
         }
     }
 
@@ -5248,8 +5307,7 @@ else
         Vector3 redUpDir = redDir.y >= 0f ? redDir : -redDir;
         dipAngle = GetTargetAxisAngleFromOwnDegrees(approachFlat, redUpDir);
 
-        return dipAngle >= YellowGuideDipAngleMinDegrees &&
-            dipAngle <= YellowGuideDipAngleMaxDegrees;
+        return IsYellowDipAngleInRange(dipAngle);
     }
 
     Vector3 GetOrbitDirection()
@@ -12649,24 +12707,57 @@ bool IsTargetRideLikePose()
         return yellowButtGuideScale != null ? Mathf.Clamp(yellowButtGuideScale.val, 0.50f, 3.00f) : 1.0f;
     }
 
-    void OnYellowButtGuideScaleChanged(float value)
+    float GetYellowDipAngleMinDegrees()
+    {
+        return yellowDipAngleMin != null
+            ? Mathf.Clamp(yellowDipAngleMin.val, YellowGuideDipAngleMinSliderMinDegrees, YellowGuideDipAngleMinSliderMaxDegrees)
+            : YellowGuideDipAngleMinDefaultDegrees;
+    }
+
+    float GetYellowDipAngleMaxDegrees()
+    {
+        return yellowDipAngleMax != null
+            ? Mathf.Clamp(yellowDipAngleMax.val, YellowGuideDipAngleMaxSliderMinDegrees, YellowGuideDipAngleMaxSliderMaxDegrees)
+            : YellowGuideDipAngleMaxDefaultDegrees;
+    }
+
+    bool IsYellowDipAngleInRange(float angleDegrees)
+    {
+        return angleDegrees >= GetYellowDipAngleMinDegrees() &&
+            angleDegrees <= GetYellowDipAngleMaxDegrees();
+    }
+
+    void RebuildYellowGuideAfterShapeSlider(string reason)
     {
         if (!captured)
         {
             return;
         }
 
-        // Rebuild only the guide shape.  The actual capture target remains the same,
-        // but yellowPPathPoints must be recalculated because the dip clearance changed.
+        // Rebuild only the guide shape. The actual capture target remains the same,
+        // but yellowPPathPoints must be recalculated because the yellow guide shape changed.
         hasYellowPPath = false;
         hasCapturedMoveLine = false;
         ClearTipYellowParallelLock();
         lastUpperBodyYellowLowerPhase = "";
         lastLoggedUpperBodyYellowProgress = -1f;
 
-        ApplyCapturedPlacementOnce("yellow butt guide scale slider", true);
+        ApplyCapturedPlacementOnce(reason, true);
+    }
+
+    void OnYellowButtGuideScaleChanged(float value)
+    {
+        RebuildYellowGuideAfterShapeSlider("yellow butt guide scale slider");
 
         DebugLog("[TargetLinePerson] Yellow Butt Guide Scale changed / value=" + GetYellowButtGuideScale().ToString("F2") + " / guide will rebuild");
+    }
+
+    void OnYellowDipAngleChanged(float value)
+    {
+        RebuildYellowGuideAfterShapeSlider("yellow dip angle slider");
+
+        DebugLog("[TargetLinePerson] Yellow Dip Angle changed / min=" + GetYellowDipAngleMinDegrees().ToString("F1") +
+            " / max=" + GetYellowDipAngleMaxDegrees().ToString("F1") + " / guide will rebuild");
     }
 
     void BuildCapturedYellowPPath()
@@ -12808,13 +12899,12 @@ bool IsTargetRideLikePose()
 
         // Yellow Guide is always the internal Own P route.
         // Only the guide SHAPE changes:
-        //   - non-lie + Target Axis 75-115 degrees: dip guide
+        //   - non-lie + Target Axis within Yellow Dip Angle Min/Max: dip guide
         //   - lie or other axis angles: flat green-parallel guide
         yellowGuideOwnLieFlat = IsOwnLiePoseForYellowGuide();
         yellowGuideTargetAxisAngleDeg = GetTargetAxisAngleFromOwnDegrees(approachFlat, redUpDir);
         yellowGuideHasDip = !yellowGuideOwnLieFlat &&
-            yellowGuideTargetAxisAngleDeg >= YellowGuideDipAngleMinDegrees &&
-            yellowGuideTargetAxisAngleDeg <= YellowGuideDipAngleMaxDegrees;
+            IsYellowDipAngleInRange(yellowGuideTargetAxisAngleDeg);
 
         Vector3 p2;
         Vector3 p3;
@@ -13498,13 +13588,283 @@ bool IsTargetRideLikePose()
         UpdatePushButtonUi();
     }
 
-    void ActionPMidGAlign()
+    void ActionTargetPelvisAuto()
+    {
+        ApplyTargetPelvisAuto("action");
+    }
+
+    bool ApplyTargetPelvisAuto(string reason)
+    {
+        if (targetPersonChooser == null || string.IsNullOrEmpty(targetPersonChooser.val))
+        {
+            DebugLog("[TargetLinePerson] Target Pelvis Auto skipped / reason=no target chooser / caller=" + reason);
+            return false;
+        }
+
+        Atom targetAtom = FindAtom(targetPersonChooser.val);
+        if (targetAtom == null)
+        {
+            DebugLog("[TargetLinePerson] Target Pelvis Auto skipped / reason=target atom missing / caller=" + reason + " / target=" + targetPersonChooser.val);
+            return false;
+        }
+
+        FreeControllerV3 pelvis = FindTargetPelvisControl(targetAtom);
+        if (pelvis == null)
+        {
+            DebugLog("[TargetLinePerson] Target Pelvis Auto skipped / reason=pelvis missing / caller=" + reason + " / target=" + targetAtom.uid);
+            return false;
+        }
+
+        Vector3 targetCenter = GetControllerWorldPosition(pelvis, targetAtom.transform != null ? targetAtom.transform.position : Vector3.zero);
+        Vector3 ownPos = GetTargetPelvisFaceSelfReferencePosition();
+
+        Vector3 targetForward = GetTargetRootForward(targetAtom, capturedDir.sqrMagnitude >= 0.0001f ? capturedDir : Vector3.forward);
+        targetForward.y = 0f;
+        if (targetForward.sqrMagnitude < 0.0001f)
+        {
+            DebugLog("[TargetLinePerson] Target Pelvis Auto skipped / reason=bad target forward / caller=" + reason + " / target=" + targetAtom.uid);
+            return false;
+        }
+        targetForward.Normalize();
+
+        Vector3 toOwn = ownPos - targetCenter;
+        toOwn.y = 0f;
+        if (toOwn.sqrMagnitude < 0.0001f)
+        {
+            DebugLog("[TargetLinePerson] Target Pelvis Auto skipped / reason=bad own direction / caller=" + reason + " / target=" + targetAtom.uid);
+            return false;
+        }
+        toOwn.Normalize();
+
+        bool frontSide = Vector3.Dot(toOwn, targetForward) >= 0f;
+
+        // TargetLinePerson's side detector already matched the visual X mapping during testing:
+        // frontSide => Near (X=270), backSide => Back (X=90).
+        // Keep X one-shot only. Do not enable any Update hold.
+        float x = frontSide ? 270f : 90f;
+
+        // Match the confirmed TargetGrabber convention by visual mode:
+        // Near/X270 uses yawOffset=0, Back/X90 uses yawOffset=180.
+        float yawOffset = frontSide ? 0f : 180f;
+
+        bool okX = ApplyTargetPelvisRotX(pelvis, x, frontSide, reason + "-x-one-shot", false);
+        bool okFace = ApplyTargetPelvisFaceSelfYaw(pelvis, yawOffset, reason + "-face-self-one-shot", false);
+
+        DebugLog(
+            "[TargetLinePerson] Target Pelvis Auto" +
+            " / reason=" + reason +
+            " / oneShot=1" +
+            " / okX=" + (okX ? "1" : "0") +
+            " / okFace=" + (okFace ? "1" : "0") +
+            " / frontSide=" + (frontSide ? "1" : "0") +
+            " / backSide=" + (!frontSide ? "1" : "0") +
+            " / x=" + x.ToString("F1") +
+            " / yawOffset=" + yawOffset.ToString("F1") +
+            " / mode=" + (frontSide ? "Near" : "Back") +
+            " / targetCenter=(" + FormatVector3(targetCenter) + ")" +
+            " / own=(" + FormatVector3(ownPos) + ")"
+        );
+
+        return okX || okFace;
+    }
+
+    // v215: retained as a no-op for safety. Pelvis auto is now one-shot only.
+    void ApplyTargetPelvisAutoHold()
+    {
+    }
+
+    FreeControllerV3 FindTargetPelvisControl(Atom targetAtom)
+    {
+        if (targetAtom == null)
+        {
+            return null;
+        }
+
+        FreeControllerV3 pelvis = FindControllerExact(targetAtom, "pelvisControl");
+        if (pelvis == null)
+        {
+            pelvis = FindController(targetAtom, "pelvis");
+        }
+
+        return pelvis;
+    }
+
+    Vector3 GetControllerWorldPosition(FreeControllerV3 fc, Vector3 fallback)
+    {
+        if (fc != null)
+        {
+            if (fc.control != null)
+            {
+                return fc.control.position;
+            }
+
+            if (fc.transform != null)
+            {
+                return fc.transform.position;
+            }
+        }
+
+        return fallback;
+    }
+
+    Vector3 GetTargetPelvisFaceSelfReferencePosition()
+    {
+        FreeControllerV3 ownChest = GetOwnChest();
+        if (ownChest != null)
+        {
+            return GetControllerWorldPosition(ownChest, containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+        }
+
+        FreeControllerV3 ownHip = GetOwnHip();
+        if (ownHip != null)
+        {
+            return GetControllerWorldPosition(ownHip, containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+        }
+
+        if (containingAtom != null && containingAtom.transform != null)
+        {
+            return containingAtom.transform.position;
+        }
+
+        return Vector3.zero;
+    }
+
+    bool ApplyTargetPelvisRotX(FreeControllerV3 pelvis, float x, bool frontSide, string reason, bool quiet)
+    {
+        if (pelvis == null)
+        {
+            return false;
+        }
+
+        x = Mathf.Repeat(x, 360f);
+        Vector3 before;
+        Vector3 after;
+
+        if (pelvis.control != null)
+        {
+            before = pelvis.control.localRotation.eulerAngles;
+            pelvis.control.localRotation = Quaternion.Euler(x, before.y, before.z);
+            after = pelvis.control.localRotation.eulerAngles;
+        }
+        else if (pelvis.transform != null)
+        {
+            before = pelvis.transform.localRotation.eulerAngles;
+            pelvis.transform.localRotation = Quaternion.Euler(x, before.y, before.z);
+            after = pelvis.transform.localRotation.eulerAngles;
+        }
+        else
+        {
+            return false;
+        }
+
+        pelvis.currentRotationState = FreeControllerV3.RotationState.On;
+
+        if (!quiet)
+        {
+            DebugLog(
+                "[TargetLinePerson] Target Pelvis Rot X" +
+                " / reason=" + reason +
+                " / oneShot=1" +
+                " / frontSide=" + (frontSide ? "1" : "0") +
+                " / backSide=" + (!frontSide ? "1" : "0") +
+                " / x=" + x.ToString("F1") +
+                " / rotState=" + pelvis.currentRotationState.ToString() +
+                " / before=(" + FormatVector3(before) + ")" +
+                " / after=(" + FormatVector3(after) + ")"
+            );
+        }
+
+        return true;
+    }
+
+    bool ApplyTargetPelvisFaceSelfYaw(FreeControllerV3 pelvis, float yawOffsetDegrees, string reason, bool quiet)
+    {
+        if (pelvis == null)
+        {
+            return false;
+        }
+
+        Transform controlTransform = pelvis.control != null ? pelvis.control : pelvis.transform;
+        if (controlTransform == null)
+        {
+            return false;
+        }
+
+        Vector3 selfRef = GetTargetPelvisFaceSelfReferencePosition();
+        Vector3 pelvisPos = controlTransform.position;
+        Vector3 worldDir = selfRef - pelvisPos;
+        worldDir.y = 0f;
+
+        if (worldDir.sqrMagnitude < 0.000001f)
+        {
+            DebugLog(
+                "[TargetLinePerson] Target Pelvis Face Self skipped" +
+                " / reason=dir-small" +
+                " / caller=" + reason +
+                " / pelvis=(" + FormatVector3(pelvisPos) + ")" +
+                " / self=(" + FormatVector3(selfRef) + ")"
+            );
+            return false;
+        }
+
+        worldDir.Normalize();
+
+        Transform parent = controlTransform.parent;
+        Vector3 localDir = parent != null ? parent.InverseTransformDirection(worldDir) : worldDir;
+        localDir.y = 0f;
+
+        if (localDir.sqrMagnitude < 0.000001f)
+        {
+            DebugLog(
+                "[TargetLinePerson] Target Pelvis Face Self skipped" +
+                " / reason=local-dir-small" +
+                " / caller=" + reason +
+                " / worldDir=(" + FormatVector3(worldDir) + ")"
+            );
+            return false;
+        }
+
+        localDir.Normalize();
+
+        float y = Mathf.Atan2(localDir.x, localDir.z) * Mathf.Rad2Deg;
+        y = Mathf.Repeat(y + yawOffsetDegrees, 360f);
+
+        Vector3 before = controlTransform.localRotation.eulerAngles;
+        controlTransform.localRotation = Quaternion.Euler(before.x, y, before.z);
+        Vector3 after = controlTransform.localRotation.eulerAngles;
+
+        pelvis.currentRotationState = FreeControllerV3.RotationState.On;
+
+        if (!quiet)
+        {
+            DebugLog(
+                "[TargetLinePerson] Target Pelvis Face Self" +
+                " / reason=" + reason +
+                " / oneShot=1" +
+                " / yawOffset=" + yawOffsetDegrees.ToString("F1") +
+                " / y=" + y.ToString("F1") +
+                " / rotState=" + pelvis.currentRotationState.ToString() +
+                " / self=(" + FormatVector3(selfRef) + ")" +
+                " / pelvis=(" + FormatVector3(pelvisPos) + ")" +
+                " / worldDir=(" + FormatVector3(worldDir) + ")" +
+                " / localDir=(" + FormatVector3(localDir) + ")" +
+                " / before=(" + FormatVector3(before) + ")" +
+                " / after=(" + FormatVector3(after) + ")"
+            );
+        }
+
+        return true;
+    }
+
+    void ActionAxisAlign()
     {
         if (pushPRoutine != null)
         {
-            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=PUSH running");
+            DebugLog("[TargetLinePerson] Axis Align skipped / reason=PUSH running");
             return;
         }
+
+        ApplyTargetPelvisAuto("axis-align");
 
         FreeControllerV3 penisBase = GetOwnPenisBase();
         FreeControllerV3 penisMid = GetOwnPenisMid();
@@ -13513,7 +13873,7 @@ bool IsTargetRideLikePose()
         if (penisMid == null || penisTip == null)
         {
             DebugLog(
-                "[TargetLinePerson] P Mid G Align skipped / reason=missing P controller" +
+                "[TargetLinePerson] Axis Align skipped / reason=missing P controller" +
                 " / base=" + (penisBase != null ? "1" : "0") +
                 " / mid=" + (penisMid != null ? "1" : "0") +
                 " / tip=" + (penisTip != null ? "1" : "0")
@@ -13526,30 +13886,103 @@ bool IsTargetRideLikePose()
         float length;
         if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
         {
-            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=no genital G line");
+            DebugLog("[TargetLinePerson] Axis Align skipped / reason=no genital G line");
             return;
         }
 
         if (dir.sqrMagnitude < 0.0001f)
         {
-            DebugLog("[TargetLinePerson] P Mid G Align skipped / reason=bad G direction");
+            DebugLog("[TargetLinePerson] Axis Align skipped / reason=bad G direction");
             return;
         }
 
         dir.Normalize();
 
         float midDepth;
+        float midUsedDepth;
         float midLateral;
-        Vector3 midCorrection = GetLateralCorrectionToInsideLine(penisMid.transform.position, origin, dir, out midDepth, out midLateral);
+        bool midDepthClamped;
+        Vector3 midRawCorrection = GetSafeLateralCorrectionToInsideLine(
+            penisMid.transform.position,
+            origin,
+            dir,
+            length,
+            out midDepth,
+            out midUsedDepth,
+            out midLateral,
+            out midDepthClamped
+        );
 
         float tipDepth;
+        float tipUsedDepth;
         float tipLateral;
-        Vector3 tipCorrection = GetLateralCorrectionToInsideLine(penisTip.transform.position, origin, dir, out tipDepth, out tipLateral);
+        bool tipDepthClamped;
+        Vector3 tipRawCorrection = GetSafeLateralCorrectionToInsideLine(
+            penisTip.transform.position,
+            origin,
+            dir,
+            length,
+            out tipDepth,
+            out tipUsedDepth,
+            out tipLateral,
+            out tipDepthClamped
+        );
+
+        bool tooFar = midLateral > AxisAlignMaxRawLateral || tipLateral > AxisAlignMaxRawLateral;
+        bool outsideSegment = midDepthClamped || tipDepthClamped;
+        if (tooFar || outsideSegment)
+        {
+            DebugLog(
+                "[TargetLinePerson] Axis Align skipped" +
+                " / reason=" + (tooFar ? "too-far" : "outside-line-segment") +
+                " / farGuard=1" +
+                " / midRawMove=" + midRawCorrection.magnitude.ToString("F3") +
+                " / tipRawMove=" + tipRawCorrection.magnitude.ToString("F3") +
+                " / maxRaw=" + AxisAlignMaxRawLateral.ToString("F3") +
+                " / midDepth=" + midDepth.ToString("F3") +
+                " / midUsedDepth=" + midUsedDepth.ToString("F3") +
+                " / tipDepth=" + tipDepth.ToString("F3") +
+                " / tipUsedDepth=" + tipUsedDepth.ToString("F3") +
+                " / midDepthClamped=" + (midDepthClamped ? "1" : "0") +
+                " / tipDepthClamped=" + (tipDepthClamped ? "1" : "0")
+            );
+            return;
+        }
 
         Vector3 baseCorrection = Vector3.zero;
         if (penisBase != null)
         {
-            baseCorrection = Vector3.ClampMagnitude(midCorrection * PMidGAlignBaseFollowScale, PMidGAlignBaseMaxMove);
+            baseCorrection = Vector3.ClampMagnitude(midRawCorrection * PMidGAlignBaseFollowScale, PMidGAlignBaseMaxMove);
+        }
+
+        Vector3 midCorrection = Vector3.ClampMagnitude(midRawCorrection, AxisAlignMidMaxMove);
+        Vector3 tipCorrection = Vector3.ClampMagnitude(tipRawCorrection, AxisAlignTipMaxMove);
+
+        bool midStretchClamped = false;
+        bool tipStretchClamped = false;
+        if (penisBase != null)
+        {
+            midCorrection = ClampPointCorrectionNoStretch(
+                penisMid.transform.position,
+                penisBase.transform.position,
+                midCorrection,
+                baseCorrection,
+                AxisAlignMaxStretchIncrease,
+                out midStretchClamped
+            );
+
+            tipCorrection = ClampPointCorrectionNoStretch(
+                penisTip.transform.position,
+                penisBase.transform.position,
+                tipCorrection,
+                baseCorrection,
+                AxisAlignMaxStretchIncrease,
+                out tipStretchClamped
+            );
+        }
+
+        if (penisBase != null)
+        {
             ApplyControllerPositionOffsetIfChanged(penisBase, baseCorrection);
         }
 
@@ -13558,15 +13991,78 @@ bool IsTargetRideLikePose()
         pMidAxisAssistApplied = true;
 
         DebugLog(
-            "[TargetLinePerson] P Mid G Align" +
+            "[TargetLinePerson] Axis Align" +
+            " / safe=1" +
+            " / farGuard=1" +
+            " / noStretch=1" +
             " / midMove=" + midCorrection.magnitude.ToString("F3") +
             " / tipMove=" + tipCorrection.magnitude.ToString("F3") +
             " / baseMove=" + baseCorrection.magnitude.ToString("F3") +
+            " / midRawMove=" + midRawCorrection.magnitude.ToString("F3") +
+            " / tipRawMove=" + tipRawCorrection.magnitude.ToString("F3") +
+            " / midMax=" + AxisAlignMidMaxMove.ToString("F3") +
+            " / tipMax=" + AxisAlignTipMaxMove.ToString("F3") +
+            " / maxRaw=" + AxisAlignMaxRawLateral.ToString("F3") +
+            " / maxStretch=" + AxisAlignMaxStretchIncrease.ToString("F3") +
             " / midDepth=" + midDepth.ToString("F3") +
+            " / midUsedDepth=" + midUsedDepth.ToString("F3") +
             " / tipDepth=" + tipDepth.ToString("F3") +
+            " / tipUsedDepth=" + tipUsedDepth.ToString("F3") +
+            " / midDepthClamped=" + (midDepthClamped ? "1" : "0") +
+            " / tipDepthClamped=" + (tipDepthClamped ? "1" : "0") +
+            " / midStretchClamped=" + (midStretchClamped ? "1" : "0") +
+            " / tipStretchClamped=" + (tipStretchClamped ? "1" : "0") +
             " / midLat=" + midLateral.ToString("F3") +
             " / tipLat=" + tipLateral.ToString("F3")
         );
+    }
+
+    Vector3 ClampPointCorrectionNoStretch(
+        Vector3 pointPosition,
+        Vector3 anchorPosition,
+        Vector3 pointCorrection,
+        Vector3 anchorCorrection,
+        float maxIncrease,
+        out bool clamped
+    )
+    {
+        clamped = false;
+        float beforeDistance = (pointPosition - anchorPosition).magnitude;
+        Vector3 anchorAfter = anchorPosition + anchorCorrection;
+        Vector3 pointAfter = pointPosition + pointCorrection;
+        Vector3 afterVector = pointAfter - anchorAfter;
+        float afterDistance = afterVector.magnitude;
+        float maxDistance = beforeDistance + Mathf.Max(0.0f, maxIncrease);
+
+        if (afterDistance <= maxDistance || afterDistance < 0.000001f)
+        {
+            return pointCorrection;
+        }
+
+        clamped = true;
+        pointAfter = anchorAfter + afterVector.normalized * maxDistance;
+        return pointAfter - pointPosition;
+    }
+
+    Vector3 GetSafeLateralCorrectionToInsideLine(
+        Vector3 position,
+        Vector3 origin,
+        Vector3 dir,
+        float length,
+        out float depth,
+        out float usedDepth,
+        out float lateralDistance,
+        out bool depthClamped
+    )
+    {
+        depth = Vector3.Dot(position - origin, dir);
+        float safeLength = Mathf.Max(0.0f, length);
+        usedDepth = Mathf.Clamp(depth, -AxisAlignDepthSlack, safeLength + AxisAlignDepthSlack);
+        depthClamped = Mathf.Abs(usedDepth - depth) > 0.0005f;
+        Vector3 closest = origin + dir * usedDepth;
+        Vector3 correction = closest - position;
+        lateralDistance = correction.magnitude;
+        return correction;
     }
 
     Vector3 GetLateralCorrectionToInsideLine(Vector3 position, Vector3 origin, Vector3 dir, out float depth, out float lateralDistance)

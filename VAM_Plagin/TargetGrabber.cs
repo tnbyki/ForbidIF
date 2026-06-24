@@ -1,4 +1,6 @@
+// TARGET_PELVIS_ONESHOT_DEBUG_BUILD 2026-06-24: Makes TargetGrabber pelvis control one-shot only and adds verification logs/buttons. No LateUpdate hold.
 // HDU_GRAB_HAND_ROUTES_BUILD 2026-06-24: Adds HDU direct target+GrabHand utility actions so HDU_Commander does not need to drive the IK Select popup.
+// V5au: Moves Target Pelvis auto/test diagnostic logs behind Debug Log; behavior unchanged.
 // ============================================================
 // TargetGrabber.cs
 // Version: V5h_hug_body_snap_position_clamp
@@ -28,6 +30,17 @@
 // - V5g: For Hug Body Auto Snap, self hand controls snap position only and keep the final Wrist In rotation.
 // - V5b: Biases Hug Body final wrist strongly toward Wrist In; Out is used only when the final hand remains far on the actor/front side.
 // V5j: Stabilizes target neck/head during Hug Body by excluding them from Hug Body pivot/autosnap target paths while preserving normal functions.
+// V5af: Changes the guarded test slider from target abdomenControl Rot X to target pelvis Rot X.
+//       Slider is VaM Move style 0..360: 270 = front/near side, 45 = back/far side.
+// V5ag: Restricts target pelvis Rot X test range to 90..270 and adds Pelvis Auto On Grab.
+//       Grab Hand frontSide sets 270 Near; backSide sets 90 Back. This is fixed assignment, not additive.
+// V5ah: Moves Pelvis Auto On Grab after StartTimedGrab/ResolveControls so target Person is ready before applying pelvis Rot X.
+// V5ap: Reverses TargetGrabber Pelvis Auto one-shot assignment only: frontSide -> 90 Back, backSide -> 270 Near.
+// V5aq: Adds one-shot Target Pelvis Face Self yaw. Grab Hand Pelvis Auto now sets X plus Yaw toward self. Adds Face Self debug buttons.
+// V5ar: Tried +180 yaw offset when detector backSide; rejected because TargetGrabber visual front/back is reversed for pelvis.
+// V5as: Applies +180 yaw offset on detector frontSide instead, matching the visual back-side branch used by reversed pelvis X mapping.
+//       The shared front/back detector is unchanged so hand routing is not affected.
+// V5an: Removes TargetGrabber pelvis hold/manual test controls so TargetLinePerson can own persistent pelvis control. Keeps Grab Hand pelvis auto as one-shot only.
 // V5ac: Hug Body Pull/Push uses HDC Hip-Upper on target hip/chest/head only; target hand/elbow/neck stay natural. Self hands follow chest-relative.
 // - V5aa: Hug Body HDC Hip-Upper keeps target upper rotation, but self hands follow target chest-relative offsets instead of hip-pivot arcs.
 // - V5ab: Hug Body HDC Pull/Push no longer drives target hand/elbow IK; target arms are left natural.
@@ -37,6 +50,7 @@
 // V5m: For Hug Body Pull/Push, relaxes target neck/head IK during the pivot instead of freezing neck/head.
 // V5n: Skips target neck/head AutoSnap for Head/Neck/Mouth grab routes to prevent target head rotation spin.
 // V5m: For Hug Body Pull/Push, temporarily turns target neck/head IK OFF during the pivot so upper body can bend without head/neck IK resistance. Adds HDU Head route.
+// V5at: Integrates Pelvis Auto one-shot into the Hip Hold grab route after Hip Hold target resolution, with per-grab guard/logs.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -327,6 +341,11 @@ public class TargetGrabber : MVRScript
     private JSONStorableFloat footRotXJSON;
     private JSONStorableFloat footRotYJSON;
     private JSONStorableFloat footRotZJSON;
+    private JSONStorableBool targetPelvisRotXEnableJSON;
+    private JSONStorableFloat targetPelvisRotXJSON;
+    private JSONStorableBool targetPelvisAutoOnGrabJSON;
+    private bool suppressTargetPelvisRotXCallback = false;
+    private bool targetPelvisAutoOnGrabAppliedThisGrab = false;
 
     private JSONStorableString statusJSON;
     private UIDynamicButton grabHandPullButton;
@@ -629,6 +648,27 @@ public class TargetGrabber : MVRScript
         footRotYJSON = CreateFloat("Foot Sole Rot Y", 0.0f, -180.0f, 180.0f, false);
         footRotZJSON = CreateFloat("Foot Sole Rot Z", 0.0f, -180.0f, 180.0f, false);
 
+        // v5an: keep only Grab Hand one-shot pelvis auto.
+        // Persistent/manual pelvis hold was removed because TargetLinePerson owns pelvis hold during Axis Align.
+        // These legacy storables stay registered only so old scene JSON does not break; they are not shown and are never held in LateUpdate.
+        targetPelvisRotXEnableJSON = new JSONStorableBool("Target Pelvis Rot X ON", false);
+        RegisterBool(targetPelvisRotXEnableJSON);
+
+        targetPelvisRotXJSON = new JSONStorableFloat("Target Pelvis Rot X 90 Back / 180 Center / 270 Near", 180.0f, 90.0f, 270.0f, true, true);
+        RegisterFloat(targetPelvisRotXJSON);
+
+        targetPelvisAutoOnGrabJSON = new JSONStorableBool("Pelvis Auto On Grab", true);
+        RegisterBool(targetPelvisAutoOnGrabJSON);
+        CreateToggle(targetPelvisAutoOnGrabJSON, false);
+
+        // v5ao: temporary verification buttons. All are one-shot and do not start any pelvis hold.
+        CreateButton("Pelvis Auto Test", false).button.onClick.AddListener(TargetPelvisAutoTest);
+        CreateButton("Pelvis Log", false).button.onClick.AddListener(TargetPelvisLog);
+        CreateButton("Pelvis 90 Back Test", false).button.onClick.AddListener(TargetPelvis90BackTest);
+        CreateButton("Pelvis 270 Near Test", false).button.onClick.AddListener(TargetPelvis270NearTest);
+        CreateButton("Pelvis Face Self Test", false).button.onClick.AddListener(TargetPelvisFaceSelfTest);
+        CreateButton("Pelvis Face Self +180 Test", false).button.onClick.AddListener(TargetPelvisFaceSelf180Test);
+
         // 右側UI: 操作系だけを上から順にまとめる。
         CreateButton("Grab Hand", true).button.onClick.AddListener(GrabHand);
         grabHandPullButton = CreateButton("Grab Hand Pull", true);
@@ -679,7 +719,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v4.0cz_ui_restore_target_shortcuts / based-on-v4.0cy");
+        DebugLog("ready / v5an_no_pelvis_hold_keep_grab_auto / based-on-TargetGrabber19");
     }
 
     private void RegisterExternalActions()
@@ -687,6 +727,14 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Refresh", RefreshAll));
         RegisterAction(new JSONStorableAction("Default", ApplyDefaultSettings));
         RegisterAction(new JSONStorableAction("Log Target Intimate Names", LogTargetIntimateNames));
+        RegisterAction(new JSONStorableAction("Pelvis Auto On Grab ON", delegate { if (targetPelvisAutoOnGrabJSON != null) targetPelvisAutoOnGrabJSON.val = true; }));
+        RegisterAction(new JSONStorableAction("Pelvis Auto On Grab OFF", delegate { if (targetPelvisAutoOnGrabJSON != null) targetPelvisAutoOnGrabJSON.val = false; }));
+        RegisterAction(new JSONStorableAction("Pelvis Auto Test", TargetPelvisAutoTest));
+        RegisterAction(new JSONStorableAction("Pelvis Log", TargetPelvisLog));
+        RegisterAction(new JSONStorableAction("Pelvis 90 Back Test", TargetPelvis90BackTest));
+        RegisterAction(new JSONStorableAction("Pelvis 270 Near Test", TargetPelvis270NearTest));
+        RegisterAction(new JSONStorableAction("Pelvis Face Self Test", TargetPelvisFaceSelfTest));
+        RegisterAction(new JSONStorableAction("Pelvis Face Self +180 Test", TargetPelvisFaceSelf180Test));
         RegisterAction(new JSONStorableAction("Kiss", GrabHead));
         RegisterAction(new JSONStorableAction("Grab Hand", GrabHand));
         RegisterAction(new JSONStorableAction("Wrist Straight", delegate { ApplyBothHandWristTest("Straight"); }));
@@ -2219,6 +2267,343 @@ public class TargetGrabber : MVRScript
     public void LateUpdate()
     {
         UpdatePendingWristHandLocks();
+        // v5an: do not hold target pelvis here. TargetLinePerson may own persistent pelvis control.
+    }
+
+    private void ApplyTargetPelvisAutoOnGrab()
+    {
+        ApplyTargetPelvisAutoOnGrab("auto-grab", true, true);
+    }
+
+    private void ApplyTargetPelvisAutoOnGrab(string reason, bool respectToggle)
+    {
+        ApplyTargetPelvisAutoOnGrab(reason, respectToggle, false);
+    }
+
+    private void ApplyTargetPelvisAutoOnGrab(string reason, bool respectToggle, bool useGrabGuard)
+    {
+        if (useGrabGuard && targetPelvisAutoOnGrabAppliedThisGrab)
+        {
+            TargetPelvisLogAlways("[TARGET PELVIS AUTO GRAB] skipped=already-applied reason=" + reason);
+            return;
+        }
+
+        if (respectToggle && targetPelvisAutoOnGrabJSON != null && !targetPelvisAutoOnGrabJSON.val)
+        {
+            TargetPelvisLogAlways("[TARGET PELVIS AUTO GRAB] skipped=toggle-off reason=" + reason);
+            return;
+        }
+
+        if (!IsTargetPersonMode() || selectedTargetPerson == null)
+        {
+            TargetPelvisLogAlways("[TARGET PELVIS AUTO GRAB] skipped=no-target-person reason=" + reason +
+                " targetMode=" + (IsTargetPersonMode() ? "Person" : "Other") +
+                " target=" + (selectedTargetPerson != null ? selectedTargetPerson.uid : "<null>"));
+            return;
+        }
+
+        ResolveControls();
+
+        Vector3 center = GetTargetCenter();
+        bool frontSide = IsGrabberInFrontOfTargetPerson(center);
+        // v5ap: Pelvis Auto mapping was visually reversed in TargetGrabber.
+        // Keep the existing front/back detector because it is used by hand routing; reverse only the pelvis 90/270 assignment.
+        float x = frontSide ? 90.0f : 270.0f;
+
+        suppressTargetPelvisRotXCallback = true;
+        try
+        {
+            if (targetPelvisRotXJSON != null)
+                targetPelvisRotXJSON.val = x;
+        }
+        finally
+        {
+            suppressTargetPelvisRotXCallback = false;
+        }
+
+        // v5ao: one-shot only. Never enable Target Pelvis Rot X ON and never hold in LateUpdate.
+        bool okX = ApplyTargetPelvisRotX(x, reason + "-x-one-shot", false);
+
+        // v5as: TargetGrabber's detector-side front/back is visually reversed for pelvis work.
+        // The X mapping already uses detector frontSide as visual Back (X=90) and detector backSide as visual Near (X=270).
+        // Therefore the yaw +180 correction must be applied on detector frontSide, not detector backSide.
+        float yawOffset = frontSide ? 180.0f : 0.0f;
+        bool okFace = ApplyTargetPelvisFaceSelfYaw(yawOffset, reason + "-face-self-one-shot", false);
+
+        if (useGrabGuard)
+            targetPelvisAutoOnGrabAppliedThisGrab = true;
+
+        TargetPelvisLogAlways("[TARGET PELVIS AUTO GRAB] oneShot=1 reason=" + reason +
+            " okX=" + Bool01(okX) +
+            " okFace=" + Bool01(okFace) +
+            " frontSide=" + Bool01(frontSide) +
+            " backSide=" + Bool01(!frontSide) +
+            " x=" + x.ToString("F1", CultureInfo.InvariantCulture) +
+            " yawOffset=" + yawOffset.ToString("F1", CultureInfo.InvariantCulture) +
+            " center=" + FormatVector3(center));
+    }
+
+    private void ApplyTargetPelvisRotXFromSlider(string reason)
+    {
+        if (targetPelvisRotXEnableJSON == null || !targetPelvisRotXEnableJSON.val)
+            return;
+
+        float value = targetPelvisRotXJSON != null ? targetPelvisRotXJSON.val : 0.0f;
+        ApplyTargetPelvisRotX(value, reason, false);
+    }
+
+    private void ApplyTargetPelvisRotXHold()
+    {
+        if (targetPelvisRotXEnableJSON == null || !targetPelvisRotXEnableJSON.val || targetPelvisRotXJSON == null)
+            return;
+
+        ApplyTargetPelvisRotX(targetPelvisRotXJSON.val, "late", true);
+    }
+
+    private bool ApplyTargetPelvisRotX(float x, string reason, bool quiet)
+    {
+        if (!IsTargetPersonMode())
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Rot X needs Target Type=Person");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS ROT X] skipped=target-type reason=" + reason);
+            return false;
+        }
+
+        ResolveControls();
+
+        FreeControllerV3 pelvis = GetTargetPersonControlByAliases("pelvisControl", "pelvis");
+        if (pelvis == null || pelvis.control == null)
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Rot X / pelvis missing");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS ROT X] skipped=pelvis-missing reason=" + reason);
+            return false;
+        }
+
+        x = Mathf.Repeat(x, 360.0f);
+        Vector3 before = pelvis.control.localRotation.eulerAngles;
+        pelvis.control.localRotation = Quaternion.Euler(x, before.y, before.z);
+
+        try
+        {
+            pelvis.currentRotationState = FreeControllerV3.RotationState.On;
+        }
+        catch { }
+
+        Vector3 after = pelvis.control.localRotation.eulerAngles;
+
+        if (!quiet)
+            SetStatus("Target Pelvis Rot X / x=" + x.ToString("F1", CultureInfo.InvariantCulture));
+
+        if (!quiet)
+            TargetPelvisLogAlways("[TARGET PELVIS ROT X] reason=" + reason +
+                " oneShot=1" +
+                " x=" + x.ToString("F1", CultureInfo.InvariantCulture) +
+                " rotState=" + pelvis.currentRotationState.ToString() +
+                " before=" + FormatVector3(before) +
+                " after=" + FormatVector3(after));
+
+        return true;
+    }
+
+    private Vector3 GetTargetPelvisFaceSelfReferencePosition()
+    {
+        ResolveControls();
+
+        if (chestControl != null && chestControl.control != null)
+            return chestControl.control.position;
+
+        if (hipControl != null && hipControl.control != null)
+            return hipControl.control.position;
+
+        if (selectedPerson != null && selectedPerson.transform != null)
+            return selectedPerson.transform.position;
+
+        if (containingAtom != null && containingAtom.transform != null)
+            return containingAtom.transform.position;
+
+        return Vector3.zero;
+    }
+
+    private bool ApplyTargetPelvisFaceSelfYaw(float yawOffsetDegrees, string reason, bool quiet)
+    {
+        if (!IsTargetPersonMode())
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Face Self needs Target Type=Person");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS FACE SELF] skipped=target-type reason=" + reason);
+            return false;
+        }
+
+        ResolveControls();
+
+        FreeControllerV3 pelvis = GetTargetPersonControlByAliases("pelvisControl", "pelvis");
+        if (pelvis == null || pelvis.control == null)
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Face Self / pelvis missing");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS FACE SELF] skipped=pelvis-missing reason=" + reason);
+            return false;
+        }
+
+        Vector3 selfRef = GetTargetPelvisFaceSelfReferencePosition();
+        Vector3 pelvisPos = pelvis.control.position;
+        Vector3 worldDir = selfRef - pelvisPos;
+        worldDir.y = 0.0f;
+
+        if (worldDir.sqrMagnitude < 0.000001f)
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Face Self / direction too small");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS FACE SELF] skipped=dir-small reason=" + reason +
+                    " pelvis=" + FormatVector3(pelvisPos) +
+                    " self=" + FormatVector3(selfRef));
+            return false;
+        }
+
+        worldDir.Normalize();
+
+        Transform parent = pelvis.control.parent;
+        Vector3 localDir = parent != null ? parent.InverseTransformDirection(worldDir) : worldDir;
+        localDir.y = 0.0f;
+
+        if (localDir.sqrMagnitude < 0.000001f)
+        {
+            if (!quiet)
+                SetStatus("Target Pelvis Face Self / local direction too small");
+            if (!quiet)
+                TargetPelvisLogAlways("[TARGET PELVIS FACE SELF] skipped=local-dir-small reason=" + reason +
+                    " worldDir=" + FormatVector3(worldDir));
+            return false;
+        }
+
+        localDir.Normalize();
+
+        float y = Mathf.Atan2(localDir.x, localDir.z) * Mathf.Rad2Deg;
+        y = Mathf.Repeat(y + yawOffsetDegrees, 360.0f);
+
+        Vector3 before = pelvis.control.localRotation.eulerAngles;
+        pelvis.control.localRotation = Quaternion.Euler(before.x, y, before.z);
+
+        try
+        {
+            pelvis.currentRotationState = FreeControllerV3.RotationState.On;
+        }
+        catch { }
+
+        Vector3 after = pelvis.control.localRotation.eulerAngles;
+
+        if (!quiet)
+            SetStatus("Target Pelvis Face Self / y=" + y.ToString("F1", CultureInfo.InvariantCulture));
+
+        if (!quiet)
+            TargetPelvisLogAlways("[TARGET PELVIS FACE SELF] reason=" + reason +
+                " oneShot=1" +
+                " yawOffset=" + yawOffsetDegrees.ToString("F1", CultureInfo.InvariantCulture) +
+                " y=" + y.ToString("F1", CultureInfo.InvariantCulture) +
+                " rotState=" + pelvis.currentRotationState.ToString() +
+                " self=" + FormatVector3(selfRef) +
+                " pelvis=" + FormatVector3(pelvisPos) +
+                " worldDir=" + FormatVector3(worldDir) +
+                " localDir=" + FormatVector3(localDir) +
+                " before=" + FormatVector3(before) +
+                " after=" + FormatVector3(after));
+
+        return true;
+    }
+
+    private void CaptureTargetPelvisRotX()
+    {
+        ResolveControls();
+
+        FreeControllerV3 pelvis = GetTargetPersonControlByAliases("pelvisControl", "pelvis");
+        if (pelvis == null || pelvis.control == null)
+        {
+            SetStatus("Capture Target Pelvis Rot X / pelvis missing");
+            return;
+        }
+
+        float x = Mathf.Repeat(pelvis.control.localRotation.eulerAngles.x, 360.0f);
+        suppressTargetPelvisRotXCallback = true;
+        try
+        {
+            if (targetPelvisRotXJSON != null)
+                targetPelvisRotXJSON.val = x;
+        }
+        finally
+        {
+            suppressTargetPelvisRotXCallback = false;
+        }
+
+        SetStatus("Captured Target Pelvis Rot X / x=" + x.ToString("F1", CultureInfo.InvariantCulture));
+        if (IsDebugEnabled())
+            DebugLog("[TARGET PELVIS ROT X CAPTURE] x=" + x.ToString("F1", CultureInfo.InvariantCulture));
+    }
+
+    private void TargetPelvisAutoTest()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=auto");
+        ApplyTargetPelvisAutoOnGrab("button-auto", false);
+    }
+
+    private void TargetPelvisLog()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=log");
+        if (!IsTargetPersonMode() || selectedTargetPerson == null)
+        {
+            TargetPelvisLogAlways("[TARGET PELVIS STATE] skipped=no-target-person");
+            return;
+        }
+
+        ResolveControls();
+        FreeControllerV3 pelvis = GetTargetPersonControlByAliases("pelvisControl", "pelvis");
+        if (pelvis == null || pelvis.control == null)
+        {
+            TargetPelvisLogAlways("[TARGET PELVIS STATE] skipped=pelvis-missing");
+            return;
+        }
+
+        TargetPelvisLogAlways("[TARGET PELVIS STATE] rotState=" + pelvis.currentRotationState.ToString() +
+            " localEuler=" + FormatVector3(pelvis.control.localRotation.eulerAngles) +
+            " worldEuler=" + FormatVector3(pelvis.control.rotation.eulerAngles) +
+            " pos=" + FormatVector3(pelvis.control.position));
+    }
+
+    private void TargetPelvis90BackTest()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=90");
+        ApplyTargetPelvisRotX(90.0f, "button-90-one-shot", false);
+    }
+
+    private void TargetPelvis270NearTest()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=270");
+        ApplyTargetPelvisRotX(270.0f, "button-270-one-shot", false);
+    }
+
+    private void TargetPelvisFaceSelfTest()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=face-self");
+        ApplyTargetPelvisFaceSelfYaw(0.0f, "button-face-self-one-shot", false);
+    }
+
+    private void TargetPelvisFaceSelf180Test()
+    {
+        TargetPelvisLogAlways("[TARGET PELVIS DEBUG BUTTON] pressed=face-self-180");
+        ApplyTargetPelvisFaceSelfYaw(180.0f, "button-face-self-180-one-shot", false);
+    }
+
+    private void TargetPelvisLogAlways(string text)
+    {
+        // v5au: Pelvis diagnostics are useful while tuning, but too noisy for normal use.
+        // Route them through DebugLog so they only appear when Debug Log is ON.
+        DebugLog(text);
     }
 
     private void GrabHand()
@@ -2229,6 +2614,12 @@ public class TargetGrabber : MVRScript
             ResetHugBodyHdcHipUpperState("grab-hand-start");
 
         StartTimedGrab(true, false);
+
+        // v5ah: apply after StartTimedGrab(), because StartTimedGrab() calls ResolveControls()
+        // and makes the target Person/controller state definite. v5ag could return early
+        // before selectedTargetPerson was ready, so no [TARGET PELVIS AUTO GRAB] log appeared.
+        // This is still not additive: repeated presses set pelvis X plus one-shot face-self yaw.
+        ApplyTargetPelvisAutoOnGrab();
     }
 
     private void GrabHead()
@@ -5566,6 +5957,8 @@ public class TargetGrabber : MVRScript
             " key=" + NormalizeControllerKey(controllerActual) +
             " nipple=" + Bool01(IsNipplePairControlName(controllerActual)));
 
+        targetPelvisAutoOnGrabAppliedThisGrab = false;
+
         ApplyGrab(false, activeIncludeHands, activeIncludeFeet, activeIncludeHead);
 
         if (IsFollowSelfMode() && activeIncludeHands)
@@ -6309,6 +6702,12 @@ public class TargetGrabber : MVRScript
             SetStatus("Hip Hold invalid / target not ready");
             DebugLog("[HIP HOLD] invalid");
             return;
+        }
+
+        if (includeHands)
+        {
+            // V5at: Hip Hold has its own route and center/side calculation, so apply the one-shot pelvis auto here after Hip Hold target resolution.
+            ApplyTargetPelvisAutoOnGrab("auto-grab-hip-hold", true, true);
         }
 
         LockTargetHipHoldThighIK();
