@@ -1,5 +1,5 @@
-// HDU_Commander_v012_hdu_head_grab_route.cs
-// v012_hdu_head_grab_route 2026-06-24
+// HDU_Commander_v016_cloth_scan_progress_label.cs
+// v016_cloth_scan_progress_label 2026-06-25
 // HDU-like command panel for VaM. It does not merge plugin logic; it only sets registered storables
 // and triggers JSONStorableAction entries on existing plugins such as TargetGrabber / TargetLinePerson.
 
@@ -8,9 +8,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
+public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 {
-    private const string VERSION = "v012_hdu_head_grab_route";
+    private const string VERSION = "v018_tg_target_none_neck_label_fix";
     private const string ANY = "ANY";
     private const string NONE = "None";
 
@@ -26,6 +26,14 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
 
     private JSONStorableString statusJSON;
     private JSONStorableString scanReportJSON;
+
+    private UIDynamicButton clothSelfScanButton;
+    private UIDynamicButton clothSelfNextButton;
+    private UIDynamicButton clothSelfPrevButton;
+    private UIDynamicButton clothTargetScanButton;
+    private UIDynamicButton clothTargetNextButton;
+    private UIDynamicButton clothTargetPrevButton;
+    private float clothButtonRefreshTimer = 0.0f;
 
     private readonly List<JSONStorableString> labelStorables = new List<JSONStorableString>();
 
@@ -60,6 +68,19 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
         }
     }
 
+    public void Update()
+    {
+        // ClothStateSwitcher's Scan Cloth action can finish after a short delay.
+        // Refresh the scan button count periodically so the worn/total display catches up
+        // without requiring HDU Scan.
+        clothButtonRefreshTimer += Time.deltaTime;
+        if (clothButtonRefreshTimer < 0.50f)
+            return;
+
+        clothButtonRefreshTimer = 0.0f;
+        UpdateClothButtonStates();
+    }
+
     private void BuildUi()
     {
         // Left column: TargetGrabber controls. Target person is managed by each source plugin.
@@ -67,8 +88,9 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
             "TargetGrabber",
             new List<string>()
             {
+                NONE,
                 "Head",
-                "NECK",
+                "Neck",
                 "Chest Hold",
                 "Hug Body",
                 "Gen",
@@ -103,6 +125,20 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
         AddButton("Grab Hand Down", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Down", "Grab Down" }, "Grab Hand Down"); }, GrabButtonColor());
         AddButton("Grab Hand Open", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Open" }, "Grab Hand Open"); }, GrabButtonColor());
         AddButton("Grab Hand Close", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Close", "Grab Close" }, "Grab Hand Close"); }, GrabButtonColor());
+
+        // ClothStateSwitcher bridge. Placed just above Debug.
+        // Self = the Person that owns this HDU. Target = the other Person that has ClothStateSwitcher.
+        // Scan buttons are explicit on purpose: automatic scan during partial undress can destroy state.
+        // The SCAN button text is refreshed as worn/total. ClothStateSwitcher State Progress is hidden/total,
+        // so HDU displays worn = total - hidden.
+        clothSelfScanButton = AddButtonReturn("Self Cloth SCAN", false, RunClothSelfScan, SelfButtonColor());
+        clothSelfNextButton = AddButtonReturn("Self Cloth NEXT", false, RunClothSelfNext, SelfButtonColor());
+        clothSelfPrevButton = AddButtonReturn("Self Cloth PREV", false, RunClothSelfPrev, SelfButtonColor());
+        clothTargetScanButton = AddButtonReturn("Target Cloth SCAN", false, RunClothTargetScan, TargetButtonColor());
+        clothTargetNextButton = AddButtonReturn("Target Cloth NEXT", false, RunClothTargetNext, TargetButtonColor());
+        clothTargetPrevButton = AddButtonReturn("Target Cloth PREV", false, RunClothTargetPrev, TargetButtonColor());
+
+        UpdateClothButtonStates();
 
         debugJSON = new JSONStorableBool("Debug", false);
         RegisterBool(debugJSON);
@@ -195,6 +231,12 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
         RegisterAction(new JSONStorableAction("TLP Reverse Smart Docking", delegate { RunQuick("TargetLinePerson", new string[] { "Reverse Smart Docking" }, "Reverse Smart Docking"); }));
         RegisterAction(new JSONStorableAction("Target Swon Drop", delegate { RunQuick("TargetGrabber", new string[] { "Target Swoon Drop", "Swoon Drop", "Target Swon Drop" }, "Target Swon Drop"); }));
         RegisterAction(new JSONStorableAction("TargetSwoon Drop", delegate { RunQuick("TargetGrabber", new string[] { "Target Swoon Drop", "Swoon Drop", "Target Swon Drop" }, "Target Swon Drop"); }));
+        RegisterAction(new JSONStorableAction("Self Cloth SCAN", RunClothSelfScan));
+        RegisterAction(new JSONStorableAction("Self Cloth NEXT", RunClothSelfNext));
+        RegisterAction(new JSONStorableAction("Self Cloth PREV", RunClothSelfPrev));
+        RegisterAction(new JSONStorableAction("Target Cloth SCAN", RunClothTargetScan));
+        RegisterAction(new JSONStorableAction("Target Cloth NEXT", RunClothTargetNext));
+        RegisterAction(new JSONStorableAction("Target Cloth PREV", RunClothTargetPrev));
     }
 
     private void AddLabel(string text, bool rightSide, float height)
@@ -217,12 +259,19 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
 
     private void AddButton(string label, bool rightSide, UnityEngine.Events.UnityAction callback, Color color)
     {
+        UIDynamicButton button = AddButtonReturn(label, rightSide, callback, color);
+    }
+
+    private UIDynamicButton AddButtonReturn(string label, bool rightSide, UnityEngine.Events.UnityAction callback, Color color)
+    {
         UIDynamicButton button = CreateButton(label, rightSide);
         if (button != null)
         {
             ApplyButtonColor(button, color);
-            button.button.onClick.AddListener(callback);
+            if (button.button != null && callback != null)
+                button.button.onClick.AddListener(callback);
         }
+        return button;
     }
 
     private Color GrabButtonColor()
@@ -243,6 +292,24 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
     private Color TargetButtonColor()
     {
         return new Color(1.00f, 0.78f, 0.86f, 1.00f);
+    }
+
+    private Color MissingPluginButtonColor(Color activeColor)
+    {
+        // Keep the button clickable even when the target plugin is not found.
+        // The darker color is only a status indicator; clicking will retry detection and run if available.
+        return Color.Lerp(activeColor, new Color(0.36f, 0.36f, 0.36f, 1.00f), 0.55f);
+    }
+
+    private void ApplyButtonEnabled(UIDynamicButton dynamicButton, bool enabled, Color activeColor)
+    {
+        if (dynamicButton == null || dynamicButton.button == null)
+            return;
+
+        // v014: Do not disable Cloth buttons. A newly added ClothStateSwitcher could become available
+        // without pressing HDU Scan, so the button must remain clickable and retry lookup on press.
+        dynamicButton.button.interactable = true;
+        ApplyButtonColor(dynamicButton, enabled ? activeColor : MissingPluginButtonColor(activeColor));
     }
 
     private void ApplyButtonColor(UIDynamicButton dynamicButton, Color normalColor)
@@ -276,6 +343,12 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
     {
         string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
         string actual = MapTargetGrabberChoice(display);
+        if (actual == NONE)
+        {
+            SetStatus("TargetGrabber target: None / skipped " + label);
+            return true;
+        }
+
         string actionName = BuildHduTargetGrabActionName(label, actual);
         if (string.IsNullOrEmpty(actionName))
             return false;
@@ -328,6 +401,11 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
     {
         string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
         string actual = MapTargetGrabberChoice(display);
+        if (actual == NONE)
+        {
+            SetStatus("TargetGrabber Controller: None");
+            return;
+        }
 
         bool ok = TrySetStringChooserParam("TargetGrabber", new string[] { "targetPersonController", "IK Select", "Target Controller" }, actual, "TargetGrabber controller");
 
@@ -342,8 +420,9 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
 
     private string MapTargetGrabberChoice(string display)
     {
+        if (display == NONE) return NONE;
         if (display == "Head") return "Head";
-        if (display == "NECK") return "Neck";
+        if (display == "neck" || display == "NECK" || display == "Neck") return "Neck";
         if (display == "Chest Hold") return "Chest Hold";
         if (display == "Hug Body") return "Hug Body";
         if (display == "Gen") return "Gen";
@@ -425,13 +504,267 @@ public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
         SetStatus("Distance: " + value.ToString("F3") + " / set=" + Bool01(ok));
     }
 
+
+    private void RunClothSelfScan()
+    {
+        RunClothQuick(false, new string[] { "Scan Cloth" }, "Self Cloth SCAN");
+    }
+
+    private void RunClothSelfNext()
+    {
+        RunClothQuick(false, new string[] { "Next Hide" }, "Self Cloth NEXT");
+    }
+
+    private void RunClothSelfPrev()
+    {
+        RunClothQuick(false, new string[] { "Prev Wear" }, "Self Cloth PREV");
+    }
+
+    private void RunClothTargetScan()
+    {
+        RunClothQuick(true, new string[] { "Scan Cloth" }, "Target Cloth SCAN");
+    }
+
+    private void RunClothTargetNext()
+    {
+        RunClothQuick(true, new string[] { "Next Hide" }, "Target Cloth NEXT");
+    }
+
+    private void RunClothTargetPrev()
+    {
+        RunClothQuick(true, new string[] { "Prev Wear" }, "Target Cloth PREV");
+    }
+
+    private bool RunClothQuick(bool targetSide, string[] actionNames, string label)
+    {
+        PluginHit hit;
+        bool found = targetSide ? TryFindTargetClothSwitcher(out hit) : TryFindSelfClothSwitcher(out hit);
+        if (!found || hit == null || hit.storable == null)
+        {
+            SetStatus("Missing: " + label + " / ClothStateSwitcher " + (targetSide ? "target" : "self"));
+            UpdateClothButtonStates();
+            return false;
+        }
+
+        EnsureClothSwitcherSelfSelection(hit, targetSide ? "target" : "self");
+
+        for (int i = 0; i < actionNames.Length; i++)
+        {
+            string actionName = actionNames[i];
+            if (string.IsNullOrEmpty(actionName))
+                continue;
+
+            JSONStorableAction action = hit.storable.GetAction(actionName);
+            if (action == null)
+                continue;
+
+            try
+            {
+                if (action.actionCallback != null)
+                    action.actionCallback.Invoke();
+
+                SetStatus("OK: " + label + " -> " + hit.atom.uid + " / " + hit.storableId + " / " + actionName);
+                DebugLog("cloth trigger / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / action=" + actionName);
+                UpdateClothButtonStates();
+                return true;
+            }
+            catch (Exception e)
+            {
+                SuperController.LogError("[HDU_Commander] cloth action error: " + label + " / " + actionName + " / " + e);
+                SetStatus("Cloth action error: " + label + " / " + actionName);
+                UpdateClothButtonStates();
+                return false;
+            }
+        }
+
+        SetStatus("Missing action: " + label + " / " + JoinActions(actionNames));
+        DebugLog("cloth action missing / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / actions=" + JoinActions(actionNames));
+        UpdateClothButtonStates();
+        return false;
+    }
+
+    private void UpdateClothButtonStates()
+    {
+        PluginHit selfHit;
+        PluginHit targetHit;
+        bool selfOk = TryFindSelfClothSwitcher(out selfHit);
+        bool targetOk = TryFindTargetClothSwitcher(out targetHit);
+
+        SetButtonText(clothSelfScanButton, "Self Cloth SCAN " + BuildClothWornCountLabel(selfHit, selfOk));
+        SetButtonText(clothTargetScanButton, "Target Cloth SCAN " + BuildClothWornCountLabel(targetHit, targetOk));
+
+        ApplyButtonEnabled(clothSelfScanButton, selfOk, SelfButtonColor());
+        ApplyButtonEnabled(clothSelfNextButton, selfOk, SelfButtonColor());
+        ApplyButtonEnabled(clothSelfPrevButton, selfOk, SelfButtonColor());
+        ApplyButtonEnabled(clothTargetScanButton, targetOk, TargetButtonColor());
+        ApplyButtonEnabled(clothTargetNextButton, targetOk, TargetButtonColor());
+        ApplyButtonEnabled(clothTargetPrevButton, targetOk, TargetButtonColor());
+    }
+
+    private void SetButtonText(UIDynamicButton dynamicButton, string text)
+    {
+        if (dynamicButton == null || dynamicButton.button == null || string.IsNullOrEmpty(text))
+            return;
+
+        try
+        {
+            Text label = dynamicButton.button.GetComponentInChildren<Text>();
+            if (label != null && label.text != text)
+                label.text = text;
+        }
+        catch
+        {
+        }
+    }
+
+    private string BuildClothWornCountLabel(PluginHit hit, bool found)
+    {
+        int hidden;
+        int total;
+        if (!found || !TryGetClothProgress(hit, out hidden, out total) || total <= 0)
+            return "-/-";
+
+        int worn = Mathf.Clamp(total - hidden, 0, total);
+        return worn.ToString() + "/" + total.ToString();
+    }
+
+    private bool TryGetClothProgress(PluginHit hit, out int hidden, out int total)
+    {
+        hidden = 0;
+        total = 0;
+
+        if (hit == null || hit.storable == null)
+            return false;
+
+        JSONStorableString progress = hit.storable.GetStringJSONParam("State Progress");
+        if (progress == null || string.IsNullOrEmpty(progress.val))
+            return false;
+
+        string[] parts = progress.val.Split('/');
+        if (parts == null || parts.Length < 2)
+            return false;
+
+        if (!int.TryParse(parts[0], out hidden))
+            return false;
+        if (!int.TryParse(parts[1], out total))
+            return false;
+
+        hidden = Mathf.Max(0, hidden);
+        total = Mathf.Max(0, total);
+        return true;
+    }
+
+    private string BuildClothSwitcherReport()
+    {
+        PluginHit selfHit;
+        PluginHit targetHit;
+
+        bool selfOk = TryFindSelfClothSwitcher(out selfHit);
+        bool targetOk = TryFindTargetClothSwitcher(out targetHit);
+
+        if (selfOk)
+            EnsureClothSwitcherSelfSelection(selfHit, "self");
+        if (targetOk)
+            EnsureClothSwitcherSelfSelection(targetHit, "target");
+
+        string selfLabel = selfOk && selfHit != null ? selfHit.atom.uid + " / " + selfHit.storableId : "missing";
+        string targetLabel = targetOk && targetHit != null ? targetHit.atom.uid + " / " + targetHit.storableId : "missing";
+
+        return "Self: " + selfLabel + " / Target: " + targetLabel;
+    }
+
+    private bool TryFindSelfClothSwitcher(out PluginHit hit)
+    {
+        hit = null;
+        if (containingAtom == null)
+            return false;
+
+        return TryFindPluginOnAtom(containingAtom, "ClothStateSwitcher", out hit);
+    }
+
+    private bool TryFindTargetClothSwitcher(out PluginHit hit)
+    {
+        hit = null;
+
+        List<Atom> atoms = BuildTargetAtomSearchList();
+        for (int i = 0; i < atoms.Count; i++)
+        {
+            Atom atom = atoms[i];
+            if (TryFindPluginOnAtom(atom, "ClothStateSwitcher", out hit))
+                return true;
+        }
+
+        return false;
+    }
+
+    private List<Atom> BuildTargetAtomSearchList()
+    {
+        List<Atom> result = new List<Atom>();
+
+        try
+        {
+            List<Atom> atoms = SuperController.singleton.GetAtoms();
+            if (atoms != null)
+            {
+                for (int i = 0; i < atoms.Count; i++)
+                {
+                    Atom atom = atoms[i];
+                    if (atom == null || atom == containingAtom)
+                        continue;
+
+                    if (atom.type == "Person")
+                        AddUniqueAtom(result, atom);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("BuildTargetAtomSearchList error: " + e.Message);
+        }
+
+        return result;
+    }
+
+    private void EnsureClothSwitcherSelfSelection(PluginHit hit, string sideLabel)
+    {
+        if (hit == null || hit.atom == null || hit.storable == null)
+            return;
+
+        string atomUid = hit.atom.uid;
+        if (string.IsNullOrEmpty(atomUid))
+            return;
+
+        string[] paramNames = new string[] { "person", "Person" };
+        for (int i = 0; i < paramNames.Length; i++)
+        {
+            JSONStorableStringChooser chooser = hit.storable.GetStringChooserJSONParam(paramNames[i]);
+            if (chooser == null)
+                continue;
+
+            if (chooser.choices != null && chooser.choices.Count > 0 && !chooser.choices.Contains(atomUid))
+            {
+                DebugLog("cloth person chooser value missing / side=" + sideLabel + " / atom=" + atomUid + " / param=" + paramNames[i]);
+                continue;
+            }
+
+            if (chooser.val != atomUid)
+            {
+                chooser.val = atomUid;
+                DebugLog("cloth person auto-selected / side=" + sideLabel + " / atom=" + atomUid + " / param=" + paramNames[i]);
+            }
+            return;
+        }
+    }
+
     private void ScanPlugins()
     {
         lastTargetGrabber = FindPluginLabel("TargetGrabber");
         lastTargetLinePerson = FindPluginLabel("TargetLinePerson");
         lastHumanBodyAction = FindPluginLabel("HumanBodyAction");
         lastPoseChanger = FindPluginLabel("PoseChanger");
-        lastClothStateSwitcher = FindPluginLabel("ClothStateSwitcher");
+        lastClothStateSwitcher = BuildClothSwitcherReport();
+
+        UpdateClothButtonStates();
 
         string report =
             "TargetGrabber: " + lastTargetGrabber + "\n" +

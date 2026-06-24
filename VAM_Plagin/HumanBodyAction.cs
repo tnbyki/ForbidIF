@@ -1,3 +1,5 @@
+// HBA_SLOW_MORE_SENSITIVE_BUILD 2026-06-24: Widens the Slow band so Auto Line Slow is less likely to be classified as Active, while keeping v032 Fast compromise and v035 Face Time Scale.
+// HBA_FACE_MORPH_TIME_SCALE_BUILD 2026-06-24: Adds Face Time Scale to slow Eyes/Mouth morph playback without changing HBA classifier v032.
 // HBA_LINE_CLASSIFIER_STABLE_BUILD 2026-06-24: Raises Fast classification to Auto Line Fast-level peaks and adds a slow-entry grace so normal Auto Line stays Active instead of Fast->Slow.
 // HBA_TW_TUNED_DEFAULTS_BUILD 2026-06-24: Sets TW slider defaults to the user-tuned high-FPS values: Motion 1.25, Up 1.07, Side 1.52, Forward 1.42, Chest 1.69, Hip 1.81, Limb 1.43.
 // HBA_TW_SLIDERS_TUNABLE_BUILD 2026-06-24: Adds visible TW axis/part strength sliders and expands TW Motion Scale range so high-FPS twitch can be tuned in-scene.
@@ -74,6 +76,7 @@ public class HumanBodyAction : MVRScript
     JSONStorableStringChooser headStrongPreset;
     JSONStorableStringChooser headOnlyPreset;
     JSONStorableFloat headTimeScale;
+    JSONStorableFloat faceTimeScale;
     JSONStorableFloat twitchMotionScale;
     JSONStorableFloat twitchSideScale;
     JSONStorableFloat twitchUpScale;
@@ -182,6 +185,9 @@ public class HumanBodyAction : MVRScript
     const float HeadTimeScaleDefault = 1.50f;
     const float HeadTimeScaleMin = 0.50f;
     const float HeadTimeScaleMax = 3.00f;
+    const float FaceTimeScaleDefault = 1.35f; // v035: slow Eyes/Mouth morph playback a little for high-FPS scenes
+    const float FaceTimeScaleMin = 0.50f;
+    const float FaceTimeScaleMax = 2.50f;
     const float TwitchMotionScaleDefault = 1.25f; // v029: user-tuned high-FPS TW default
     const float TwitchMotionScaleMin = 0.00f;
     const float TwitchMotionScaleMax = 3.00f;
@@ -200,20 +206,20 @@ public class HumanBodyAction : MVRScript
     const float HbaStatusSpeedIdle = 0.030f;
     // v017: Progress-speed classifier is calibrated from Auto Line speeds 6.5 / 10.5 / 15.0.
     // Boundaries are the midpoints 8.5 and 12.75, mapped to HBA Progress-speed bands.
-    const float HbaStatusSpeedSlow = 0.300f;      // Slow / Active boundary
+    const float HbaStatusSpeedSlow = 0.420f;      // v036: wider Slow band; Auto Line Slow was drifting into Active
     const float HbaStatusSpeedFastEnter = 1.050f; // v032: stronger Fast gate; normal Auto Line should stay Active, Fast is for true fast peaks
     const float HbaStatusSpeedFastExit = 0.620f;  // v032: exit threshold below enter to avoid Active/Fast flapping after a real Fast
     const float HbaInSpeedSmoothing = 0.35f;
     const float HbaStatusHoldSeconds = 0.60f;
     const float HbaStartDecisionDelay = 0.25f;
-    const float HbaStartSlowSpeed = 0.20f;
+    const float HbaStartSlowSpeed = 0.28f; // v036: Start Slow should catch slower line movement before it becomes Normal/Active
     const float HbaStartFastSpeed = 1.20f; // v032: avoid classifying normal Auto Line start as Fast
     const float HbaInsideFirstDelay = 0.25f;
     const float HbaInsideMotionCooldown = 1.00f;
     const float HbaInsideHoldDelay = 0.60f;
     const float HbaInsideFastEnterSeconds = 0.35f; // v032: require Fast to persist a little longer before switching from Active
     const float HbaInsideFastExitSeconds = 0.35f;
-    const float HbaInsideSlowEnterSeconds = 0.35f; // v031: do not let normal Auto Line tail immediately become Slow
+    const float HbaInsideSlowEnterSeconds = 0.18f; // v036: shorter Active grace so real Slow does not stay Active too long
     const float HbaFastPeakLatchSeconds = 0.25f; // v032: shorter latch so normal Line initial peaks do not keep forcing Fast
     const float HbaFastPeakMinProgress = 0.18f; // v032: avoid latching shallow/synthetic Start/Inside progress floors
     const float HbaInsideTurnCooldown = 0.75f;
@@ -585,7 +591,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v029 tw tuned defaults / head slow stable / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v035 face morph time scale / v032 classifier / tw tuned defaults / head slow stable / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -615,7 +621,7 @@ public class HumanBodyAction : MVRScript
 
         // Bridge marker used by TargetLinePerson to prefer the currently loaded HBA build
         // instead of a stale/old HBA instance when scripts are swapped during testing.
-        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 26.0f, 0.0f, 999.0f, true);
+        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 35.0f, 0.0f, 999.0f, true);
         RegisterFloat(hbaBridgeVersion);
 
         hbaTgTriggers = new JSONStorableBool("TG Triggers", true);
@@ -701,6 +707,9 @@ public class HumanBodyAction : MVRScript
 
         headTimeScale = new JSONStorableFloat("Head Time Scale", HeadTimeScaleDefault, HeadTimeScaleMin, HeadTimeScaleMax);
         RegisterFloat(headTimeScale);
+
+        faceTimeScale = new JSONStorableFloat("Face Time Scale", FaceTimeScaleDefault, FaceTimeScaleMin, FaceTimeScaleMax);
+        RegisterFloat(faceTimeScale);
 
         twitchMotionScale = new JSONStorableFloat("TW Motion Scale", TwitchMotionScaleDefault, TwitchMotionScaleMin, TwitchMotionScaleMax);
         RegisterFloat(twitchMotionScale);
@@ -820,6 +829,7 @@ public class HumanBodyAction : MVRScript
         CreateSlider(twitchLimbScale, false);
         CreateToggle(twitchEyes, false);
         CreateToggle(twitchMouth, false);
+        CreateSlider(faceTimeScale, false);
         CreateSlider(headTimeScale, false);
         CreateToggle(queueLastAction, false);
         CreateToggle(debugLog, false);
@@ -2485,9 +2495,10 @@ public class HumanBodyAction : MVRScript
 
     void SetFacePreset(float eyesDuration, float eyesTarget, float mouthDuration, float mouthOpenMin, float mouthOpenMax)
     {
-        currentEyesDuration = Mathf.Max(0.05f, eyesDuration);
+        float faceScale = faceTimeScale != null ? Mathf.Clamp(faceTimeScale.val, FaceTimeScaleMin, FaceTimeScaleMax) : FaceTimeScaleDefault;
+        currentEyesDuration = Mathf.Max(0.05f, eyesDuration * faceScale);
         currentEyesTarget = Mathf.Clamp(eyesTarget, 0.0f, 1.0f);
-        currentMouthDuration = Mathf.Max(0.05f, mouthDuration);
+        currentMouthDuration = Mathf.Max(0.05f, mouthDuration * faceScale);
         currentMouthOpenMin = Mathf.Clamp(mouthOpenMin, MouthOpenClampMin, MouthOpenClampMax);
         currentMouthOpenMax = Mathf.Clamp(mouthOpenMax, MouthOpenClampMin, MouthOpenClampMax);
     }

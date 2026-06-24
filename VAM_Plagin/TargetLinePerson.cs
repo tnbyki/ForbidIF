@@ -1,3 +1,4 @@
+// YELLOW_DIP_MAX_DEFAULT_LAYOUT_BUILD 2026-06-24: Sets Yellow Dip Angle Max default to 125 degrees and moves its slider above Switch Retract.
 // HBA_RAW_DEPTH_FALLBACK_RESTORE_BUILD 2026-06-24: Restores raw/HUD depth fallback for HBA reactions when control GenDepth is angle-gated to 0%.
 // LINE_SLOW_SPEED_TUNE_BUILD 2026-06-24: Slows Auto Line and Auto Line Slow defaults for the higher-FPS feel while keeping Auto Line Fast unchanged.
 // AXIS_ALIGN_FAR_GUARD_NO_STRETCH_BUILD 2026-06-24: Prevents repeated far Axis Align from stretching P by skipping distant/out-of-segment line projections and limiting Mid/Tip correction relative to Base.
@@ -6,7 +7,7 @@
 // AXIS_ALIGN_INCLUDES_PELVIS_AUTO_BUILD 2026-06-24: Removes the standalone Target Pelvis Auto UI button and runs the same pelvis auto/hold step at the start of Axis Align.
 // TARGET_PELVIS_AUTO_HOLD_BUILD 2026-06-24: Keeps Target Pelvis Auto rotation applied each frame after the button, matching the TargetGrabber hold behavior so VaM does not immediately restore it.
 // TARGET_PELVIS_AUTO_AXIS_ALIGN_BUILD 2026-06-24: Adds Target Pelvis Auto button before Axis Align and renames P Mid G Align UI/action/logs to Axis Align.
-// YELLOW_DIP_ANGLE_SLIDERS_BUILD 2026-06-24: Adds Yellow Dip Angle Min/Max sliders; defaults to 60-115 degrees so shallower target axes can use the existing dip guide.
+// YELLOW_DIP_ANGLE_SLIDERS_BUILD 2026-06-24: Adds Yellow Dip Angle Min/Max sliders; defaults to 60-125 degrees so shallower target axes can use the existing dip guide.
 // HUD_FX_STATE_HYSTERESIS_BUILD 2026-06-24: Uses a single enter/exit FX state with hysteresis so only one HUD FX event fires per transition.
 // HUD_FX_ENTER_EXIT_COLORS_BUILD 2026-06-24: Uses warm triangle bursts for entering threshold and blue circle/ring bursts for exit threshold; HUD FX Test shows both paths.
 // HUD_FX_TEST_BUTTON_BUILD 2026-06-24: Adds a HUD FX Test button/action to verify burst rendering independently from threshold timing. Keeps Depth Probe Rate Auto, Raw HUD internal path restored, and Transform Cache forced ON.
@@ -581,7 +582,7 @@ public class TargetLinePerson : MVRScript
     const float POwnTiltGuardTipMinUpDegrees = 60.0f;
 
     const float YellowGuideDipAngleMinDefaultDegrees = 60.0f;
-    const float YellowGuideDipAngleMaxDefaultDegrees = 115.0f;
+    const float YellowGuideDipAngleMaxDefaultDegrees = 125.0f;
     const float YellowGuideDipAngleMinSliderMinDegrees = 45.0f;
     const float YellowGuideDipAngleMinSliderMaxDegrees = 90.0f;
     const float YellowGuideDipAngleMaxSliderMinDegrees = 90.0f;
@@ -1137,6 +1138,16 @@ public class TargetLinePerson : MVRScript
         RegisterBool(runtimeDynamicVisuals);
         // v202: hidden; keep dynamic visuals enabled under normal operation.
 
+        yellowDipAngleMax = new JSONStorableFloat(
+            "Yellow Dip Angle Max",
+            YellowGuideDipAngleMaxDefaultDegrees,
+            YellowGuideDipAngleMaxSliderMinDegrees,
+            YellowGuideDipAngleMaxSliderMaxDegrees
+        );
+        yellowDipAngleMax.setCallbackFunction = OnYellowDipAngleChanged;
+        RegisterFloat(yellowDipAngleMax);
+        yellowDipAngleMaxSlider = CreateSlider(yellowDipAngleMax, true);
+
         switchRetractOnTargetChange = new JSONStorableBool(
             "Switch Retract",
             true
@@ -1212,16 +1223,6 @@ public class TargetLinePerson : MVRScript
         yellowDipAngleMin.setCallbackFunction = OnYellowDipAngleChanged;
         RegisterFloat(yellowDipAngleMin);
         yellowDipAngleMinSlider = CreateSlider(yellowDipAngleMin, true);
-
-        yellowDipAngleMax = new JSONStorableFloat(
-            "Yellow Dip Angle Max",
-            YellowGuideDipAngleMaxDefaultDegrees,
-            YellowGuideDipAngleMaxSliderMinDegrees,
-            YellowGuideDipAngleMaxSliderMaxDegrees
-        );
-        yellowDipAngleMax.setCallbackFunction = OnYellowDipAngleChanged;
-        RegisterFloat(yellowDipAngleMax);
-        yellowDipAngleMaxSlider = CreateSlider(yellowDipAngleMax, true);
 
         hipYOffset = new JSONStorableFloat(
             "Hip Y Offset",
