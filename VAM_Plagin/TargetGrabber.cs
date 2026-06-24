@@ -1,3 +1,4 @@
+// HDU_GRAB_HAND_ROUTES_BUILD 2026-06-24: Adds HDU direct target+GrabHand utility actions so HDU_Commander does not need to drive the IK Select popup.
 // ============================================================
 // TargetGrabber.cs
 // Version: V5h_hug_body_snap_position_clamp
@@ -26,6 +27,16 @@
 // - V5c: Strengthens the Hug Body Wrist In bias further by raising the Hug Body Out threshold from 0.120m to 0.200m.
 // - V5g: For Hug Body Auto Snap, self hand controls snap position only and keep the final Wrist In rotation.
 // - V5b: Biases Hug Body final wrist strongly toward Wrist In; Out is used only when the final hand remains far on the actor/front side.
+// V5j: Stabilizes target neck/head during Hug Body by excluding them from Hug Body pivot/autosnap target paths while preserving normal functions.
+// V5ac: Hug Body Pull/Push uses HDC Hip-Upper on target hip/chest/head only; target hand/elbow/neck stay natural. Self hands follow chest-relative.
+// - V5aa: Hug Body HDC Hip-Upper keeps target upper rotation, but self hands follow target chest-relative offsets instead of hip-pivot arcs.
+// - V5ab: Hug Body HDC Pull/Push no longer drives target hand/elbow IK; target arms are left natural.
+// - V5ac: Hug Body HDC Pull/Push drives target headControl with hip/chest while leaving target arms and neck natural.
+// - V5ad: Increases one-hand Hug Body HDC yaw amount so single-hand Pull/Push twists more visibly.
+// V5y: Rebuilds Hug Body Pull/Push from the stable v5n GrabHand route; only Pull/Push uses HDC-style Hip-Upper local Rot X/Y.
+// V5m: For Hug Body Pull/Push, relaxes target neck/head IK during the pivot instead of freezing neck/head.
+// V5n: Skips target neck/head AutoSnap for Head/Neck/Mouth grab routes to prevent target head rotation spin.
+// V5m: For Hug Body Pull/Push, temporarily turns target neck/head IK OFF during the pivot so upper body can bend without head/neck IK resistance. Adds HDU Head route.
 // ============================================================
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // FILE: TargetGrabber.cs
@@ -446,6 +457,30 @@ public class TargetGrabber : MVRScript
     private const float SWOON_DROP_DURATION = 3.00f;
     private const float TARGET_SWOON_HUG_BODY_ONE_HAND_TWIST_OFFSET = 0.12f;
     private const float HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER = 2.00f;
+    private const bool HUG_BODY_KEEP_TARGET_NECK_HEAD_STABLE = true;
+    private const bool HUG_BODY_PULL_PUSH_RELAX_TARGET_NECK_HEAD_IK = true;
+    private const float HUG_BODY_HDC_HIP_UPPER_LIMIT_X_DEGREES = 120.0f;
+    private const float HUG_BODY_HDC_HIP_UPPER_ONE_HAND_YAW_SCALE = 0.85f;
+    private bool hugBodyHdcHipUpperActive = false;
+    private Atom hugBodyHdcHipUpperSelfAtom = null;
+    private Atom hugBodyHdcHipUpperTargetAtom = null;
+    private float hugBodyHdcHipUpperRotX = 0.0f;
+    private float hugBodyHdcHipUpperRotY = 0.0f;
+    private bool hugBodyHdcHipUpperBaseCaptured = false;
+    private FreeControllerV3 hugBodyHdcHipUpperRoot = null;
+    private Vector3 hugBodyHdcHipUpperRootBaseLocalPos = Vector3.zero;
+    private Quaternion hugBodyHdcHipUpperRootBaseLocalRot = Quaternion.identity;
+    private readonly Dictionary<FreeControllerV3, Vector3> hugBodyHdcHipUpperBaseLocalPositions = new Dictionary<FreeControllerV3, Vector3>();
+    private readonly Dictionary<FreeControllerV3, Quaternion> hugBodyHdcHipUpperBaseLocalRotations = new Dictionary<FreeControllerV3, Quaternion>();
+    private bool hugBodyHdcLeftHandBaseValid = false;
+    private bool hugBodyHdcRightHandBaseValid = false;
+    private Vector3 hugBodyHdcLeftHandBaseWorldPos = Vector3.zero;
+    private Vector3 hugBodyHdcRightHandBaseWorldPos = Vector3.zero;
+    private FreeControllerV3 hugBodyHdcHandFollowChest = null;
+    private bool hugBodyHdcLeftHandChestLocalValid = false;
+    private bool hugBodyHdcRightHandChestLocalValid = false;
+    private Vector3 hugBodyHdcLeftHandChestLocalOffset = Vector3.zero;
+    private Vector3 hugBodyHdcRightHandChestLocalOffset = Vector3.zero;
     private bool swoonDropActive = false;
     private float swoonDropEndTime = 0.0f;
 
@@ -706,6 +741,96 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Target Shortcut Hip Hold", delegate { SetTargetControllerShortcut(TC_HIP_HOLD); }));
         RegisterAction(new JSONStorableAction("Target Shortcut Hand Hold", delegate { SetTargetControllerShortcut(TC_HAND); }));
         RegisterAction(new JSONStorableAction("Target Shortcut Foot Hold", delegate { SetTargetControllerShortcut(TC_FOOT); }));
+        RegisterAction(new JSONStorableAction("Target Shortcut Knee Hold", delegate { SetTargetControllerShortcut(TC_KNEE); }));
+        RegisterHduGrabHandRouteActions();
+    }
+
+    private void RegisterHduGrabHandRouteActions()
+    {
+        RegisterHduGrabHandRouteActionsForTarget("Head", TC_HEAD);
+        RegisterHduGrabHandRouteActionsForTarget("Neck", TC_NECK);
+        RegisterHduGrabHandRouteActionsForTarget("Chest Hold", TC_CHEST_HOLD);
+        RegisterHduGrabHandRouteActionsForTarget("Hug Body", TC_HUG_BODY);
+        RegisterHduGrabHandRouteActionsForTarget("Hip Hold", TC_HIP_HOLD);
+        RegisterHduGrabHandRouteActionsForTarget("Hand Hold", TC_HAND);
+        RegisterHduGrabHandRouteActionsForTarget("Foot Hold", TC_FOOT);
+        RegisterHduGrabHandRouteActionsForTarget("Knee Hold", TC_KNEE);
+    }
+
+    private void RegisterHduGrabHandRouteActionsForTarget(string label, string targetChoice)
+    {
+        RegisterAction(new JSONStorableAction("HDU Grab Hand " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHand, "Grab Hand"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Pull " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandPull, "Grab Hand Pull"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Push " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandPush, "Grab Hand Push"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Up " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandUp, "Grab Hand Up"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Down " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandDown, "Grab Hand Down"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Open " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandOpen, "Grab Hand Open"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Close " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandClose, "Grab Hand Close"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Left " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandLeft, "Grab Hand Left"); }));
+        RegisterAction(new JSONStorableAction("HDU Grab Hand Right " + label, delegate { HduSelectTargetAndRun(targetChoice, GrabHandRight, "Grab Hand Right"); }));
+    }
+
+    private void HduSelectTargetAndRun(string targetChoice, Action action, string actionLabel)
+    {
+        if (!HduSelectTargetControllerInternal(targetChoice))
+            return;
+
+        if (action == null)
+        {
+            SetStatus("HDU action missing: " + actionLabel);
+            return;
+        }
+
+        DebugLog("[HDU ROUTE] run / target=" + targetChoice + " / action=" + actionLabel);
+        action();
+    }
+
+    private bool HduSelectTargetControllerInternal(string targetChoice)
+    {
+        if (string.IsNullOrEmpty(targetChoice) || targetChoice == NONE)
+        {
+            SetStatus("HDU target missing");
+            return false;
+        }
+
+        suppressApply = true;
+        try
+        {
+            if (targetTypeChooser != null)
+                targetTypeChooser.val = "Person";
+        }
+        finally
+        {
+            suppressApply = false;
+        }
+
+        UpdateTargetPersonChoices();
+        UpdateTargetPersonControllerChoices();
+
+        if (targetPersonPartChooser == null || targetPersonPartChooser.choices == null || !targetPersonPartChooser.choices.Contains(targetChoice))
+        {
+            SetStatus("HDU target unavailable: " + targetChoice);
+            DebugLog("[HDU ROUTE] target unavailable / target=" + targetChoice);
+            return false;
+        }
+
+        suppressApply = true;
+        try
+        {
+            targetPersonPartChooser.val = targetChoice;
+        }
+        finally
+        {
+            suppressApply = false;
+        }
+
+        OnTargetPersonPartChanged(targetChoice);
+        ResolveControls();
+        ApplyAutoGrabWidthFromTargetPerson();
+        UpdateGrabHandUtilityButtons();
+        SetStatus("HDU Target: " + targetChoice);
+        DebugLog("[HDU ROUTE] target selected / target=" + targetChoice);
+        return true;
     }
 
     private void OnLegacyFollowTargetChanged(bool value)
@@ -2098,6 +2223,11 @@ public class TargetGrabber : MVRScript
 
     private void GrabHand()
     {
+        // V5y: keep normal GrabHand movement identical to the stable v5n route.
+        // Only reset the Hug Body Pull/Push HDC base so the next Pull/Push captures the new pose.
+        if (IsTargetPersonMode() && IsHugBodyTarget())
+            ResetHugBodyHdcHipUpperState("grab-hand-start");
+
         StartTimedGrab(true, false);
     }
 
@@ -2127,6 +2257,12 @@ public class TargetGrabber : MVRScript
         ResolveControls();
 
         if (TryRunChestHoldGrabHandPull())
+            return;
+
+        // V5y: Hug Body Pull/Push is no longer based on hand reach.
+        // Use a HumanDrivenController Hip-Upper style local Rot X/Y group transform,
+        // while leaving Grab Hand itself on the stable original route.
+        if (TryRunHugBodyHdcHipUpperPullPush(false))
             return;
 
         List<FreeControllerV3> pullControls = GetGrabHandPullTargetControls();
@@ -2172,6 +2308,9 @@ public class TargetGrabber : MVRScript
         if (pulled)
         {
             PrepareTemporaryRelaxLinkedIK(movedControls);
+            if (upperBodyPivot && IsHugBodyTarget())
+                RelaxHugBodyPullPushTargetNeckHeadIK("Pull");
+
             if (upperBodyPivot)
                 ApplyUpperBodyPivotOffset(movedControls, pullOffset, "Pull");
             else
@@ -2211,6 +2350,12 @@ public class TargetGrabber : MVRScript
         if (TryRunChestHoldGrabHandPush())
             return;
 
+        // V5y: Hug Body Pull/Push is no longer based on hand reach.
+        // Use a HumanDrivenController Hip-Upper style local Rot X/Y group transform,
+        // while leaving Grab Hand itself on the stable original route.
+        if (TryRunHugBodyHdcHipUpperPullPush(true))
+            return;
+
         List<FreeControllerV3> pushControls = GetGrabHandPullTargetControls();
         if (pushControls.Count == 0)
         {
@@ -2234,6 +2379,9 @@ public class TargetGrabber : MVRScript
                 : TryGetUpperBodyPivotPushOffset(out pivotPushOffset, out maxDistance, out snappedHands);
             if (pushed)
             {
+                if (IsHugBodyTarget())
+                    RelaxHugBodyPullPushTargetNeckHeadIK("Push");
+
                 ApplyUpperBodyPivotOffset(movedControls, pivotPushOffset, "Push");
                 movedCount = movedControls.Count;
             }
@@ -2598,22 +2746,413 @@ public class TargetGrabber : MVRScript
                choice == TC_R_NIPPLE;
     }
 
+
+    private bool TryRunHugBodyHdcHipUpperPullPush(bool push)
+    {
+        if (!IsTargetPersonMode() || !IsHugBodyTarget() || selectedTargetPerson == null)
+            return false;
+
+        List<FreeControllerV3> controls = GetHugBodyHdcHipUpperControls();
+        if (controls.Count == 0)
+        {
+            SetStatus(push ? "Hug Body Push needs upper IK" : "Hug Body Pull needs upper IK");
+            DebugLog("[HUG BODY HDC HIP-UPPER " + (push ? "Push" : "Pull") + "] no upper controls");
+            return true;
+        }
+
+        if (!EnsureHugBodyHdcHipUpperBaseCaptured(controls))
+        {
+            SetStatus(push ? "Hug Body Push / HDC base missing" : "Hug Body Pull / HDC base missing");
+            DebugLog("[HUG BODY HDC HIP-UPPER " + (push ? "Push" : "Pull") + "] base missing");
+            return true;
+        }
+
+        float amount = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        float stepX = Mathf.Min(UPPER_BODY_PIVOT_MAX_DEGREES * HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER,
+            amount * UPPER_BODY_PIVOT_DEGREES_PER_METER * HUG_BODY_PUSH_PULL_PIVOT_ANGLE_MULTIPLIER);
+        if (stepX <= 0.0001f)
+        {
+            SetStatus(push ? "Hug Body Push / step=0" : "Hug Body Pull / step=0");
+            return true;
+        }
+
+        bool leftActive = leftHandJSON != null && leftHandJSON.val && lHandControl != null;
+        bool rightActive = rightHandJSON != null && rightHandJSON.val && rHandControl != null;
+        bool oneHand = leftActive != rightActive;
+
+        float prevX = hugBodyHdcHipUpperRotX;
+        float signedStepX = push ? -stepX : stepX;
+        hugBodyHdcHipUpperRotX = Mathf.Clamp(hugBodyHdcHipUpperRotX + signedStepX,
+            -HUG_BODY_HDC_HIP_UPPER_LIMIT_X_DEGREES,
+            HUG_BODY_HDC_HIP_UPPER_LIMIT_X_DEGREES);
+        float appliedStepX = hugBodyHdcHipUpperRotX - prevX;
+
+        if (oneHand)
+        {
+            float sideSign = leftActive ? -1.0f : 1.0f;
+            hugBodyHdcHipUpperRotY = hugBodyHdcHipUpperRotX * HUG_BODY_HDC_HIP_UPPER_ONE_HAND_YAW_SCALE * sideSign;
+        }
+        else
+        {
+            hugBodyHdcHipUpperRotY = 0.0f;
+        }
+
+        Quaternion desiredRootLocalRot = BuildHugBodyHdcDesiredRootLocalRotation(hugBodyHdcHipUpperRotX, hugBodyHdcHipUpperRotY);
+        Quaternion deltaRotLocal = desiredRootLocalRot * Quaternion.Inverse(hugBodyHdcHipUpperRootBaseLocalRot);
+
+        int moved = ApplyHugBodyHdcHipUpperLocalTransform(controls, deltaRotLocal);
+        int handFollow = FollowHugBodyHdcSelfHands(deltaRotLocal);
+
+        UpdateGrabHandUtilityButtons();
+        SetStatus((push ? "Hug Body Push HDC Hip-Upper" : "Hug Body Pull HDC Hip-Upper") +
+            " / moved=" + moved.ToString(CultureInfo.InvariantCulture) +
+            " / rotX=" + hugBodyHdcHipUpperRotX.ToString("F1", CultureInfo.InvariantCulture) +
+            " / rotY=" + hugBodyHdcHipUpperRotY.ToString("F1", CultureInfo.InvariantCulture) +
+            " / handFollow=" + handFollow.ToString(CultureInfo.InvariantCulture));
+
+        DebugLog("[HUG BODY HDC HIP-UPPER " + (push ? "Push" : "Pull") + "]" +
+            " moved=" + moved.ToString(CultureInfo.InvariantCulture) +
+            " hands=" + handFollow.ToString(CultureInfo.InvariantCulture) +
+            " stepX=" + appliedStepX.ToString("F2", CultureInfo.InvariantCulture) +
+            " rotX=" + hugBodyHdcHipUpperRotX.ToString("F2", CultureInfo.InvariantCulture) +
+            " rotY=" + hugBodyHdcHipUpperRotY.ToString("F2", CultureInfo.InvariantCulture) +
+            " limitX=" + HUG_BODY_HDC_HIP_UPPER_LIMIT_X_DEGREES.ToString("F2", CultureInfo.InvariantCulture) +
+            " oneHand=" + Bool01(oneHand) +
+            " root=" + (hugBodyHdcHipUpperRoot != null ? hugBodyHdcHipUpperRoot.name : "<none>") +
+            " hdcHipUpper=1 grabHandSafe=1");
+
+        return true;
+    }
+
+    private List<FreeControllerV3> GetHugBodyHdcHipUpperControls()
+    {
+        // V5ac:
+        // Keep target arms natural: do not drive target hand/elbow IK during Hug Body Pull/Push.
+        // Drive headControl with the torso so the upper-body angle is visible, but do not touch neckControl.
+        // Head auto-snap protection remains in the snap guards; this group only applies HDC-style local transform.
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("hipControl", "hip"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("chestControl", "chest"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("headControl", "head"));
+        return controls;
+    }
+
+    private void ResetHugBodyHdcHipUpperState(string reason)
+    {
+        hugBodyHdcHipUpperActive = false;
+        hugBodyHdcHipUpperSelfAtom = selectedPerson;
+        hugBodyHdcHipUpperTargetAtom = selectedTargetPerson;
+        hugBodyHdcHipUpperRotX = 0.0f;
+        hugBodyHdcHipUpperRotY = 0.0f;
+        hugBodyHdcHipUpperBaseCaptured = false;
+        hugBodyHdcHipUpperRoot = null;
+        hugBodyHdcHipUpperRootBaseLocalPos = Vector3.zero;
+        hugBodyHdcHipUpperRootBaseLocalRot = Quaternion.identity;
+        hugBodyHdcHipUpperBaseLocalPositions.Clear();
+        hugBodyHdcHipUpperBaseLocalRotations.Clear();
+        hugBodyHdcLeftHandBaseValid = false;
+        hugBodyHdcRightHandBaseValid = false;
+        hugBodyHdcLeftHandBaseWorldPos = Vector3.zero;
+        hugBodyHdcRightHandBaseWorldPos = Vector3.zero;
+        hugBodyHdcHandFollowChest = null;
+        hugBodyHdcLeftHandChestLocalValid = false;
+        hugBodyHdcRightHandChestLocalValid = false;
+        hugBodyHdcLeftHandChestLocalOffset = Vector3.zero;
+        hugBodyHdcRightHandChestLocalOffset = Vector3.zero;
+
+        if (IsDebugEnabled())
+            DebugLog("[HUG BODY HDC STATE RESET] reason=" + reason);
+    }
+
+    private bool EnsureHugBodyHdcHipUpperBaseCaptured(List<FreeControllerV3> controls)
+    {
+        if (hugBodyHdcHipUpperBaseCaptured &&
+            hugBodyHdcHipUpperSelfAtom == selectedPerson &&
+            hugBodyHdcHipUpperTargetAtom == selectedTargetPerson &&
+            hugBodyHdcHipUpperRoot != null &&
+            hugBodyHdcHipUpperBaseLocalPositions.Count > 0)
+        {
+            return true;
+        }
+
+        ResetHugBodyHdcHipUpperState("capture-base");
+        hugBodyHdcHipUpperSelfAtom = selectedPerson;
+        hugBodyHdcHipUpperTargetAtom = selectedTargetPerson;
+        hugBodyHdcHipUpperRoot = GetTargetPersonControlByAliases("hipControl", "hip");
+        if (hugBodyHdcHipUpperRoot == null || hugBodyHdcHipUpperRoot.control == null)
+            return false;
+
+        hugBodyHdcHipUpperRootBaseLocalPos = hugBodyHdcHipUpperRoot.control.localPosition;
+        hugBodyHdcHipUpperRootBaseLocalRot = hugBodyHdcHipUpperRoot.control.localRotation;
+
+        for (int i = 0; i < controls.Count; i++)
+        {
+            FreeControllerV3 fc = controls[i];
+            if (fc == null || fc.control == null)
+                continue;
+
+            hugBodyHdcHipUpperBaseLocalPositions[fc] = fc.control.localPosition;
+            hugBodyHdcHipUpperBaseLocalRotations[fc] = fc.control.localRotation;
+        }
+
+        // V5aa: self hands should follow the target chest local frame, not a large hip-pivot world arc.
+        // The body motion remains HDC Hip-Upper, but the actor hands keep their captured chest-relative offsets.
+        hugBodyHdcHandFollowChest = GetTargetPersonControlByAliases("chestControl", "chest");
+
+        if (lHandControl != null && lHandControl.control != null)
+        {
+            hugBodyHdcLeftHandBaseValid = true;
+            hugBodyHdcLeftHandBaseWorldPos = lHandControl.control.position;
+            if (hugBodyHdcHandFollowChest != null && hugBodyHdcHandFollowChest.control != null)
+            {
+                hugBodyHdcLeftHandChestLocalValid = true;
+                hugBodyHdcLeftHandChestLocalOffset = hugBodyHdcHandFollowChest.control.InverseTransformPoint(lHandControl.control.position);
+            }
+        }
+
+        if (rHandControl != null && rHandControl.control != null)
+        {
+            hugBodyHdcRightHandBaseValid = true;
+            hugBodyHdcRightHandBaseWorldPos = rHandControl.control.position;
+            if (hugBodyHdcHandFollowChest != null && hugBodyHdcHandFollowChest.control != null)
+            {
+                hugBodyHdcRightHandChestLocalValid = true;
+                hugBodyHdcRightHandChestLocalOffset = hugBodyHdcHandFollowChest.control.InverseTransformPoint(rHandControl.control.position);
+            }
+        }
+
+        hugBodyHdcHipUpperActive = true;
+        hugBodyHdcHipUpperBaseCaptured = hugBodyHdcHipUpperBaseLocalPositions.Count > 0;
+
+        DebugLog("[HUG BODY HDC BASE CAPTURE]" +
+            " controls=" + hugBodyHdcHipUpperBaseLocalPositions.Count.ToString(CultureInfo.InvariantCulture) +
+            " root=" + FormatVector3(hugBodyHdcHipUpperRootBaseLocalPos) +
+            " rootRot=" + FormatVector3(NormalizeEulerSigned(hugBodyHdcHipUpperRootBaseLocalRot.eulerAngles)) +
+            " selfHands=" + Bool01(hugBodyHdcLeftHandBaseValid || hugBodyHdcRightHandBaseValid) +
+            " chestFollow=" + Bool01(hugBodyHdcHandFollowChest != null && hugBodyHdcHandFollowChest.control != null) +
+            " hdcHipUpper=1");
+        return hugBodyHdcHipUpperBaseCaptured;
+    }
+
+    private Quaternion BuildHugBodyHdcDesiredRootLocalRotation(float addX, float addY)
+    {
+        Vector3 baseEuler = NormalizeEulerSigned(hugBodyHdcHipUpperRootBaseLocalRot.eulerAngles);
+        return Quaternion.Euler(baseEuler.x + addX, baseEuler.y + addY, baseEuler.z);
+    }
+
+    private Vector3 NormalizeEulerSigned(Vector3 e)
+    {
+        return new Vector3(NormalizeAngleSigned(e.x), NormalizeAngleSigned(e.y), NormalizeAngleSigned(e.z));
+    }
+
+    private float NormalizeAngleSigned(float a)
+    {
+        while (a > 180.0f) a -= 360.0f;
+        while (a < -180.0f) a += 360.0f;
+        return a;
+    }
+
+    private int ApplyHugBodyHdcHipUpperLocalTransform(List<FreeControllerV3> controls, Quaternion deltaRotLocal)
+    {
+        int moved = 0;
+        for (int i = 0; i < controls.Count; i++)
+        {
+            FreeControllerV3 fc = controls[i];
+            if (fc == null || fc.control == null)
+                continue;
+
+            Vector3 baseLocalPos;
+            Quaternion baseLocalRot;
+            if (!hugBodyHdcHipUpperBaseLocalPositions.TryGetValue(fc, out baseLocalPos) ||
+                !hugBodyHdcHipUpperBaseLocalRotations.TryGetValue(fc, out baseLocalRot))
+                continue;
+
+            CaptureTargetOriginal(fc);
+            Vector3 rel = baseLocalPos - hugBodyHdcHipUpperRootBaseLocalPos;
+            Vector3 nextLocalPos = hugBodyHdcHipUpperRootBaseLocalPos + deltaRotLocal * rel;
+            Quaternion nextLocalRot = deltaRotLocal * baseLocalRot;
+
+            // Match HumanDrivenController: drive the FreeController control in local space.
+            fc.control.localPosition = nextLocalPos;
+            fc.control.localRotation = nextLocalRot;
+            LockTargetIKControl(fc);
+            moved++;
+        }
+        return moved;
+    }
+
+    private int FollowHugBodyHdcSelfHands(Quaternion deltaRotLocal)
+    {
+        int moved = 0;
+
+        // V5aa: do not rotate the actor hands around target hip.
+        // Hip-pivot follow makes the hands fly up/down because the actor hands are far from the target hip.
+        // Keep the captured offset in the target chest frame instead. This follows upper-body bend without the big arc.
+        if (hugBodyHdcHandFollowChest != null && hugBodyHdcHandFollowChest.control != null)
+        {
+            if (leftHandJSON != null && leftHandJSON.val &&
+                lHandControl != null && lHandControl.control != null &&
+                hugBodyHdcLeftHandChestLocalValid)
+            {
+                Quaternion currentRot = lHandControl.control.rotation;
+                Vector3 nextPos = hugBodyHdcHandFollowChest.control.TransformPoint(hugBodyHdcLeftHandChestLocalOffset);
+                MoveControl(lHandControl, nextPos, currentRot, false, true);
+                DebugLog("[HUG BODY HDC HAND FOLLOW] hand=L mode=chest-relative pos=" +
+                    FormatVector3(lHandControl.control.position) +
+                    " next=" + FormatVector3(nextPos) +
+                    " local=" + FormatVector3(hugBodyHdcLeftHandChestLocalOffset));
+                moved++;
+            }
+
+            if (rightHandJSON != null && rightHandJSON.val &&
+                rHandControl != null && rHandControl.control != null &&
+                hugBodyHdcRightHandChestLocalValid)
+            {
+                Quaternion currentRot = rHandControl.control.rotation;
+                Vector3 nextPos = hugBodyHdcHandFollowChest.control.TransformPoint(hugBodyHdcRightHandChestLocalOffset);
+                MoveControl(rHandControl, nextPos, currentRot, false, true);
+                DebugLog("[HUG BODY HDC HAND FOLLOW] hand=R mode=chest-relative pos=" +
+                    FormatVector3(rHandControl.control.position) +
+                    " next=" + FormatVector3(nextPos) +
+                    " local=" + FormatVector3(hugBodyHdcRightHandChestLocalOffset));
+                moved++;
+            }
+
+            return moved;
+        }
+
+        // Fallback: if chest is missing, keep the old hip-pivot follow rather than doing nothing.
+        if (selectedTargetPerson == null || selectedTargetPerson.transform == null)
+            return 0;
+
+        Vector3 pivotWorld = selectedTargetPerson.transform.TransformPoint(hugBodyHdcHipUpperRootBaseLocalPos);
+        Quaternion targetRootRot = selectedTargetPerson.transform.rotation;
+        Quaternion deltaRotWorld = targetRootRot * deltaRotLocal * Quaternion.Inverse(targetRootRot);
+
+        if (leftHandJSON != null && leftHandJSON.val && lHandControl != null && lHandControl.control != null && hugBodyHdcLeftHandBaseValid)
+        {
+            Quaternion currentRot = lHandControl.control.rotation;
+            Vector3 nextPos = pivotWorld + deltaRotWorld * (hugBodyHdcLeftHandBaseWorldPos - pivotWorld);
+            MoveControl(lHandControl, nextPos, currentRot, false, true);
+            DebugLog("[HUG BODY HDC HAND FOLLOW] hand=L mode=hip-fallback pos=" + FormatVector3(lHandControl.control.position) + " next=" + FormatVector3(nextPos));
+            moved++;
+        }
+
+        if (rightHandJSON != null && rightHandJSON.val && rHandControl != null && rHandControl.control != null && hugBodyHdcRightHandBaseValid)
+        {
+            Quaternion currentRot = rHandControl.control.rotation;
+            Vector3 nextPos = pivotWorld + deltaRotWorld * (hugBodyHdcRightHandBaseWorldPos - pivotWorld);
+            MoveControl(rHandControl, nextPos, currentRot, false, true);
+            DebugLog("[HUG BODY HDC HAND FOLLOW] hand=R mode=hip-fallback pos=" + FormatVector3(rHandControl.control.position) + " next=" + FormatVector3(nextPos));
+            moved++;
+        }
+
+        return moved;
+    }
+
     private List<FreeControllerV3> GetUpperBodyPivotControls(List<FreeControllerV3> baseControls)
     {
         List<FreeControllerV3> controls = new List<FreeControllerV3>();
 
         AddControlIfNotNull(controls, GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
         AddControlIfNotNull(controls, GetTargetPersonControlByAliases("chestControl", "chest"));
-        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("neckControl", "neck"));
-        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("headControl", "head"));
+
+        // V5j:
+        // Hug Body should not make target neck/head jump while the hands move.
+        // Other upper-body target modes keep the old neck/head pivot behavior.
+        if (!ShouldKeepTargetNeckHeadStableForHugBody())
+        {
+            AddControlIfNotNull(controls, GetTargetPersonControlByAliases("neckControl", "neck"));
+            AddControlIfNotNull(controls, GetTargetPersonControlByAliases("headControl", "head"));
+        }
 
         if (baseControls != null)
         {
             foreach (FreeControllerV3 fc in baseControls)
+            {
+                if (ShouldSkipTargetNeckHeadForHugBody(fc))
+                    continue;
+
                 AddControlIfNotNull(controls, fc);
+            }
         }
 
         return controls;
+    }
+
+    private bool ShouldKeepTargetNeckHeadStableForHugBody()
+    {
+        return HUG_BODY_KEEP_TARGET_NECK_HEAD_STABLE && IsHugBodyTarget();
+    }
+
+    private bool ShouldSkipTargetNeckHeadForHugBody(FreeControllerV3 fc)
+    {
+        return ShouldKeepTargetNeckHeadStableForHugBody() && IsTargetNeckOrHeadControl(fc);
+    }
+
+    private bool IsHeadLikeTargetMode()
+    {
+        if (!IsTargetPersonMode() || targetPersonPartChooser == null)
+            return false;
+
+        string choice = targetPersonPartChooser.val;
+        return choice == TC_HEAD ||
+               choice == TC_HEAD_TOP ||
+               choice == TC_NECK ||
+               choice == TC_MOUTH;
+    }
+
+    private bool ShouldSkipTargetAutoSnapIK(FreeControllerV3 fc)
+    {
+        if (fc == null)
+            return false;
+
+        if (ShouldSkipTargetNeckHeadForHugBody(fc))
+            return true;
+
+        // V5n:
+        // Head/Neck/Mouth grab routes use target head/neck as the center only.
+        // AutoSnap copying the real head/neck bone rotation back into headControl/neckControl
+        // can make the target head spin after the hands arrive.
+        // Keep the target head/neck IK control untouched; only self hands are snapped/resynced.
+        return IsHeadLikeTargetMode() && IsTargetNeckOrHeadControl(fc);
+    }
+
+    private void RelaxHugBodyPullPushTargetNeckHeadIK(string reason)
+    {
+        if (!HUG_BODY_PULL_PUSH_RELAX_TARGET_NECK_HEAD_IK || !IsHugBodyTarget() || selectedTargetPerson == null)
+            return;
+
+        int relaxed = 0;
+        FreeControllerV3 neck = GetTargetPersonControlByAliases("neckControl", "neck");
+        FreeControllerV3 head = GetTargetPersonControlByAliases("headControl", "head");
+
+        if (neck != null)
+        {
+            RelaxTemporaryLinkedIK(neck);
+            relaxed++;
+        }
+
+        if (head != null && head != neck)
+        {
+            RelaxTemporaryLinkedIK(head);
+            relaxed++;
+        }
+
+        if (relaxed > 0)
+        {
+            DebugLog("[HUG BODY RELAX HEAD IK] reason=" + reason +
+                " controls=" + relaxed.ToString(CultureInfo.InvariantCulture));
+        }
+    }
+
+    private bool IsTargetNeckOrHeadControl(FreeControllerV3 fc)
+    {
+        if (fc == null || string.IsNullOrEmpty(fc.name))
+            return false;
+
+        string n = fc.name.ToLowerInvariant();
+        return n.Contains("neck") || n.Contains("head");
     }
 
     private FreeControllerV3 GetUpperBodyPivotPrimaryControl()
@@ -3082,6 +3621,9 @@ public class TargetGrabber : MVRScript
         foreach (FreeControllerV3 fc in controls)
         {
             if (fc == null || fc == hip)
+                continue;
+
+            if (ShouldSkipTargetNeckHeadForHugBody(fc))
                 continue;
 
             CaptureTargetOriginal(fc);
@@ -4328,7 +4870,15 @@ public class TargetGrabber : MVRScript
         if (selectedTargetPerson != null && targetControls != null)
         {
             foreach (FreeControllerV3 fc in targetControls)
+            {
+                if (ShouldSkipTargetAutoSnapIK(fc))
+                {
+                    DebugLog("[TARGET SNAP SKIP] reason=head-neck-protect target=" + (fc != null ? fc.name : "<null>"));
+                    continue;
+                }
+
                 AddPendingAutoSnapIK(selectedTargetPerson, fc);
+            }
         }
     }
 
@@ -4363,6 +4913,12 @@ public class TargetGrabber : MVRScript
     {
         if (atom == null || fc == null || string.IsNullOrEmpty(fc.name))
             return false;
+
+        if (atom == selectedTargetPerson && ShouldSkipTargetAutoSnapIK(fc))
+        {
+            DebugLog("[TARGET SNAP SKIP] reason=snap-guard target=" + fc.name);
+            return false;
+        }
 
         string targetKeyword = fc.name.Replace("Control", "").Replace("control", "").ToLowerInvariant();
         if (string.IsNullOrEmpty(targetKeyword))
@@ -9717,6 +10273,7 @@ public class TargetGrabber : MVRScript
 
     private void Release()
     {
+        ResetHugBodyHdcHipUpperState("release");
         hasActiveGrab = false;
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();

@@ -1,5 +1,5 @@
-// HDU_Commander_v009_grab_blue_knee_docking_yellow.cs
-// v009_grab_blue_knee_docking_yellow 2026-06-23
+// HDU_Commander_v012_hdu_head_grab_route.cs
+// v012_hdu_head_grab_route 2026-06-24
 // HDU-like command panel for VaM. It does not merge plugin logic; it only sets registered storables
 // and triggers JSONStorableAction entries on existing plugins such as TargetGrabber / TargetLinePerson.
 
@@ -8,9 +8,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
+public class HDU_Commander_v012_hdu_head_grab_route : MVRScript
 {
-    private const string VERSION = "v009_grab_blue_knee_docking_yellow";
+    private const string VERSION = "v012_hdu_head_grab_route";
     private const string ANY = "ANY";
     private const string NONE = "None";
 
@@ -21,7 +21,6 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
     private JSONStorableBool tgLeftHandJSON;
     private JSONStorableBool tgRightHandJSON;
 
-    private JSONStorableBool pMidGAlignJSON;
     private JSONStorableStringChooser pushAutoModeChooser;
     private JSONStorableFloat distanceJSON;
 
@@ -68,6 +67,7 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
             "TargetGrabber",
             new List<string>()
             {
+                "Head",
                 "NECK",
                 "Chest Hold",
                 "Hug Body",
@@ -129,10 +129,7 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
         // Right column: TargetLinePerson style controls.
         AddButton("PUSH", true, delegate { RunQuick("TargetLinePerson", new string[] { "PUSH" }, "TLP PUSH"); }, DockingButtonColor());
 
-        pMidGAlignJSON = new JSONStorableBool("P Midl G Aling", false);
-        pMidGAlignJSON.setCallbackFunction = OnPMidGAlignChanged;
-        RegisterBool(pMidGAlignJSON);
-        CreateToggle(pMidGAlignJSON, true);
+        AddButton("P Midl Line", true, RunPMidlLine, DockingButtonColor());
 
         pushAutoModeChooser = new JSONStorableStringChooser(
             "PUSH auto Mode",
@@ -176,7 +173,7 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
     private void RegisterExternalActions()
     {
         RegisterAction(new JSONStorableAction("HDU Scan", ScanPlugins));
-        RegisterAction(new JSONStorableAction("TargetGrabber Apply Controller", ApplyTargetGrabberChoice));
+        RegisterAction(new JSONStorableAction("TargetGrabber Apply Controller", ApplyTargetGrabberChoiceLegacy));
         RegisterAction(new JSONStorableAction("Grab Hand", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand" }, "Grab Hand"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Pull", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Pull", "Grab Pull" }, "Grab Hand Pull"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Push", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Push", "Grab Push" }, "Grab Hand Push"); }));
@@ -191,6 +188,8 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
         RegisterAction(new JSONStorableAction("Target IK Default", delegate { RunQuick("TargetGrabber", new string[] { "Target IK Default" }, "Target IK Default"); }));
         RegisterAction(new JSONStorableAction("Target Load User Defaults", delegate { RunQuick("TargetGrabber", new string[] { "Target Load User Defaults", "Target Load Defaults", "TargetLoadDefaults" }, "Target Load User Defaults"); }));
         RegisterAction(new JSONStorableAction("TLP PUSH", delegate { RunQuick("TargetLinePerson", new string[] { "PUSH" }, "TLP PUSH"); }));
+        RegisterAction(new JSONStorableAction("P Midl Line", RunPMidlLine));
+        RegisterAction(new JSONStorableAction("P Midl G Aling", RunPMidlLine));
         RegisterAction(new JSONStorableAction("TLP Now Docking", delegate { RunQuick("TargetLinePerson", new string[] { "Now Docking" }, "Now Docking"); }));
         RegisterAction(new JSONStorableAction("TLP Smart Docking", delegate { RunQuick("TargetLinePerson", new string[] { "Smart Docking" }, "Smart Docking"); }));
         RegisterAction(new JSONStorableAction("TLP Reverse Smart Docking", delegate { RunQuick("TargetLinePerson", new string[] { "Reverse Smart Docking" }, "Reverse Smart Docking"); }));
@@ -262,7 +261,46 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
     private void ApplyAndRunSelfHand(string[] actionNames, string label)
     {
         ApplySelfHandFlagsToTargetGrabber();
+
+        // v011: Prefer the dedicated HDU route on TargetGrabber.
+        // This avoids driving TargetGrabber's IK Select popup from HDU and prevents same-frame chooser/action races.
+        if (TryRunHduTargetGrabRoute(label))
+            return;
+
+        // Fallback for older TargetGrabber versions.
+        ApplyTargetGrabberChoiceLegacy();
         RunQuick("TargetGrabber", actionNames, label);
+    }
+
+    private bool TryRunHduTargetGrabRoute(string label)
+    {
+        string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
+        string actual = MapTargetGrabberChoice(display);
+        string actionName = BuildHduTargetGrabActionName(label, actual);
+        if (string.IsNullOrEmpty(actionName))
+            return false;
+
+        return RunQuick("TargetGrabber", new string[] { actionName }, label + " / " + actual);
+    }
+
+    private string BuildHduTargetGrabActionName(string label, string actual)
+    {
+        if (string.IsNullOrEmpty(label) || string.IsNullOrEmpty(actual))
+            return null;
+
+        if (actual == "Head" ||
+            actual == "Neck" ||
+            actual == "Chest Hold" ||
+            actual == "Hug Body" ||
+            actual == "Hip Hold" ||
+            actual == "Hand Hold" ||
+            actual == "Foot Hold" ||
+            actual == "Knee Hold")
+        {
+            return "HDU " + label + " " + actual;
+        }
+
+        return null;
     }
 
     private bool ApplySelfHandFlagsToTargetGrabber()
@@ -280,10 +318,13 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
 
     private void OnTargetGrabberChoiceChanged(string value)
     {
-        ApplyTargetGrabberChoice();
+        // v011: Do not push the choice into TargetGrabber immediately.
+        // The command button will call a dedicated HDU route that selects and runs inside TargetGrabber.
+        string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
+        SetStatus("TargetGrabber pending: " + display);
     }
 
-    private void ApplyTargetGrabberChoice()
+    private void ApplyTargetGrabberChoiceLegacy()
     {
         string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
         string actual = MapTargetGrabberChoice(display);
@@ -301,6 +342,7 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
 
     private string MapTargetGrabberChoice(string display)
     {
+        if (display == "Head") return "Head";
         if (display == "NECK") return "Neck";
         if (display == "Chest Hold") return "Chest Hold";
         if (display == "Hug Body") return "Hug Body";
@@ -314,6 +356,8 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
 
     private bool RunTargetGrabberShortcutFallback(string actual)
     {
+        if (actual == "Head")
+            return RunQuick("TargetGrabber", new string[] { "Target Shortcut Head" }, "TargetGrabber Head");
         if (actual == "Neck")
             return RunQuick("TargetGrabber", new string[] { "Target Shortcut Neck" }, "TargetGrabber Neck");
         if (actual == "Chest Hold")
@@ -343,10 +387,30 @@ public class HDU_Commander_v009_grab_blue_knee_docking_yellow : MVRScript
         SetStatus("Self Right Hand: " + Bool01(value) + " / set=" + Bool01(ok));
     }
 
-    private void OnPMidGAlignChanged(bool value)
+    private void RunPMidlLine()
     {
-        bool ok = TrySetBoolParam("TargetLinePerson", new string[] { "P Yellow Path Align", "P Midl G Aling", "P Mid G Align" }, value, "TLP P Midl G Aling");
-        SetStatus("P Midl G Aling: " + Bool01(value) + " / set=" + Bool01(ok));
+        bool ok = RunQuick("TargetLinePerson",
+            new string[]
+            {
+                "P Midl Line",
+                "P Midl G Aling",
+                "P Midl G Align",
+                "P Mid G Align",
+                "P Yellow Path Align"
+            },
+            "P Midl Line");
+
+        if (!ok)
+        {
+            // Some older TargetLinePerson builds exposed this as a bool instead of an action.
+            // In that case the HDU button behaves as an ON button.
+            ok = TrySetBoolParam("TargetLinePerson",
+                new string[] { "P Midl Line", "P Midl G Aling", "P Midl G Align", "P Mid G Align", "P Yellow Path Align" },
+                true,
+                "P Midl Line ON");
+
+            SetStatus("P Midl Line ON fallback: set=" + Bool01(ok));
+        }
     }
 
     private void OnPushAutoModeChanged(string value)

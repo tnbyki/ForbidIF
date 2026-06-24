@@ -1,3 +1,6 @@
+// HUD_FX_STATE_HYSTERESIS_BUILD 2026-06-24: Uses a single enter/exit FX state with hysteresis so only one HUD FX event fires per transition.
+// HUD_FX_ENTER_EXIT_COLORS_BUILD 2026-06-24: Uses warm triangle bursts for entering threshold and blue circle/ring bursts for exit threshold; HUD FX Test shows both paths.
+// HUD_FX_TEST_BUTTON_BUILD 2026-06-24: Adds a HUD FX Test button/action to verify burst rendering independently from threshold timing. Keeps Depth Probe Rate Auto, Raw HUD internal path restored, and Transform Cache forced ON.
 // DEPTH_AUTO_RAWHUD_RESTORE_BUILD 2026-06-24: Renames Depth Probe Rate ON to Auto, keeps Performance Mode-linked probe pacing, and restores internal Raw HUD Probe for the HUD graph/FX while keeping debug toggles hidden.
 // HUD_GRAPH_FX_DEFAULT_ON_BUILD 2026-06-24: Keeps Performance Mode and Depth Probe Rate visible, keeps Depth HUD graph and HUD FX visible, and defaults HUD graph/FX ON for screen-following HUD operation.
 // DEPTH_RATE_ON_HUD_SYNC_BUILD 2026-06-24: Adds Depth Probe Rate=Auto mode driven by Performance Mode; Quality/Balanced update HUD/probe pacing fast enough for screen-following HUD, while Light remains throttled.
@@ -645,8 +648,14 @@ public class TargetLinePerson : MVRScript
     const int GenDepthBurstParticleCount = 12;
     const float GenDepthBurstLifetime = 0.70f;
     const float GenDepthBurstCooldownZero = 0.45f;
+    const float GenDepthBurstCooldownExit = 0.45f;
     const float GenDepthBurstCooldownMax = 0.85f;
+    const float GenDepthFxEnterPercent = 0.015f;
+    const float GenDepthFxExitPercent = 0.005f;
     const float GenDepthBurstSize = 0.010f;
+    const int GenDepthBurstShapeTriangle = 0;
+    const int GenDepthBurstShapeCircle = 1;
+    const int GenDepthBurstShapeSphere = 2;
     const string PerformanceModeQuality = "Quality";
     const string PerformanceModeBalanced = "Balanced";
     const string PerformanceModeLight = "Light";
@@ -737,6 +746,8 @@ public class TargetLinePerson : MVRScript
     Material anusDepthHudMarkerMaterial;
     Material anusDepthHudStarMaterial;
     Material[] genDepthBurstMaterials;
+    Material[] genDepthBurstWarmMaterials;
+    Material[] genDepthBurstBlueMaterials;
     float genDepthPeakPercent;
     float genDepthPeakUntil;
     float genDepthHudLowerVisualOpenT;
@@ -744,7 +755,9 @@ public class TargetLinePerson : MVRScript
     float genDepthInsertedMaxPercent;
     float anusDepthInsertedMaxPercent;
     float previousGenDepthPercent;
+    bool genDepthFxInside;
     float nextZeroBurstTime;
+    float nextExitBurstTime;
     float nextMaxBurstTime;
     float lastGenDepthUiTextTime = -999f;
     float lastGenDepthHudSampleTime = -999f;
@@ -1328,6 +1341,11 @@ public class TargetLinePerson : MVRScript
         RegisterBool(genDepthHudFx);
         CreateToggle(genDepthHudFx);
 
+        CreateButton("HUD FX Test").button.onClick.AddListener(delegate
+        {
+            ActionHudFxTest();
+        });
+
         genDepthMax = new JSONStorableFloat(
             "Gen Depth Max",
             GenDepthMaxDefault,
@@ -1565,6 +1583,45 @@ public class TargetLinePerson : MVRScript
         RegisterAction(new JSONStorableAction("Sit Ground Pose", ActionSitGroundPose));
         RegisterAction(new JSONStorableAction("Lie On Back", ActionLieOnBack));
         RegisterAction(new JSONStorableAction("Lie On Front", ActionLieOnFront));
+        RegisterAction(new JSONStorableAction("HUD FX Test", ActionHudFxTest));
+    }
+
+    void ActionHudFxTest()
+    {
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            DebugLog("[TargetLinePerson] HUD FX Test skipped / reason=no-camera");
+            return;
+        }
+
+        EnsureGenDepthBurstMaterialSets();
+        if ((genDepthBurstWarmMaterials == null || genDepthBurstWarmMaterials.Length == 0) && (genDepthBurstBlueMaterials == null || genDepthBurstBlueMaterials.Length == 0))
+        {
+            DebugLog("[TargetLinePerson] HUD FX Test skipped / reason=no-burst-material");
+            return;
+        }
+
+        Vector3 bottom = cam.ViewportToWorldPoint(new Vector3(GenDepthHudX, GenDepthHudBottomY, GenDepthHudCameraDistance));
+        Vector3 top = cam.ViewportToWorldPoint(new Vector3(GenDepthHudX, GenDepthHudTopY, GenDepthHudCameraDistance));
+        float fullHeight = Vector3.Distance(bottom, top);
+        Vector3 upDir = (top - bottom).normalized;
+        if (upDir.sqrMagnitude < 0.0001f)
+        {
+            upDir = cam.transform.up;
+        }
+
+        float markerRatio = Mathf.Clamp(GenDepthHudUpperHeartPercent / GenDepthHudDisplayMaxPercent, 0.0f, 1.0f);
+        Vector3 markerCenter = bottom + upDir * (fullHeight * markerRatio);
+        Vector3 lowerMarkerCenter =
+            bottom
+            - upDir * (fullHeight * GenDepthHudLowerHeartOffset)
+            - cam.transform.forward * GenDepthHudDropFrontOffset
+            - cam.transform.right * GenDepthHudDropLeftOffset;
+
+        SpawnGenDepthBurstShape(lowerMarkerCenter, cam.transform.right, cam.transform.up, cam.transform.forward, 0.75f, GenDepthBurstShapeTriangle, GetGenHudBurstSizeScale(), GetGenDepthBurstWarmMaterials());
+        SpawnGenDepthBurstShape(markerCenter, cam.transform.right, cam.transform.up, cam.transform.forward, 0.90f, GenDepthBurstShapeCircle, 1.0f, GetGenDepthBurstBlueMaterials());
+        DebugLog("[TargetLinePerson] HUD FX Test fired / enter=warm-triangle / exit=blue-circle");
     }
 
     void ActionNowDocking()
@@ -8921,6 +8978,8 @@ bool IsTargetRideLikePose()
         anusDepthHudMarkerMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.78f, 0.90f, 0.95f));
         anusDepthHudStarMaterial = CreateGenDepthHudMaterial(new Color(1.0f, 0.58f, 0.78f, 0.96f));
         genDepthBurstMaterials = CreateGenDepthBurstMaterials();
+        genDepthBurstWarmMaterials = CreateGenDepthBurstWarmMaterials();
+        genDepthBurstBlueMaterials = CreateGenDepthBurstBlueMaterials();
 
         genDepthHudBackObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Back", genDepthHudBackMaterial);
         genDepthHudFillObj = CreateGenDepthHudBarObject("TargetLinePerson_GenDepthHud_Fill", genDepthHudFillMaterial);
@@ -8939,6 +8998,7 @@ bool IsTargetRideLikePose()
         previousGenDepthPercent = 0.0f;
         anusDepthInsertedMaxPercent = 0.0f;
         nextZeroBurstTime = 0.0f;
+        nextExitBurstTime = 0.0f;
         nextMaxBurstTime = 0.0f;
 
         SetGenDepthHudActive(false);
@@ -9014,6 +9074,43 @@ bool IsTargetRideLikePose()
             new Color(0.05f, 0.55f, 1.0f, 0.95f),
             new Color(0.75f, 0.10f, 1.0f, 0.95f)
         };
+        return CreateGenDepthBurstMaterialsFromColors(colors);
+    }
+
+    Material[] CreateGenDepthBurstWarmMaterials()
+    {
+        Color[] colors = new Color[]
+        {
+            new Color(1.00f, 0.22f, 0.06f, 0.96f),
+            new Color(1.00f, 0.48f, 0.05f, 0.96f),
+            new Color(1.00f, 0.74f, 0.12f, 0.96f),
+            new Color(1.00f, 0.36f, 0.30f, 0.96f),
+            new Color(1.00f, 0.58f, 0.20f, 0.96f),
+            new Color(1.00f, 0.88f, 0.28f, 0.96f)
+        };
+        return CreateGenDepthBurstMaterialsFromColors(colors);
+    }
+
+    Material[] CreateGenDepthBurstBlueMaterials()
+    {
+        Color[] colors = new Color[]
+        {
+            new Color(0.15f, 0.58f, 1.00f, 0.96f),
+            new Color(0.10f, 0.80f, 1.00f, 0.96f),
+            new Color(0.38f, 0.72f, 1.00f, 0.96f),
+            new Color(0.05f, 0.36f, 0.92f, 0.96f),
+            new Color(0.45f, 0.92f, 1.00f, 0.96f),
+            new Color(0.22f, 0.48f, 1.00f, 0.96f)
+        };
+        return CreateGenDepthBurstMaterialsFromColors(colors);
+    }
+
+    Material[] CreateGenDepthBurstMaterialsFromColors(Color[] colors)
+    {
+        if (colors == null || colors.Length == 0)
+        {
+            return null;
+        }
 
         Material[] mats = new Material[colors.Length];
         for (int i = 0; i < colors.Length; i++)
@@ -9021,6 +9118,40 @@ bool IsTargetRideLikePose()
             mats[i] = CreateGenDepthHudMaterial(colors[i]);
         }
         return mats;
+    }
+
+    void EnsureGenDepthBurstMaterialSets()
+    {
+        if (genDepthBurstMaterials == null || genDepthBurstMaterials.Length == 0)
+        {
+            genDepthBurstMaterials = CreateGenDepthBurstMaterials();
+        }
+        if (genDepthBurstWarmMaterials == null || genDepthBurstWarmMaterials.Length == 0)
+        {
+            genDepthBurstWarmMaterials = CreateGenDepthBurstWarmMaterials();
+        }
+        if (genDepthBurstBlueMaterials == null || genDepthBurstBlueMaterials.Length == 0)
+        {
+            genDepthBurstBlueMaterials = CreateGenDepthBurstBlueMaterials();
+        }
+    }
+
+    Material[] GetGenDepthBurstWarmMaterials()
+    {
+        if (genDepthBurstWarmMaterials == null || genDepthBurstWarmMaterials.Length == 0)
+        {
+            genDepthBurstWarmMaterials = CreateGenDepthBurstWarmMaterials();
+        }
+        return genDepthBurstWarmMaterials;
+    }
+
+    Material[] GetGenDepthBurstBlueMaterials()
+    {
+        if (genDepthBurstBlueMaterials == null || genDepthBurstBlueMaterials.Length == 0)
+        {
+            genDepthBurstBlueMaterials = CreateGenDepthBurstBlueMaterials();
+        }
+        return genDepthBurstBlueMaterials;
     }
 
     GameObject CreateGenDepthHudBarObject(string objectName, Material mat)
@@ -11565,6 +11696,7 @@ bool IsTargetRideLikePose()
             genDepthHudLowerVisualOpenVelocity = 0.0f;
             genDepthInsertedMaxPercent = 0.0f;
             previousGenDepthPercent = 0.0f;
+            genDepthFxInside = false;
             ClearGenDepthBurstParticles();
             return;
         }
@@ -11579,6 +11711,7 @@ bool IsTargetRideLikePose()
             genDepthHudLowerVisualOpenVelocity = 0.0f;
             genDepthInsertedMaxPercent = 0.0f;
             previousGenDepthPercent = 0.0f;
+            genDepthFxInside = false;
             ClearGenDepthBurstParticles();
             return;
         }
@@ -11900,10 +12033,24 @@ bool IsTargetRideLikePose()
 
     void TriggerGenDepthBursts(float percent, Vector3 zeroCenter, Vector3 maxCenter, Vector3 right, Vector3 up, Vector3 forward, float zeroBurstScale)
     {
-        if (previousGenDepthPercent <= 0.001f && percent > 0.001f && Time.time >= nextZeroBurstTime)
+        bool fxWasInside = genDepthFxInside;
+        bool fxNowInside = fxWasInside ? (percent >= GenDepthFxExitPercent) : (percent > GenDepthFxEnterPercent);
+
+        if (!fxWasInside && fxNowInside)
         {
-            SpawnGenDepthBurst(zeroCenter, right, up, forward, 0.75f, true, zeroBurstScale);
-            nextZeroBurstTime = Time.time + GenDepthBurstCooldownZero;
+            if (Time.time >= nextZeroBurstTime)
+            {
+                SpawnGenDepthBurstShape(zeroCenter, right, up, forward, 0.75f, GenDepthBurstShapeTriangle, zeroBurstScale, GetGenDepthBurstWarmMaterials());
+                nextZeroBurstTime = Time.time + GenDepthBurstCooldownZero;
+            }
+        }
+        else if (fxWasInside && !fxNowInside)
+        {
+            if (Time.time >= nextExitBurstTime)
+            {
+                SpawnGenDepthBurstShape(zeroCenter, right, up, forward, 0.82f, GenDepthBurstShapeCircle, zeroBurstScale, GetGenDepthBurstBlueMaterials());
+                nextExitBurstTime = Time.time + GenDepthBurstCooldownExit;
+            }
         }
 
         if (previousGenDepthPercent < 1.0f && percent >= 1.0f && Time.time >= nextMaxBurstTime)
@@ -11912,19 +12059,37 @@ bool IsTargetRideLikePose()
             nextMaxBurstTime = Time.time + GenDepthBurstCooldownMax;
         }
 
+        genDepthFxInside = fxNowInside;
         previousGenDepthPercent = percent;
     }
 
     void SpawnGenDepthBurst(Vector3 center, Vector3 right, Vector3 up, Vector3 forward, float power, bool triangle, float sizeScale)
     {
-        if (genDepthBurstMaterials == null || genDepthBurstMaterials.Length == 0)
+        SpawnGenDepthBurstShape(center, right, up, forward, power, triangle ? GenDepthBurstShapeTriangle : GenDepthBurstShapeSphere, sizeScale, genDepthBurstMaterials);
+    }
+
+    void SpawnGenDepthBurstShape(Vector3 center, Vector3 right, Vector3 up, Vector3 forward, float power, int shape, float sizeScale, Material[] materials)
+    {
+        if (materials == null || materials.Length == 0)
         {
             return;
         }
 
         for (int i = 0; i < GenDepthBurstParticleCount; i++)
         {
-            GameObject particle = triangle ? CreateGenDepthBurstTriangleObject() : GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            GameObject particle;
+            if (shape == GenDepthBurstShapeTriangle)
+            {
+                particle = CreateGenDepthBurstTriangleObject();
+            }
+            else if (shape == GenDepthBurstShapeCircle)
+            {
+                particle = CreateGenDepthBurstCircleObject();
+            }
+            else
+            {
+                particle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            }
             particle.name = "TargetLinePerson_GenDepthHud_Burst";
 
             Collider col = particle.GetComponent<Collider>();
@@ -11936,7 +12101,7 @@ bool IsTargetRideLikePose()
             Renderer renderer = particle.GetComponent<Renderer>();
             if (renderer != null)
             {
-                renderer.material = genDepthBurstMaterials[i % genDepthBurstMaterials.Length];
+                renderer.material = materials[i % materials.Length];
                 renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 renderer.receiveShadows = false;
             }
@@ -11986,6 +12151,63 @@ bool IsTargetRideLikePose()
             0, 1, 2,
             0, 2, 1
         };
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        filter.mesh = mesh;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        return obj;
+    }
+
+    GameObject CreateGenDepthBurstCircleObject()
+    {
+        GameObject obj = new GameObject("TargetLinePerson_GenDepthHud_Burst_Circle");
+        MeshFilter filter = obj.AddComponent<MeshFilter>();
+        MeshRenderer renderer = obj.AddComponent<MeshRenderer>();
+        Mesh mesh = new Mesh();
+
+        const int segments = 24;
+        const float outer = 0.72f;
+        const float inner = 0.42f;
+        Vector3[] vertices = new Vector3[segments * 2];
+        int[] triangles = new int[segments * 12];
+
+        for (int i = 0; i < segments; i++)
+        {
+            float angle = ((Mathf.PI * 2.0f) * i) / segments;
+            float c = Mathf.Cos(angle);
+            float s = Mathf.Sin(angle);
+            vertices[i * 2] = new Vector3(c * outer, s * outer, 0.0f);
+            vertices[i * 2 + 1] = new Vector3(c * inner, s * inner, 0.0f);
+        }
+
+        int ti = 0;
+        for (int i = 0; i < segments; i++)
+        {
+            int next = (i + 1) % segments;
+            int outerA = i * 2;
+            int innerA = i * 2 + 1;
+            int outerB = next * 2;
+            int innerB = next * 2 + 1;
+
+            triangles[ti++] = outerA;
+            triangles[ti++] = innerA;
+            triangles[ti++] = outerB;
+            triangles[ti++] = outerB;
+            triangles[ti++] = innerA;
+            triangles[ti++] = innerB;
+
+            triangles[ti++] = outerA;
+            triangles[ti++] = outerB;
+            triangles[ti++] = innerA;
+            triangles[ti++] = outerB;
+            triangles[ti++] = innerB;
+            triangles[ti++] = innerA;
+        }
+
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
 
@@ -14258,6 +14480,28 @@ bool IsTargetRideLikePose()
                 if (genDepthBurstMaterials[i] != null)
                 {
                     Destroy(genDepthBurstMaterials[i]);
+                }
+            }
+        }
+
+        if (genDepthBurstWarmMaterials != null)
+        {
+            for (int i = 0; i < genDepthBurstWarmMaterials.Length; i++)
+            {
+                if (genDepthBurstWarmMaterials[i] != null)
+                {
+                    Destroy(genDepthBurstWarmMaterials[i]);
+                }
+            }
+        }
+
+        if (genDepthBurstBlueMaterials != null)
+        {
+            for (int i = 0; i < genDepthBurstBlueMaterials.Length; i++)
+            {
+                if (genDepthBurstBlueMaterials[i] != null)
+                {
+                    Destroy(genDepthBurstBlueMaterials[i]);
                 }
             }
         }
