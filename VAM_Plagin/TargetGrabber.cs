@@ -1,3 +1,10 @@
+// TARGET_NONE_BODY_NUDGE_HIP_AXIS_BUILD 2026-06-25: None Body Nudge Pull/Push/Left/Right now use target hip/body visual horizontal axes; Atom transform root was often fixed to world +Z.
+// TARGET_NONE_BODY_NUDGE_TARGET_ROOT_AXIS_BUILD 2026-06-25: Target Controller None Body Nudge Pull/Push/Left/Right now use target root horizontal forward/right axes instead of self-to-target position axis.
+// TARGET_NONE_BODY_NUDGE_COMPLY_BUILD 2026-06-25: Target Controller None Body Nudge now temporarily sets non-moving target limb IK to Comply and restores it on Target Release.
+// TARGET_NONE_BODY_NUDGE_BUILD 2026-06-25: Target Controller None makes Grab Hand Pull/Push/Up/Down/Left/Right nudge target torso/head controls as a body group.
+// TARGET_NONE_BODY_NUDGE_HDU_ROUTE_BUILD 2026-06-25: Allows HDU direct routes to select Target Controller <none> so None Body Nudge works from HDU_Commander.
+// TARGET_NONE_BODY_NUDGE_COMPLY_BUILD 2026-06-25: Target Controller <none> makes Grab Hand Pull/Push/Up/Down/Left/Right move target body while non-moving IK temporarily Comply.
+// TARGET_RELEASE_HC_REAPPLY_BUILD 2026-06-25: After Target Release, safely calls target-side humanPoseControler/humanControler HC Reapply Current Pose when available.
 // TARGET_PELVIS_ONESHOT_DEBUG_BUILD 2026-06-24: Makes TargetGrabber pelvis control one-shot only and adds verification logs/buttons. No LateUpdate hold.
 // HDU_GRAB_HAND_ROUTES_BUILD 2026-06-24: Adds HDU direct target+GrabHand utility actions so HDU_Commander does not need to drive the IK Select popup.
 // V5au: Moves Target Pelvis auto/test diagnostic logs behind Debug Log; behavior unchanged.
@@ -409,6 +416,11 @@ public class TargetGrabber : MVRScript
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> temporaryRelaxPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> temporaryRelaxRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly List<FreeControllerV3> temporaryRelaxControls = new List<FreeControllerV3>();
+    // v5ay: Target Controller None Body Nudge専用。動かす体幹以外の手足IKを一時的にComplyへ逃がし、Target Releaseで戻す。
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> targetNoneBodyRelaxPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> targetNoneBodyRelaxRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
+    private readonly List<FreeControllerV3> targetNoneBodyRelaxControls = new List<FreeControllerV3>();
+    private Atom targetNoneBodyRelaxTargetAtom = null;
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> swoonDropPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> swoonDropRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly List<FreeControllerV3> swoonDropControls = new List<FreeControllerV3>();
@@ -719,7 +731,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v5an_no_pelvis_hold_keep_grab_auto / based-on-TargetGrabber19");
+        DebugLog("ready / v5az_target_none_body_nudge_hdu_route / based-on-v5ay_target_none_body_nudge_comply");
     }
 
     private void RegisterExternalActions()
@@ -783,6 +795,7 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Target Load User Defaults", TargetLoadUserDefaults));
         RegisterAction(new JSONStorableAction("Target Load Defaults", TargetLoadUserDefaults));
         RegisterAction(new JSONStorableAction("TargetLoadDefaults", TargetLoadUserDefaults));
+        RegisterAction(new JSONStorableAction("Target Shortcut None", delegate { SetTargetControllerShortcut(NONE); }));
         RegisterAction(new JSONStorableAction("Target Shortcut Head", delegate { SetTargetControllerShortcut(TC_HEAD); }));
         RegisterAction(new JSONStorableAction("Target Shortcut Chest Hold", delegate { SetTargetControllerShortcut(TC_CHEST_HOLD); }));
         RegisterAction(new JSONStorableAction("Target Shortcut Hug Body", delegate { SetTargetControllerShortcut(TC_HUG_BODY); }));
@@ -795,6 +808,9 @@ public class TargetGrabber : MVRScript
 
     private void RegisterHduGrabHandRouteActions()
     {
+        // v5az: HDU_Commander can now route TargetGrabber=None into the same Body Nudge path
+        // used by the visible TargetGrabber Grab Hand utility buttons.
+        RegisterHduGrabHandRouteActionsForTarget("None", NONE);
         RegisterHduGrabHandRouteActionsForTarget("Head", TC_HEAD);
         RegisterHduGrabHandRouteActionsForTarget("Neck", TC_NECK);
         RegisterHduGrabHandRouteActionsForTarget("Chest Hold", TC_CHEST_HOLD);
@@ -835,11 +851,16 @@ public class TargetGrabber : MVRScript
 
     private bool HduSelectTargetControllerInternal(string targetChoice)
     {
-        if (string.IsNullOrEmpty(targetChoice) || targetChoice == NONE)
+        if (string.IsNullOrEmpty(targetChoice))
         {
             SetStatus("HDU target missing");
             return false;
         }
+
+        // v5az: Target Controller <none> is a valid HDU route.
+        // It is required for None Body Nudge from HDU_Commander.
+        if (targetChoice == "None")
+            targetChoice = NONE;
 
         suppressApply = true;
         try
@@ -1109,6 +1130,9 @@ public class TargetGrabber : MVRScript
 
     private void OnTargetPersonChanged(string uid)
     {
+        if (targetNoneBodyRelaxTargetAtom != null && (string.IsNullOrEmpty(uid) || uid == NONE || targetNoneBodyRelaxTargetAtom.uid != uid))
+            RestoreTargetNoneBodyRelaxIK();
+
         selectedTargetPerson = string.IsNullOrEmpty(uid) || uid == NONE
             ? null
             : SuperController.singleton.GetAtomByUid(uid);
@@ -1861,6 +1885,7 @@ public class TargetGrabber : MVRScript
         jobActive = false;
         RestoreSelfFollowParentLinks();
         RestoreTemporaryRelaxLinkedIK();
+        RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
         StopSwoonDrop(true, "self-ik-default");
         pendingAutoSnapIKControls.Clear();
@@ -1894,6 +1919,7 @@ public class TargetGrabber : MVRScript
     private void TargetIKDefault()
     {
         ClearHeldTargetGrabState();
+        RestoreTargetNoneBodyRelaxIK();
         StopSwoonDrop(true, "target-ik-default");
 
         if (selectedTargetPerson == null)
@@ -1910,6 +1936,7 @@ public class TargetGrabber : MVRScript
     private void TargetLoadUserDefaults()
     {
         ClearHeldTargetGrabState();
+        RestoreTargetNoneBodyRelaxIK();
         StopSwoonDrop(true, "target-load-user-defaults");
 
         if (selectedTargetPerson == null)
@@ -2079,6 +2106,96 @@ public class TargetGrabber : MVRScript
         }
 
         return false;
+    }
+
+
+    private string TryReapplyTargetHumanPoseControllerAfterRelease()
+    {
+        // Safe optional bridge:
+        // If the target Person has humanPoseControler/humanControler v038+,
+        // reapply its current cycle/current pose after TargetGrabber restores target IK.
+        // If the plugin/action is missing, do nothing. This keeps mutual/no-plugin setups safe.
+        if (selectedTargetPerson == null)
+        {
+            DebugLog("[TARGET HC REAPPLY] skip / target person missing");
+            return "none";
+        }
+
+        string actionName;
+        string storableId;
+        if (TryInvokeHumanPoseControllerActionOnAtom(
+            selectedTargetPerson,
+            new string[]
+            {
+                "HC Reapply Current Pose",
+                "HC Reapply Current Cycle Pose"
+            },
+            out storableId,
+            out actionName
+        ))
+        {
+            DebugLog("[TARGET HC REAPPLY] ok / atom=" + selectedTargetPerson.uid +
+                " / storable=" + storableId +
+                " / action=" + actionName);
+            return "reapply";
+        }
+
+        DebugLog("[TARGET HC REAPPLY] skip / action not found / atom=" + selectedTargetPerson.uid);
+        return "none";
+    }
+
+    private bool TryInvokeHumanPoseControllerActionOnAtom(Atom atom, string[] actionNames, out string matchedStorableId, out string matchedActionName)
+    {
+        matchedStorableId = "";
+        matchedActionName = "";
+
+        if (atom == null || actionNames == null)
+            return false;
+
+        List<string> storableIds = atom.GetStorableIDs();
+        if (storableIds == null)
+            return false;
+
+        for (int s = 0; s < storableIds.Count; s++)
+        {
+            string storableId = storableIds[s];
+            if (string.IsNullOrEmpty(storableId))
+                continue;
+
+            if (!IsHumanPoseControllerStorableId(storableId))
+                continue;
+
+            JSONStorable storable = atom.GetStorableByID(storableId);
+            if (storable == null)
+                continue;
+
+            for (int i = 0; i < actionNames.Length; i++)
+            {
+                string actionName = actionNames[i];
+                if (string.IsNullOrEmpty(actionName))
+                    continue;
+
+                JSONStorableAction action = storable.GetAction(actionName);
+                if (action == null || action.actionCallback == null)
+                    continue;
+
+                action.actionCallback.Invoke();
+                matchedStorableId = storableId;
+                matchedActionName = actionName;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsHumanPoseControllerStorableId(string storableId)
+    {
+        if (string.IsNullOrEmpty(storableId))
+            return false;
+
+        return storableId.IndexOf("humanPoseControler", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               storableId.IndexOf("humanControler", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private void InvalidatePersonControlCache()
@@ -2647,6 +2764,9 @@ public class TargetGrabber : MVRScript
     {
         ResolveControls();
 
+        if (TryRunTargetNoneBodyMovePullPush(false))
+            return;
+
         if (TryRunChestHoldGrabHandPull())
             return;
 
@@ -2737,6 +2857,9 @@ public class TargetGrabber : MVRScript
     private void GrabHandPush()
     {
         ResolveControls();
+
+        if (TryRunTargetNoneBodyMovePullPush(true))
+            return;
 
         if (TryRunChestHoldGrabHandPush())
             return;
@@ -2830,6 +2953,9 @@ public class TargetGrabber : MVRScript
     private void GrabHandVertical(bool up)
     {
         ResolveControls();
+
+        if (TryRunTargetNoneBodyMoveVertical(up))
+            return;
 
         if (TryRunChestHoldGrabHandVertical(up))
             return;
@@ -2984,6 +3110,9 @@ public class TargetGrabber : MVRScript
     {
         ResolveControls();
 
+        if (TryRunTargetNoneBodyMoveHorizontal(right))
+            return;
+
         if (TryRunChestHoldGrabHandHorizontal(right))
             return;
 
@@ -3048,6 +3177,246 @@ public class TargetGrabber : MVRScript
         }
 
         return moved;
+    }
+
+    private bool TryRunTargetNoneBodyMovePullPush(bool push)
+    {
+        if (!IsTargetNoneBodyMoveMode())
+            return false;
+
+        Vector3 depthAxis;
+        if (!TryGetTargetNoneBodyMoveDepthAxis(out depthAxis))
+        {
+            SetStatus(push ? "Target Body Push / no target root forward axis" : "Target Body Pull / no target root forward axis");
+            return true;
+        }
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_PUSH_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = (push ? depthAxis : -depthAxis) * moveDistance;
+        RunTargetNoneBodyMove(push ? "Push" : "Pull", offset);
+        return true;
+    }
+
+    private bool TryRunTargetNoneBodyMoveVertical(bool up)
+    {
+        if (!IsTargetNoneBodyMoveMode())
+            return false;
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_VERTICAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = new Vector3(0.0f, up ? moveDistance : -moveDistance, 0.0f);
+        RunTargetNoneBodyMove(up ? "Up" : "Down", offset);
+        return true;
+    }
+
+    private bool TryRunTargetNoneBodyMoveHorizontal(bool right)
+    {
+        if (!IsTargetNoneBodyMoveMode())
+            return false;
+
+        Vector3 sideAxis;
+        if (!TryGetTargetNoneBodyMoveSideAxis(out sideAxis))
+        {
+            SetStatus(right ? "Target Body Right / no target root side axis" : "Target Body Left / no target root side axis");
+            return true;
+        }
+
+        float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_HORIZONTAL_DISTANCE * GetGrabPullDistanceScale());
+        Vector3 offset = (right ? sideAxis : -sideAxis) * moveDistance;
+        RunTargetNoneBodyMove(right ? "Right" : "Left", offset);
+        return true;
+    }
+
+    private bool IsTargetNoneBodyMoveMode()
+    {
+        return IsTargetPersonMode() &&
+               selectedTargetPerson != null &&
+               targetPersonPartChooser != null &&
+               targetPersonPartChooser.val == NONE;
+    }
+
+    private void RunTargetNoneBodyMove(string label, Vector3 offset)
+    {
+        List<FreeControllerV3> controls = GetTargetNoneBodyMoveControls();
+        if (controls.Count == 0)
+        {
+            SetStatus("Target Body " + label + " needs hip/chest/head control");
+            DebugLog("[TARGET NONE BODY MOVE] label=" + label + " controls=0");
+            return;
+        }
+
+        int relaxedCount = PrepareTargetNoneBodyMoveRelaxIK(controls, label);
+        int movedCount = ApplyTargetNoneBodyMoveOffset(controls, offset, label);
+        bool moved = movedCount > 0;
+
+        UpdateGrabHandUtilityButtons();
+        SetStatus("Target Body " + label +
+            " / moved=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / comply=" + relaxedCount.ToString(CultureInfo.InvariantCulture) +
+            " / dist=" + offset.magnitude.ToString("F3", CultureInfo.InvariantCulture) +
+            " / release=Target Release");
+
+        if (!moved)
+            DebugLog("[TARGET NONE BODY MOVE] label=" + label + " moved=0 offset=" + FormatVector3(offset));
+    }
+
+    private int ApplyTargetNoneBodyMoveOffset(List<FreeControllerV3> controls, Vector3 offset, string label)
+    {
+        int moved = 0;
+        if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
+            return moved;
+
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null)
+                continue;
+
+            MoveTargetControlByOffset(fc, offset);
+            LockTargetIKControl(fc);
+            moved++;
+
+            DebugLog("[TARGET NONE BODY MOVE] label=" + label +
+                " target=" + fc.name +
+                " offset=" + FormatVector3(offset));
+        }
+
+        return moved;
+    }
+
+    private List<FreeControllerV3> GetTargetNoneBodyMoveControls()
+    {
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        if (selectedTargetPerson == null)
+            return controls;
+
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("hipControl", "hip"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("abdomenControl", "abdomen"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("chestControl", "chest"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("neckControl", "neck"));
+        AddControlIfNotNull(controls, GetTargetPersonControlByAliases("headControl", "head"));
+        return controls;
+    }
+
+    private bool TryGetTargetNoneBodyMoveDepthAxis(out Vector3 axis)
+    {
+        string source;
+        Vector3 side;
+        return TryGetTargetNoneBodyMoveBodyAxes(out axis, out side, out source);
+    }
+
+    private bool TryGetTargetNoneBodyMoveSideAxis(out Vector3 axis)
+    {
+        string source;
+        Vector3 forward;
+        return TryGetTargetNoneBodyMoveBodyAxes(out forward, out axis, out source);
+    }
+
+    private bool TryGetTargetNoneBodyMoveBodyAxes(out Vector3 forwardAxis, out Vector3 rightAxis, out string source)
+    {
+        forwardAxis = Vector3.zero;
+        rightAxis = Vector3.zero;
+        source = "none";
+
+        // v5bb:
+        // selectedTargetPerson.transform.forward was often only the Atom transform direction and could stay world +Z,
+        // while the visible/person pose direction was coming from the body controls.
+        // For None Body Nudge, use the target body's visual/root-ish hip yaw first.
+        if (TryGetHorizontalAxesFromTargetControl("hipControl", "hip", out forwardAxis, out rightAxis))
+        {
+            source = "hipControl";
+            DebugLog("[TARGET NONE BODY AXIS] source=" + source +
+                " forward=" + FormatVector3(forwardAxis) +
+                " right=" + FormatVector3(rightAxis));
+            return true;
+        }
+
+        // If hip is unavailable, chest still usually follows the current body yaw better than Atom transform.
+        if (TryGetHorizontalAxesFromTargetControl("chestControl", "chest", out forwardAxis, out rightAxis))
+        {
+            source = "chestControl";
+            DebugLog("[TARGET NONE BODY AXIS] source=" + source +
+                " forward=" + FormatVector3(forwardAxis) +
+                " right=" + FormatVector3(rightAxis));
+            return true;
+        }
+
+        // VaM AtomControl/mainController is a better root fallback than selectedTargetPerson.transform in some scenes.
+        if (selectedTargetPerson != null && selectedTargetPerson.mainController != null && selectedTargetPerson.mainController.control != null)
+        {
+            if (TryBuildHorizontalAxes(selectedTargetPerson.mainController.control.rotation, out forwardAxis, out rightAxis))
+            {
+                source = "targetMainControl";
+                DebugLog("[TARGET NONE BODY AXIS] source=" + source +
+                    " forward=" + FormatVector3(forwardAxis) +
+                    " right=" + FormatVector3(rightAxis));
+                return true;
+            }
+        }
+
+        if (selectedTargetPerson != null && selectedTargetPerson.transform != null)
+        {
+            if (TryBuildHorizontalAxes(selectedTargetPerson.transform.rotation, out forwardAxis, out rightAxis))
+            {
+                source = "targetAtomTransform";
+                DebugLog("[TARGET NONE BODY AXIS] source=" + source +
+                    " forward=" + FormatVector3(forwardAxis) +
+                    " right=" + FormatVector3(rightAxis));
+                return true;
+            }
+        }
+
+        if (selectedPerson != null && selectedPerson.transform != null)
+        {
+            if (TryBuildHorizontalAxes(selectedPerson.transform.rotation, out forwardAxis, out rightAxis))
+            {
+                source = "selfAtomTransform";
+                DebugLog("[TARGET NONE BODY AXIS] source=" + source +
+                    " forward=" + FormatVector3(forwardAxis) +
+                    " right=" + FormatVector3(rightAxis));
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryGetHorizontalAxesFromTargetControl(string primaryName, string fallbackName, out Vector3 forwardAxis, out Vector3 rightAxis)
+    {
+        forwardAxis = Vector3.zero;
+        rightAxis = Vector3.zero;
+
+        FreeControllerV3 fc = GetTargetPersonControlByAliases(primaryName, fallbackName);
+        if (fc == null)
+            return false;
+
+        Quaternion rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
+        return TryBuildHorizontalAxes(rot, out forwardAxis, out rightAxis);
+    }
+
+    private bool TryBuildHorizontalAxes(Quaternion rot, out Vector3 forwardAxis, out Vector3 rightAxis)
+    {
+        forwardAxis = rot * Vector3.forward;
+        forwardAxis.y = 0.0f;
+
+        rightAxis = rot * Vector3.right;
+        rightAxis.y = 0.0f;
+
+        if (forwardAxis.sqrMagnitude < 0.0001f && rightAxis.sqrMagnitude >= 0.0001f)
+        {
+            rightAxis.Normalize();
+            forwardAxis = Vector3.Cross(rightAxis, Vector3.up);
+        }
+        else if (rightAxis.sqrMagnitude < 0.0001f && forwardAxis.sqrMagnitude >= 0.0001f)
+        {
+            forwardAxis.Normalize();
+            rightAxis = Vector3.Cross(Vector3.up, forwardAxis);
+        }
+
+        if (forwardAxis.sqrMagnitude < 0.0001f || rightAxis.sqrMagnitude < 0.0001f)
+            return false;
+
+        forwardAxis.Normalize();
+        rightAxis.Normalize();
+        return true;
     }
 
     private bool IsPullToHandTargetMode()
@@ -4584,9 +4953,13 @@ public class TargetGrabber : MVRScript
         targetOriginalPositions.Clear();
         targetOriginalRotations.Clear();
         int restoredLocks = RestoreTargetLocks();
+        int restoredComply = RestoreTargetNoneBodyRelaxIK();
+        string hcReapplyStatus = TryReapplyTargetHumanPoseControllerAfterRelease();
         UpdateGrabHandUtilityButtons();
         SetStatus("Release Target / restored=" + restored.ToString(CultureInfo.InvariantCulture) +
-            " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture));
+            " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
+            " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture) +
+            " / hc=" + hcReapplyStatus);
     }
 
     private void RequestDeferredGrabHandUtilityButtonUpdate()
@@ -4613,10 +4986,16 @@ public class TargetGrabber : MVRScript
     private void UpdateGrabHandUtilityButtons()
     {
         bool pullEnabled = GetGrabHandPullTargetControls().Count > 0;
+        bool targetNoneBodyMoveEnabled = IsTargetNoneBodyMoveMode() && GetTargetNoneBodyMoveControls().Count > 0;
+        if (targetNoneBodyMoveEnabled)
+            pullEnabled = true;
         bool pushEnabled = pullEnabled;
         bool verticalEnabled = pullEnabled;
         bool horizontalEnabled = pullEnabled;
         bool openEnabled = false;
+
+        if (targetNoneBodyMoveEnabled && IsDebugEnabled())
+            DebugLog("[TARGET NONE BODY BUTTON ENABLE] pull=1 push=1 vertical=1 horizontal=1 openClose=0");
 
         if (IsChestHoldTarget())
         {
@@ -5403,6 +5782,139 @@ public class TargetGrabber : MVRScript
         return fc != null && (fc == lHandControl || fc == rHandControl);
     }
 
+    private int PrepareTargetNoneBodyMoveRelaxIK(List<FreeControllerV3> movingControls, string label)
+    {
+        if (selectedTargetPerson == null)
+            return 0;
+
+        if (targetNoneBodyRelaxTargetAtom != null && targetNoneBodyRelaxTargetAtom != selectedTargetPerson)
+            RestoreTargetNoneBodyRelaxIK();
+
+        targetNoneBodyRelaxTargetAtom = selectedTargetPerson;
+
+        List<FreeControllerV3> relaxControls = GetTargetNoneBodyMoveRelaxControls(movingControls);
+        int changed = 0;
+        foreach (FreeControllerV3 fc in relaxControls)
+        {
+            if (RelaxTargetNoneBodyMoveIKToComply(fc))
+                changed++;
+        }
+
+        if (changed > 0)
+            DebugLog("[TARGET NONE BODY RELAX] label=" + label +
+                " newlyTracked=" + changed.ToString(CultureInfo.InvariantCulture) +
+                " comply=" + relaxControls.Count.ToString(CultureInfo.InvariantCulture));
+
+        return relaxControls.Count;
+    }
+
+    private List<FreeControllerV3> GetTargetNoneBodyMoveRelaxControls(List<FreeControllerV3> movingControls)
+    {
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        if (selectedTargetPerson == null)
+            return controls;
+
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("lElbowControl", "leftElbowControl", "lElbow", "leftElbow"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("rElbowControl", "rightElbowControl", "rElbow", "rightElbow"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"));
+        AddControlIfNotMoving(controls, movingControls, GetTargetPersonControlByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"));
+
+        return controls;
+    }
+
+    private void AddControlIfNotMoving(List<FreeControllerV3> controls, List<FreeControllerV3> movingControls, FreeControllerV3 fc)
+    {
+        if (fc == null)
+            return;
+        if (movingControls != null && movingControls.Contains(fc))
+            return;
+        AddControlIfNotNull(controls, fc);
+    }
+
+    private bool RelaxTargetNoneBodyMoveIKToComply(FreeControllerV3 fc)
+    {
+        if (fc == null)
+            return false;
+
+        bool newlyTracked = false;
+        if (!targetNoneBodyRelaxControls.Contains(fc))
+        {
+            targetNoneBodyRelaxControls.Add(fc);
+            newlyTracked = true;
+        }
+
+        if (!targetNoneBodyRelaxPositionStates.ContainsKey(fc))
+            targetNoneBodyRelaxPositionStates[fc] = fc.currentPositionState;
+        if (!targetNoneBodyRelaxRotationStates.ContainsKey(fc))
+            targetNoneBodyRelaxRotationStates[fc] = fc.currentRotationState;
+
+        try
+        {
+            fc.currentPositionState = FreeControllerV3.PositionState.Comply;
+        }
+        catch { }
+
+        try
+        {
+            fc.currentRotationState = FreeControllerV3.RotationState.Comply;
+        }
+        catch { }
+
+        return newlyTracked;
+    }
+
+    private int RestoreTargetNoneBodyRelaxIK()
+    {
+        if (targetNoneBodyRelaxControls.Count == 0)
+        {
+            targetNoneBodyRelaxPositionStates.Clear();
+            targetNoneBodyRelaxRotationStates.Clear();
+            targetNoneBodyRelaxTargetAtom = null;
+            return 0;
+        }
+
+        int restored = 0;
+        foreach (FreeControllerV3 fc in targetNoneBodyRelaxControls)
+        {
+            if (fc == null)
+                continue;
+
+            FreeControllerV3.PositionState positionState;
+            if (targetNoneBodyRelaxPositionStates.TryGetValue(fc, out positionState))
+            {
+                try
+                {
+                    fc.currentPositionState = positionState;
+                }
+                catch { }
+            }
+
+            FreeControllerV3.RotationState rotationState;
+            if (targetNoneBodyRelaxRotationStates.TryGetValue(fc, out rotationState))
+            {
+                try
+                {
+                    fc.currentRotationState = rotationState;
+                }
+                catch { }
+            }
+
+            restored++;
+        }
+
+        targetNoneBodyRelaxPositionStates.Clear();
+        targetNoneBodyRelaxRotationStates.Clear();
+        targetNoneBodyRelaxControls.Clear();
+        targetNoneBodyRelaxTargetAtom = null;
+        return restored;
+    }
+
     private void PrepareTemporaryRelaxLinkedIK(List<FreeControllerV3> targetControls)
     {
         RestoreTemporaryRelaxLinkedIK();
@@ -5904,6 +6416,7 @@ public class TargetGrabber : MVRScript
 
         if (!keepTemporaryRelaxLinkedIK)
             RestoreTemporaryRelaxLinkedIK();
+        RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
 
         if (includeHead)
@@ -10687,6 +11200,7 @@ public class TargetGrabber : MVRScript
         jobActive = false;
         RestoreSelfFollowParentLinks();
         RestoreTemporaryRelaxLinkedIK();
+        RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
         StopSwoonDrop(true, "release");
 

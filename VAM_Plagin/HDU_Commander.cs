@@ -1,16 +1,20 @@
-// HDU_Commander_v016_cloth_scan_progress_label.cs
-// v016_cloth_scan_progress_label 2026-06-25
+// HDU_Commander_v022_target_cycle_buttons_right_bottom.cs
+// v022_target_cycle_buttons_right_bottom 2026-06-25
 // HDU-like command panel for VaM. It does not merge plugin logic; it only sets registered storables
 // and triggers JSONStorableAction entries on existing plugins such as TargetGrabber / TargetLinePerson.
+// v020: TargetGrabber=None no longer skips Grab Hand utility routes. It calls TargetGrabber's
+//       HDU Grab Hand Pull/Push/Up/Down/Left/Right None actions so None Body Nudge works from HDU.
+// v021: Moves Target Cycle Pose/Back/Reset buttons from the left column to the right column.
+// v022: Moves Target Cycle Pose/Back/Reset buttons to the lower-right area after Target Load User Defaults.
 
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
+public class HDU_Commander_v022_target_cycle_buttons_right_bottom : MVRScript
 {
-    private const string VERSION = "v018_tg_target_none_neck_label_fix";
+    private const string VERSION = "v022_target_cycle_buttons_right_bottom";
     private const string ANY = "ANY";
     private const string NONE = "None";
 
@@ -41,6 +45,7 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
     private string lastTargetLinePerson = "missing";
     private string lastHumanBodyAction = "missing";
     private string lastPoseChanger = "missing";
+    private string lastHumanControler = "missing";
     private string lastClothStateSwitcher = "missing";
 
     private class PluginHit
@@ -70,9 +75,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
     public void Update()
     {
-        // ClothStateSwitcher's Scan Cloth action can finish after a short delay.
-        // Refresh the scan button count periodically so the worn/total display catches up
-        // without requiring HDU Scan.
         clothButtonRefreshTimer += Time.deltaTime;
         if (clothButtonRefreshTimer < 0.50f)
             return;
@@ -83,7 +85,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
     private void BuildUi()
     {
-        // Left column: TargetGrabber controls. Target person is managed by each source plugin.
         tgTargetChooser = new JSONStorableStringChooser(
             "TargetGrabber",
             new List<string>()
@@ -116,8 +117,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         RegisterBool(tgRightHandJSON);
         CreateToggle(tgRightHandJSON, false);
 
-        // Grab Hand buttons are directly under Right Hand.
-        // The HDU Left/Right Hand toggles are self-side hand flags on the TargetGrabber found on this Person first.
         AddButton("Grab Hand", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand" }, "Grab Hand"); }, GrabButtonColor());
         AddButton("Grab Hand Pull", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Pull", "Grab Pull" }, "Grab Hand Pull"); }, GrabButtonColor());
         AddButton("Grab Hand Push", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Push", "Grab Push" }, "Grab Hand Push"); }, GrabButtonColor());
@@ -125,12 +124,9 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         AddButton("Grab Hand Down", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Down", "Grab Down" }, "Grab Hand Down"); }, GrabButtonColor());
         AddButton("Grab Hand Open", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Open" }, "Grab Hand Open"); }, GrabButtonColor());
         AddButton("Grab Hand Close", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Close", "Grab Close" }, "Grab Hand Close"); }, GrabButtonColor());
+        AddButton("Grab Hand Left", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Left", "Grab Left" }, "Grab Hand Left"); }, GrabButtonColor());
+        AddButton("Grab Hand Right", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Right", "Grab Right" }, "Grab Hand Right"); }, GrabButtonColor());
 
-        // ClothStateSwitcher bridge. Placed just above Debug.
-        // Self = the Person that owns this HDU. Target = the other Person that has ClothStateSwitcher.
-        // Scan buttons are explicit on purpose: automatic scan during partial undress can destroy state.
-        // The SCAN button text is refreshed as worn/total. ClothStateSwitcher State Progress is hidden/total,
-        // so HDU displays worn = total - hidden.
         clothSelfScanButton = AddButtonReturn("Self Cloth SCAN", false, RunClothSelfScan, SelfButtonColor());
         clothSelfNextButton = AddButtonReturn("Self Cloth NEXT", false, RunClothSelfNext, SelfButtonColor());
         clothSelfPrevButton = AddButtonReturn("Self Cloth PREV", false, RunClothSelfPrev, SelfButtonColor());
@@ -162,9 +158,8 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         if (reportField != null)
             reportField.height = 120.0f;
 
-        // Right column: TargetLinePerson style controls.
-        AddButton("PUSH", true, delegate { RunQuick("TargetLinePerson", new string[] { "PUSH" }, "TLP PUSH"); }, DockingButtonColor());
 
+        AddButton("PUSH", true, delegate { RunQuick("TargetLinePerson", new string[] { "PUSH" }, "TLP PUSH"); }, DockingButtonColor());
         AddButton("P Midl Line", true, RunPMidlLine, DockingButtonColor());
 
         pushAutoModeChooser = new JSONStorableStringChooser(
@@ -196,14 +191,16 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         AddButton("Reverse Smart Docking", true, delegate { RunQuick("TargetLinePerson", new string[] { "Reverse Smart Docking" }, "Reverse Smart Docking"); }, DockingButtonColor());
         AddButton("Target Swon Drop", true, delegate { RunQuick("TargetGrabber", new string[] { "Target Swoon Drop", "Swoon Drop", "Target Swon Drop" }, "Target Swon Drop"); }, TargetButtonColor());
 
-        // Restore / reset block moved to lower-right, same order as TargetGrabber.
-        // Self buttons are light blue, Target buttons are light pink.
         AddButton("Self Release", true, delegate { RunQuick("TargetGrabber", new string[] { "Self Release", "Release" }, "Self Release"); }, SelfButtonColor());
         AddButton("Self IK Defaults", true, delegate { RunQuick("TargetGrabber", new string[] { "Self IK Defaults", "Self IK Default" }, "Self IK Defaults"); }, SelfButtonColor());
         AddButton("Self Load User Defaults", true, delegate { RunQuick("TargetGrabber", new string[] { "Self Load User Defaults", "Load User Defaults", "LoadUserDefaults" }, "Self Load User Defaults"); }, SelfButtonColor());
         AddButton("Target Release", true, delegate { RunQuick("TargetGrabber", new string[] { "Target Release", "Release Target" }, "Target Release"); }, TargetButtonColor());
         AddButton("Target IK Default", true, delegate { RunQuick("TargetGrabber", new string[] { "Target IK Default" }, "Target IK Default"); }, TargetButtonColor());
         AddButton("Target Load User Defaults", true, delegate { RunQuick("TargetGrabber", new string[] { "Target Load User Defaults", "Target Load Defaults", "TargetLoadDefaults" }, "Target Load User Defaults"); }, TargetButtonColor());
+
+        AddButton("Target Cycle Pose", true, RunTargetHcCyclePose, TargetButtonColor());
+        AddButton("Target Cycle Back", true, RunTargetHcCycleBack, TargetButtonColor());
+        AddButton("Target Cycle Reset", true, RunTargetHcCycleReset, TargetButtonColor());
     }
 
     private void RegisterExternalActions()
@@ -217,6 +214,8 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         RegisterAction(new JSONStorableAction("Grab Hand Down", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Down", "Grab Down" }, "Grab Hand Down"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Open", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Open" }, "Grab Hand Open"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Close", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Close", "Grab Close" }, "Grab Hand Close"); }));
+        RegisterAction(new JSONStorableAction("Grab Hand Left", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Left", "Grab Left" }, "Grab Hand Left"); }));
+        RegisterAction(new JSONStorableAction("Grab Hand Right", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Right", "Grab Right" }, "Grab Hand Right"); }));
         RegisterAction(new JSONStorableAction("Self Release", delegate { RunQuick("TargetGrabber", new string[] { "Self Release", "Release" }, "Self Release"); }));
         RegisterAction(new JSONStorableAction("Self IK Defaults", delegate { RunQuick("TargetGrabber", new string[] { "Self IK Defaults", "Self IK Default" }, "Self IK Defaults"); }));
         RegisterAction(new JSONStorableAction("Self Load User Defaults", delegate { RunQuick("TargetGrabber", new string[] { "Self Load User Defaults", "Load User Defaults", "LoadUserDefaults" }, "Self Load User Defaults"); }));
@@ -237,29 +236,21 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         RegisterAction(new JSONStorableAction("Target Cloth SCAN", RunClothTargetScan));
         RegisterAction(new JSONStorableAction("Target Cloth NEXT", RunClothTargetNext));
         RegisterAction(new JSONStorableAction("Target Cloth PREV", RunClothTargetPrev));
-    }
-
-    private void AddLabel(string text, bool rightSide, float height)
-    {
-        string key = "label_" + labelStorables.Count.ToString("000") + "_" + text;
-        JSONStorableString label = new JSONStorableString(key, text);
-        labelStorables.Add(label);
-        RegisterString(label);
-        UIDynamicTextField field = CreateTextField(label, rightSide);
-        if (field != null)
-            field.height = height;
+        RegisterAction(new JSONStorableAction("Target Cycle Pose", RunTargetHcCyclePose));
+        RegisterAction(new JSONStorableAction("Target Cycle Back", RunTargetHcCycleBack));
+        RegisterAction(new JSONStorableAction("Target Cycle Reset", RunTargetHcCycleReset));
     }
 
     private void AddButton(string label, bool rightSide, UnityEngine.Events.UnityAction callback)
     {
         UIDynamicButton button = CreateButton(label, rightSide);
-        if (button != null)
+        if (button != null && button.button != null && callback != null)
             button.button.onClick.AddListener(callback);
     }
 
     private void AddButton(string label, bool rightSide, UnityEngine.Events.UnityAction callback, Color color)
     {
-        UIDynamicButton button = AddButtonReturn(label, rightSide, callback, color);
+        AddButtonReturn(label, rightSide, callback, color);
     }
 
     private UIDynamicButton AddButtonReturn(string label, bool rightSide, UnityEngine.Events.UnityAction callback, Color color)
@@ -274,30 +265,13 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         return button;
     }
 
-    private Color GrabButtonColor()
-    {
-        return new Color(0.78f, 0.88f, 1.00f, 1.00f);
-    }
-
-    private Color DockingButtonColor()
-    {
-        return new Color(1.00f, 0.96f, 0.62f, 1.00f);
-    }
-
-    private Color SelfButtonColor()
-    {
-        return new Color(0.78f, 0.88f, 1.00f, 1.00f);
-    }
-
-    private Color TargetButtonColor()
-    {
-        return new Color(1.00f, 0.78f, 0.86f, 1.00f);
-    }
+    private Color GrabButtonColor() { return new Color(0.78f, 0.88f, 1.00f, 1.00f); }
+    private Color DockingButtonColor() { return new Color(1.00f, 0.96f, 0.62f, 1.00f); }
+    private Color SelfButtonColor() { return new Color(0.78f, 0.88f, 1.00f, 1.00f); }
+    private Color TargetButtonColor() { return new Color(1.00f, 0.78f, 0.86f, 1.00f); }
 
     private Color MissingPluginButtonColor(Color activeColor)
     {
-        // Keep the button clickable even when the target plugin is not found.
-        // The darker color is only a status indicator; clicking will retry detection and run if available.
         return Color.Lerp(activeColor, new Color(0.36f, 0.36f, 0.36f, 1.00f), 0.55f);
     }
 
@@ -306,8 +280,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         if (dynamicButton == null || dynamicButton.button == null)
             return;
 
-        // v014: Do not disable Cloth buttons. A newly added ClothStateSwitcher could become available
-        // without pressing HDU Scan, so the button must remain clickable and retry lookup on press.
         dynamicButton.button.interactable = true;
         ApplyButtonColor(dynamicButton, enabled ? activeColor : MissingPluginButtonColor(activeColor));
     }
@@ -329,12 +301,9 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
     {
         ApplySelfHandFlagsToTargetGrabber();
 
-        // v011: Prefer the dedicated HDU route on TargetGrabber.
-        // This avoids driving TargetGrabber's IK Select popup from HDU and prevents same-frame chooser/action races.
         if (TryRunHduTargetGrabRoute(label))
             return;
 
-        // Fallback for older TargetGrabber versions.
         ApplyTargetGrabberChoiceLegacy();
         RunQuick("TargetGrabber", actionNames, label);
     }
@@ -343,11 +312,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
     {
         string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
         string actual = MapTargetGrabberChoice(display);
-        if (actual == NONE)
-        {
-            SetStatus("TargetGrabber target: None / skipped " + label);
-            return true;
-        }
 
         string actionName = BuildHduTargetGrabActionName(label, actual);
         if (string.IsNullOrEmpty(actionName))
@@ -361,7 +325,8 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         if (string.IsNullOrEmpty(label) || string.IsNullOrEmpty(actual))
             return null;
 
-        if (actual == "Head" ||
+        if (actual == NONE ||
+            actual == "Head" ||
             actual == "Neck" ||
             actual == "Chest Hold" ||
             actual == "Hug Body" ||
@@ -391,8 +356,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
     private void OnTargetGrabberChoiceChanged(string value)
     {
-        // v011: Do not push the choice into TargetGrabber immediately.
-        // The command button will call a dedicated HDU route that selects and runs inside TargetGrabber.
         string display = tgTargetChooser != null ? tgTargetChooser.val : "Hug Body";
         SetStatus("TargetGrabber pending: " + display);
     }
@@ -403,17 +366,18 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         string actual = MapTargetGrabberChoice(display);
         if (actual == NONE)
         {
-            SetStatus("TargetGrabber Controller: None");
+            bool noneOk = TrySetStringChooserParam("TargetGrabber", new string[] { "targetPersonController", "IK Select", "Target Controller" }, "<none>", "TargetGrabber controller");
+            if (!noneOk)
+                noneOk = TrySetStringChooserParam("TargetGrabber", new string[] { "targetPersonController", "IK Select", "Target Controller" }, NONE, "TargetGrabber controller");
+            if (!noneOk)
+                noneOk = RunQuick("TargetGrabber", new string[] { "Target Shortcut None" }, "TargetGrabber None");
+            SetStatus((noneOk ? "TargetGrabber Controller: " : "TargetGrabber Controller failed: ") + display + " -> " + actual);
             return;
         }
 
         bool ok = TrySetStringChooserParam("TargetGrabber", new string[] { "targetPersonController", "IK Select", "Target Controller" }, actual, "TargetGrabber controller");
-
         if (!ok)
-        {
-            // Fallback for the shortcut buttons that exist on TargetGrabber.
             ok = RunTargetGrabberShortcutFallback(actual);
-        }
 
         SetStatus((ok ? "TargetGrabber Controller: " : "TargetGrabber Controller failed: ") + display + " -> " + actual);
     }
@@ -435,6 +399,8 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
     private bool RunTargetGrabberShortcutFallback(string actual)
     {
+        if (actual == NONE)
+            return RunQuick("TargetGrabber", new string[] { "Target Shortcut None" }, "TargetGrabber None");
         if (actual == "Head")
             return RunQuick("TargetGrabber", new string[] { "Target Shortcut Head" }, "TargetGrabber Head");
         if (actual == "Neck")
@@ -481,8 +447,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
         if (!ok)
         {
-            // Some older TargetLinePerson builds exposed this as a bool instead of an action.
-            // In that case the HDU button behaves as an ON button.
             ok = TrySetBoolParam("TargetLinePerson",
                 new string[] { "P Midl Line", "P Midl G Aling", "P Midl G Align", "P Mid G Align", "P Yellow Path Align" },
                 true,
@@ -504,36 +468,29 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         SetStatus("Distance: " + value.ToString("F3") + " / set=" + Bool01(ok));
     }
 
+    private void RunTargetHcCyclePose() { RunTargetHumanControlerQuick(new string[] { "HC Cycle Pose", "Cycle Pose" }, "Target Cycle Pose"); }
+    private void RunTargetHcCycleBack() { RunTargetHumanControlerQuick(new string[] { "HC Cycle Back", "Cycle Back" }, "Target Cycle Back"); }
+    private void RunTargetHcCycleReset() { RunTargetHumanControlerQuick(new string[] { "HC Cycle Reset", "Cycle Reset" }, "Target Cycle Reset"); }
 
-    private void RunClothSelfScan()
+    private bool RunTargetHumanControlerQuick(string[] actionNames, string label)
     {
-        RunClothQuick(false, new string[] { "Scan Cloth" }, "Self Cloth SCAN");
+        PluginHit hit;
+        if (!TryFindTargetHumanControler(out hit) || hit == null || hit.storable == null)
+        {
+            SetStatus("Missing: " + label + " / target humanControler");
+            return false;
+        }
+
+        EnsureHumanControlerTargetSelection(hit, label);
+        return TriggerActionOnHit(hit, actionNames, label, "target HC");
     }
 
-    private void RunClothSelfNext()
-    {
-        RunClothQuick(false, new string[] { "Next Hide" }, "Self Cloth NEXT");
-    }
-
-    private void RunClothSelfPrev()
-    {
-        RunClothQuick(false, new string[] { "Prev Wear" }, "Self Cloth PREV");
-    }
-
-    private void RunClothTargetScan()
-    {
-        RunClothQuick(true, new string[] { "Scan Cloth" }, "Target Cloth SCAN");
-    }
-
-    private void RunClothTargetNext()
-    {
-        RunClothQuick(true, new string[] { "Next Hide" }, "Target Cloth NEXT");
-    }
-
-    private void RunClothTargetPrev()
-    {
-        RunClothQuick(true, new string[] { "Prev Wear" }, "Target Cloth PREV");
-    }
+    private void RunClothSelfScan() { RunClothQuick(false, new string[] { "Scan Cloth" }, "Self Cloth SCAN"); }
+    private void RunClothSelfNext() { RunClothQuick(false, new string[] { "Next Hide" }, "Self Cloth NEXT"); }
+    private void RunClothSelfPrev() { RunClothQuick(false, new string[] { "Prev Wear" }, "Self Cloth PREV"); }
+    private void RunClothTargetScan() { RunClothQuick(true, new string[] { "Scan Cloth" }, "Target Cloth SCAN"); }
+    private void RunClothTargetNext() { RunClothQuick(true, new string[] { "Next Hide" }, "Target Cloth NEXT"); }
+    private void RunClothTargetPrev() { RunClothQuick(true, new string[] { "Prev Wear" }, "Target Cloth PREV"); }
 
     private bool RunClothQuick(bool targetSide, string[] actionNames, string label)
     {
@@ -547,40 +504,9 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         }
 
         EnsureClothSwitcherSelfSelection(hit, targetSide ? "target" : "self");
-
-        for (int i = 0; i < actionNames.Length; i++)
-        {
-            string actionName = actionNames[i];
-            if (string.IsNullOrEmpty(actionName))
-                continue;
-
-            JSONStorableAction action = hit.storable.GetAction(actionName);
-            if (action == null)
-                continue;
-
-            try
-            {
-                if (action.actionCallback != null)
-                    action.actionCallback.Invoke();
-
-                SetStatus("OK: " + label + " -> " + hit.atom.uid + " / " + hit.storableId + " / " + actionName);
-                DebugLog("cloth trigger / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / action=" + actionName);
-                UpdateClothButtonStates();
-                return true;
-            }
-            catch (Exception e)
-            {
-                SuperController.LogError("[HDU_Commander] cloth action error: " + label + " / " + actionName + " / " + e);
-                SetStatus("Cloth action error: " + label + " / " + actionName);
-                UpdateClothButtonStates();
-                return false;
-            }
-        }
-
-        SetStatus("Missing action: " + label + " / " + JoinActions(actionNames));
-        DebugLog("cloth action missing / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / actions=" + JoinActions(actionNames));
+        bool ok = TriggerActionOnHit(hit, actionNames, label, "cloth");
         UpdateClothButtonStates();
-        return false;
+        return ok;
     }
 
     private void UpdateClothButtonStates()
@@ -673,56 +599,50 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         return "Self: " + selfLabel + " / Target: " + targetLabel;
     }
 
-    private bool TryFindSelfClothSwitcher(out PluginHit hit)
+    private bool TryFindTargetHumanControler(out PluginHit hit)
     {
         hit = null;
-        if (containingAtom == null)
-            return false;
-
-        return TryFindPluginOnAtom(containingAtom, "ClothStateSwitcher", out hit);
-    }
-
-    private bool TryFindTargetClothSwitcher(out PluginHit hit)
-    {
-        hit = null;
-
         List<Atom> atoms = BuildTargetAtomSearchList();
+        string[] pluginNames = new string[] { "humanControler", "humanPoseControler" };
+
         for (int i = 0; i < atoms.Count; i++)
         {
             Atom atom = atoms[i];
-            if (TryFindPluginOnAtom(atom, "ClothStateSwitcher", out hit))
-                return true;
+            for (int p = 0; p < pluginNames.Length; p++)
+            {
+                if (TryFindPluginOnAtom(atom, pluginNames[p], out hit))
+                    return true;
+            }
         }
-
         return false;
     }
 
-    private List<Atom> BuildTargetAtomSearchList()
+    private void EnsureHumanControlerTargetSelection(PluginHit hit, string label)
     {
-        List<Atom> result = new List<Atom>();
+        if (hit == null || hit.storable == null || containingAtom == null)
+            return;
 
-        try
-        {
-            List<Atom> atoms = SuperController.singleton.GetAtoms();
-            if (atoms != null)
-            {
-                for (int i = 0; i < atoms.Count; i++)
-                {
-                    Atom atom = atoms[i];
-                    if (atom == null || atom == containingAtom)
-                        continue;
+        string ownUid = containingAtom.uid;
+        if (string.IsNullOrEmpty(ownUid))
+            return;
 
-                    if (atom.type == "Person")
-                        AddUniqueAtom(result, atom);
-                }
-            }
-        }
-        catch (Exception e)
+        JSONStorableStringChooser chooser = hit.storable.GetStringChooserJSONParam("Target Person");
+        if (chooser == null)
+            chooser = hit.storable.GetStringChooserJSONParam("Target");
+        if (chooser == null)
+            return;
+
+        if (chooser.choices != null && chooser.choices.Count > 0 && !chooser.choices.Contains(ownUid))
         {
-            DebugLog("BuildTargetAtomSearchList error: " + e.Message);
+            DebugLog("target HC chooser value missing / label=" + label + " / own=" + ownUid);
+            return;
         }
 
-        return result;
+        if (chooser.val != ownUid)
+        {
+            chooser.val = ownUid;
+            DebugLog("target HC target auto-selected / label=" + label + " / own=" + ownUid);
+        }
     }
 
     private void EnsureClothSwitcherSelfSelection(PluginHit hit, string sideLabel)
@@ -762,6 +682,7 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         lastTargetLinePerson = FindPluginLabel("TargetLinePerson");
         lastHumanBodyAction = FindPluginLabel("HumanBodyAction");
         lastPoseChanger = FindPluginLabel("PoseChanger");
+        lastHumanControler = FindTargetHumanControlerLabel();
         lastClothStateSwitcher = BuildClothSwitcherReport();
 
         UpdateClothButtonStates();
@@ -771,6 +692,7 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
             "TargetLinePerson: " + lastTargetLinePerson + "\n" +
             "HumanBodyAction: " + lastHumanBodyAction + "\n" +
             "PoseChanger: " + lastPoseChanger + "\n" +
+            "Target humanControler: " + lastHumanControler + "\n" +
             "ClothStateSwitcher: " + lastClothStateSwitcher;
 
         if (scanReportJSON != null)
@@ -778,6 +700,14 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
 
         SetStatus("Scan complete");
         DebugLog("scan complete / " + report.Replace("\n", " / "));
+    }
+
+    private string FindTargetHumanControlerLabel()
+    {
+        PluginHit hit;
+        if (TryFindTargetHumanControler(out hit))
+            return hit.atom.uid + " / " + hit.storableId;
+        return "missing";
     }
 
     private string FindPluginLabel(string pluginContains)
@@ -788,11 +718,90 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         return "missing";
     }
 
+    private bool TryFindSelfClothSwitcher(out PluginHit hit)
+    {
+        return TryFindPluginOnAtom(containingAtom, "ClothStateSwitcher", out hit);
+    }
+
+    private bool TryFindTargetClothSwitcher(out PluginHit hit)
+    {
+        hit = null;
+        List<Atom> atoms = BuildTargetAtomSearchList();
+        for (int i = 0; i < atoms.Count; i++)
+        {
+            if (TryFindPluginOnAtom(atoms[i], "ClothStateSwitcher", out hit))
+                return true;
+        }
+        return false;
+    }
+
+    private List<Atom> BuildTargetAtomSearchList()
+    {
+        List<Atom> result = new List<Atom>();
+
+        try
+        {
+            List<Atom> atoms = SuperController.singleton.GetAtoms();
+            if (atoms != null)
+            {
+                for (int i = 0; i < atoms.Count; i++)
+                {
+                    Atom atom = atoms[i];
+                    if (atom == null || atom == containingAtom)
+                        continue;
+                    if (atom.type == "Person")
+                        AddUniqueAtom(result, atom);
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("BuildTargetAtomSearchList error: " + e.Message);
+        }
+
+        return result;
+    }
+
+    private List<Atom> BuildAtomSearchList()
+    {
+        List<Atom> result = new List<Atom>();
+        AddUniqueAtom(result, containingAtom);
+
+        try
+        {
+            List<Atom> atoms = SuperController.singleton.GetAtoms();
+            if (atoms != null)
+            {
+                for (int i = 0; i < atoms.Count; i++)
+                    AddUniqueAtom(result, atoms[i]);
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("BuildAtomSearchList error: " + e.Message);
+        }
+
+        return result;
+    }
+
+    private void AddUniqueAtom(List<Atom> list, Atom atom)
+    {
+        if (list == null || atom == null)
+            return;
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] == atom)
+                return;
+        }
+        list.Add(atom);
+    }
+
     private bool RunQuick(string pluginContains, string[] actionNames, string label)
     {
         bool ok = TryTriggerAction(pluginContains, actionNames, label);
         if (!ok)
-            SetStatus("Missing: " + label + " / " + pluginContains + " / " + JoinActions(actionNames));
+            SetStatus("Missing action: " + label + " / " + pluginContains + " / " + JoinActions(actionNames));
         return ok;
     }
 
@@ -808,6 +817,14 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
             return false;
         }
 
+        return TriggerActionOnHit(hit, actionNames, label, "trigger");
+    }
+
+    private bool TriggerActionOnHit(PluginHit hit, string[] actionNames, string label, string kind)
+    {
+        if (hit == null || hit.storable == null || actionNames == null)
+            return false;
+
         for (int i = 0; i < actionNames.Length; i++)
         {
             string actionName = actionNames[i];
@@ -822,8 +839,9 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
             {
                 if (action.actionCallback != null)
                     action.actionCallback.Invoke();
+
                 SetStatus("OK: " + label + " -> " + hit.atom.uid + " / " + hit.storableId + " / " + actionName);
-                DebugLog("trigger / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / action=" + actionName);
+                DebugLog(kind + " / label=" + label + " / atom=" + hit.atom.uid + " / storable=" + hit.storableId + " / action=" + actionName);
                 return true;
             }
             catch (Exception e)
@@ -834,7 +852,7 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
             }
         }
 
-        DebugLog("action missing / plugin=" + pluginContains + " / label=" + label + " / actions=" + JoinActions(actionNames) + " / storable=" + hit.storableId);
+        DebugLog("action missing / label=" + label + " / actions=" + JoinActions(actionNames) + " / storable=" + hit.storableId);
         return false;
     }
 
@@ -905,9 +923,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         if (string.IsNullOrEmpty(pluginContains))
             return false;
 
-        // TargetGrabber commands should operate the self-side plugin.
-        // In normal use HDU is placed on Person#2 together with TargetGrabber, so do not accidentally
-        // grab a TargetGrabber from the other Person just because it appears later in the scene.
         if (IndexOfIgnoreCase(pluginContains, "TargetGrabber") >= 0)
             return TryFindPluginOnAtom(containingAtom, pluginContains, out hit);
 
@@ -952,41 +967,6 @@ public class HDU_Commander_v018_tg_target_none_neck_label_fix : MVRScript
         }
 
         return false;
-    }
-
-    private List<Atom> BuildAtomSearchList()
-    {
-        List<Atom> result = new List<Atom>();
-        AddUniqueAtom(result, containingAtom);
-
-        try
-        {
-            List<Atom> atoms = SuperController.singleton.GetAtoms();
-            if (atoms != null)
-            {
-                for (int i = 0; i < atoms.Count; i++)
-                    AddUniqueAtom(result, atoms[i]);
-            }
-        }
-        catch (Exception e)
-        {
-            DebugLog("BuildAtomSearchList error: " + e.Message);
-        }
-
-        return result;
-    }
-
-    private void AddUniqueAtom(List<Atom> list, Atom atom)
-    {
-        if (list == null || atom == null)
-            return;
-
-        for (int i = 0; i < list.Count; i++)
-        {
-            if (list[i] == atom)
-                return;
-        }
-        list.Add(atom);
     }
 
     private int IndexOfIgnoreCase(string source, string value)
