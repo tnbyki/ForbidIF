@@ -1,20 +1,22 @@
-// HDU_Commander_v022_target_cycle_buttons_right_bottom.cs
-// v022_target_cycle_buttons_right_bottom 2026-06-25
+// HDU_Commander_v024_hba_random_knee_force_button.cs
+// v024_hba_random_knee_force_button 2026-06-25
 // HDU-like command panel for VaM. It does not merge plugin logic; it only sets registered storables
 // and triggers JSONStorableAction entries on existing plugins such as TargetGrabber / TargetLinePerson.
 // v020: TargetGrabber=None no longer skips Grab Hand utility routes. It calls TargetGrabber's
 //       HDU Grab Hand Pull/Push/Up/Down/Left/Right None actions so None Body Nudge works from HDU.
 // v021: Moves Target Cycle Pose/Back/Reset buttons from the left column to the right column.
 // v022: Moves Target Cycle Pose/Back/Reset buttons to the lower-right area after Target Load User Defaults.
+// v023: Hides Grab Hand Left/Right UI buttons and places an HBA_Cover_RandomKneeToThigh button in that slot.
+// v024: HDU HBA Random Knee button calls force action first so manual HDU presses bypass the 30% chance slider.
 
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class HDU_Commander_v022_target_cycle_buttons_right_bottom : MVRScript
+public class HDU_Commander_v024_hba_random_knee_force_button : MVRScript
 {
-    private const string VERSION = "v022_target_cycle_buttons_right_bottom";
+    private const string VERSION = "v024_hba_random_knee_force_button";
     private const string ANY = "ANY";
     private const string NONE = "None";
 
@@ -124,8 +126,8 @@ public class HDU_Commander_v022_target_cycle_buttons_right_bottom : MVRScript
         AddButton("Grab Hand Down", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Down", "Grab Down" }, "Grab Hand Down"); }, GrabButtonColor());
         AddButton("Grab Hand Open", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Open" }, "Grab Hand Open"); }, GrabButtonColor());
         AddButton("Grab Hand Close", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Close", "Grab Close" }, "Grab Hand Close"); }, GrabButtonColor());
-        AddButton("Grab Hand Left", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Left", "Grab Left" }, "Grab Hand Left"); }, GrabButtonColor());
-        AddButton("Grab Hand Right", false, delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Right", "Grab Right" }, "Grab Hand Right"); }, GrabButtonColor());
+        // v023/v024: Hide Grab Hand Left/Right UI buttons and use this slot for forced HBA random knee action.
+        AddButton("HBA Random Knee", false, RunHbaRandomKneeToThigh, TargetButtonColor());
 
         clothSelfScanButton = AddButtonReturn("Self Cloth SCAN", false, RunClothSelfScan, SelfButtonColor());
         clothSelfNextButton = AddButtonReturn("Self Cloth NEXT", false, RunClothSelfNext, SelfButtonColor());
@@ -214,6 +216,9 @@ public class HDU_Commander_v022_target_cycle_buttons_right_bottom : MVRScript
         RegisterAction(new JSONStorableAction("Grab Hand Down", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Down", "Grab Down" }, "Grab Hand Down"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Open", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Open" }, "Grab Hand Open"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Close", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Close", "Grab Close" }, "Grab Hand Close"); }));
+        RegisterAction(new JSONStorableAction("HBA_Cover_RandomKneeToThigh", RunHbaRandomKneeToThigh));
+        RegisterAction(new JSONStorableAction("HBA Random Knee", RunHbaRandomKneeToThigh));
+        // Keep old external actions for compatibility even though the UI buttons are hidden in v023.
         RegisterAction(new JSONStorableAction("Grab Hand Left", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Left", "Grab Left" }, "Grab Hand Left"); }));
         RegisterAction(new JSONStorableAction("Grab Hand Right", delegate { ApplyAndRunSelfHand(new string[] { "Grab Hand Right", "Grab Right" }, "Grab Hand Right"); }));
         RegisterAction(new JSONStorableAction("Self Release", delegate { RunQuick("TargetGrabber", new string[] { "Self Release", "Release" }, "Self Release"); }));
@@ -430,6 +435,21 @@ public class HDU_Commander_v022_target_cycle_buttons_right_bottom : MVRScript
     {
         bool ok = TrySetBoolParam("TargetGrabber", new string[] { "Right Hand" }, value, "Self Right Hand");
         SetStatus("Self Right Hand: " + Bool01(value) + " / set=" + Bool01(ok));
+    }
+
+    private void RunHbaRandomKneeToThigh()
+    {
+        RunQuick("HumanBodyAction",
+            new string[]
+            {
+                // v024: HDU button is explicit/manual, so prefer the force aliases added in HBA v073.
+                "HBA_Cover_RandomKneeToThigh_Force",
+                "HBR_Cover_RandomKneeToThigh_Force",
+                // Fallback for older HBA builds. Older builds may still obey the chance slider.
+                "HBA_Cover_RandomKneeToThigh",
+                "HBR_Cover_RandomKneeToThigh"
+            },
+            "HBA Random Knee");
     }
 
     private void RunPMidlLine()

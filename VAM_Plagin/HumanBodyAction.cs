@@ -1,5 +1,7 @@
 // HBA_RANDOM_HAND_UPPER_REACH_SNAP_FIX_BUILD 2026-06-25: Lets RandomHand upper targets actually reach Head/Neck by using a larger command clamp and skipping soft-snap for upper labels.
 // HBA_RANDOM_HAND_UPPER_TARGETS_RESTORE_BUILD 2026-06-25: Keeps RandomHand upper targets reachable/weighted again; Self Head/Chest bypass PushAway reach filter and Head/Neck/Chest get cover weight.
+// HBA_RANDOM_KNEE_NEAREST_THIGH_BUILD 2026-06-25: RandomKnee uses thigh-side safe anchor, low cross chance, foot pre-free, and knee soft snap.
+// HBA_RANDOM_KNEE_FORCE_ACTION_BUILD 2026-06-25: Adds force RandomKnee actions for HDU/manual external buttons; chance slider still applies to normal Event/TG/HBR routes.
 // HBA_RANDOM_KNEE_DEEP_DEFAULT_BUILD 2026-06-25: Defaults Deep Action to HBA_Cover_RandomKneeToThigh while keeping v066 RandomHand fallback and RandomKnee behavior.
 // HBA_RANDOM_HAND_FALLBACK_BOTH_ON_BUILD 2026-06-25: If both hand IK position states are On, RandomHandCover now falls back to either hand instead of skipping no-free-hand.
 // HBA_RANDOM_KNEE_LEGACY_TG_ALIAS_BUILD 2026-06-25: Keeps random knee chance30 minimal build, but accepts old saved TG/Test action names as hidden aliases so Start/Inside TG Atom routes do not silently die.
@@ -286,6 +288,8 @@ public class HumanBodyAction : MVRScript
     const string HbrActionCoverTestKneeThighLegacy = "HBR_Cover_Test_TargetKneeToSelfThigh";
     const string HbaActionCoverRandomKneeToThigh = "HBA_Cover_RandomKneeToThigh";
     const string HbrActionCoverRandomKneeToThigh = "HBR_Cover_RandomKneeToThigh";
+    const string HbaActionCoverRandomKneeToThighForce = "HBA_Cover_RandomKneeToThigh_Force";
+    const string HbrActionCoverRandomKneeToThighForce = "HBR_Cover_RandomKneeToThigh_Force";
     const float HandCoverMoveSeconds = 0.32f;
     const float HandCoverHoldSeconds = 0.42f;
     const float HandCoverReturnSeconds = 0.34f;
@@ -298,8 +302,14 @@ public class HumanBodyAction : MVRScript
     const float HandCoverKneeThighCommandMaxDistance = 0.42f;
     const float TargetKneeToSelfThighMoveSeconds = 0.32f;
     const float TargetKneeToSelfThighPreFreeSeconds = 0.10f;
+    const float TargetKneeToThighSoftSnapDelay = 0.12f;
+    const float TargetKneeToThighSoftSnapMinDistance = 0.004f;
+    const float TargetKneeToThighSoftSnapMaxDistance = 0.140f;
+    const float TargetKneeToThighSafeOutwardOffset = 0.160f;
+    const float TargetKneeToThighSafeDownOffset = 0.100f;
+    const float TargetKneeToThighSafeForwardOffset = 0.040f;
     const float RandomKneeToThighMoveChance = 80.0f;
-    const float RandomKneeToThighSameSideChance = 70.0f;
+    const float RandomKneeToThighSameSideChance = 90.0f;
     const float RandomKneeToThighChanceDefault = 30.0f;
     const float RandomKneeToThighChanceMin = 0.0f;
     const float RandomKneeToThighChanceMax = 100.0f;
@@ -566,6 +576,8 @@ public class HumanBodyAction : MVRScript
         public Atom targetAtom;
         public FreeControllerV3 lKnee;
         public FreeControllerV3 rKnee;
+        public FreeControllerV3 lFoot;
+        public FreeControllerV3 rFoot;
         public Vector3 lKneePosition;
         public Vector3 rKneePosition;
         public Quaternion lKneeRotation;
@@ -574,6 +586,14 @@ public class HumanBodyAction : MVRScript
         public FreeControllerV3.PositionState rKneePositionState;
         public FreeControllerV3.RotationState lKneeRotationState;
         public FreeControllerV3.RotationState rKneeRotationState;
+        public Vector3 lFootPosition;
+        public Vector3 rFootPosition;
+        public Quaternion lFootRotation;
+        public Quaternion rFootRotation;
+        public FreeControllerV3.PositionState lFootPositionState;
+        public FreeControllerV3.PositionState rFootPositionState;
+        public FreeControllerV3.RotationState lFootRotationState;
+        public FreeControllerV3.RotationState rFootRotationState;
     }
 
     class HandCoverTarget
@@ -1356,6 +1376,10 @@ public class HumanBodyAction : MVRScript
         RegisterAction(new JSONStorableAction(HbrActionCoverRestore, delegate { RestoreHandCoverSnapshot("action:" + HbrActionCoverRestore); RestoreTargetKneeToSelfThighSnapshot("action:" + HbrActionCoverRestore); UpdateHbaStatus(true); }));
         RegisterAction(new JSONStorableAction(HbaActionCoverRandomKneeToThigh, delegate { RequestRandomKneeToThigh("action:" + HbaActionCoverRandomKneeToThigh); }));
         RegisterAction(new JSONStorableAction(HbrActionCoverRandomKneeToThigh, delegate { RequestRandomKneeToThigh("action:" + HbrActionCoverRandomKneeToThigh); }));
+        // Force variants are intended for explicit manual buttons such as HDU.
+        // They use a button: source so ShouldRunRandomKneeToThigh bypasses the chance slider.
+        RegisterAction(new JSONStorableAction(HbaActionCoverRandomKneeToThighForce, delegate { RequestRandomKneeToThigh("button:" + HbaActionCoverRandomKneeToThighForce); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverRandomKneeToThighForce, delegate { RequestRandomKneeToThigh("button:" + HbrActionCoverRandomKneeToThighForce); }));
         // Hidden legacy action aliases for old saved routes.
         RegisterAction(new JSONStorableAction(HbaActionCoverTestKneeThighLegacy, delegate { RequestRandomKneeToThigh("legacy-action:" + HbaActionCoverTestKneeThighLegacy); }));
         RegisterAction(new JSONStorableAction(HbrActionCoverTestKneeThighLegacy, delegate { RequestRandomKneeToThigh("legacy-action:" + HbrActionCoverTestKneeThighLegacy); }));
@@ -2707,6 +2731,8 @@ public class HumanBodyAction : MVRScript
 
         FreeControllerV3 moveLKnee = FindControllerByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee");
         FreeControllerV3 moveRKnee = FindControllerByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee");
+        FreeControllerV3 moveLFoot = FindControllerByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot");
+        FreeControllerV3 moveRFoot = FindControllerByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot");
         FreeControllerV3 goalLThigh = FindControllerByAliasesOnAtom(goalAtom, "lThighControl", "leftThighControl", "lThigh", "leftThigh");
         FreeControllerV3 goalRThigh = FindControllerByAliasesOnAtom(goalAtom, "rThighControl", "rightThighControl", "rThigh", "rightThigh");
 
@@ -2719,17 +2745,21 @@ public class HumanBodyAction : MVRScript
                 " / goalAtom=" + goalAtom.uid +
                 " / moveLKnee=" + (moveLKnee != null ? "1" : "0") +
                 " / moveRKnee=" + (moveRKnee != null ? "1" : "0") +
+                " / moveLFoot=" + (moveLFoot != null ? "1" : "0") +
+                " / moveRFoot=" + (moveRFoot != null ? "1" : "0") +
                 " / goalLThigh=" + (goalLThigh != null ? "1" : "0") +
                 " / goalRThigh=" + (goalRThigh != null ? "1" : "0") +
                 " / source=" + source);
             yield break;
         }
 
-        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee);
+        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee, moveLFoot, moveRFoot);
 
         bool useLeftKnee = UnityEngine.Random.Range(0, 2) == 0;
         FreeControllerV3 moveKnee = useLeftKnee ? moveLKnee : moveRKnee;
+        FreeControllerV3 moveFoot = useLeftKnee ? moveLFoot : moveRFoot;
         string kneeLabel = useLeftKnee ? "L Knee" : "R Knee";
+        string footLabel = useLeftKnee ? "L Foot" : "R Foot";
 
         float moveRoll = UnityEngine.Random.Range(0.0f, 100.0f);
         bool doMove = moveRoll < RandomKneeToThighMoveChance;
@@ -2749,28 +2779,27 @@ public class HumanBodyAction : MVRScript
             yield break;
         }
 
-        float sideRoll = UnityEngine.Random.Range(0.0f, 100.0f);
-        bool sameSide = sideRoll < RandomKneeToThighSameSideChance;
-        FreeControllerV3 goalThigh;
-        string thighLabel;
-        if (useLeftKnee)
-        {
-            goalThigh = sameSide ? goalLThigh : goalRThigh;
-            thighLabel = sameSide ? "L Thigh" : "R Thigh";
-        }
-        else
-        {
-            goalThigh = sameSide ? goalRThigh : goalLThigh;
-            thighLabel = sameSide ? "R Thigh" : "L Thigh";
-        }
+        // Pick the thigh that is closest to the selected knee, instead of random same/cross side.
+        // Direct same/cross random could choose the far thigh and pull the knee into the groin/cross path.
+        Vector3 preFreeStartPos = GetControllerPosition(moveKnee);
+        Vector3 goalLRaw = GetControllerPosition(goalLThigh);
+        Vector3 goalRRaw = GetControllerPosition(goalRThigh);
+        float distToLThigh = Vector3.Distance(preFreeStartPos, goalLRaw);
+        float distToRThigh = Vector3.Distance(preFreeStartPos, goalRRaw);
+        bool goalLeftThigh = distToLThigh <= distToRThigh;
+        FreeControllerV3 goalThigh = goalLeftThigh ? goalLThigh : goalRThigh;
+        string thighLabel = goalLeftThigh ? "L Thigh" : "R Thigh";
+        bool sameSide = (useLeftKnee && goalLeftThigh) || (!useLeftKnee && !goalLeftThigh);
 
-        SetSingleMoveKneeFree(moveKnee, source, moveAtom.uid, goalAtom.uid, kneeLabel, "pre-free-before-random-move");
+        SetSingleMoveKneeAndFootFree(moveKnee, moveFoot, source, moveAtom.uid, goalAtom.uid, kneeLabel, footLabel, "pre-free-before-nearest-thigh-move");
         if (TargetKneeToSelfThighPreFreeSeconds > 0.0f)
             yield return new WaitForSeconds(TargetKneeToSelfThighPreFreeSeconds);
         if (runSerial != targetKneeToSelfThighRunSerial) yield break;
 
         Vector3 startPos = GetControllerPosition(moveKnee);
-        Vector3 goalPos = GetControllerPosition(goalThigh);
+        string safeGoalInfo;
+        Vector3 rawGoalPos = GetControllerPosition(goalThigh);
+        Vector3 goalPos = BuildRandomKneeSafeThighAnchor(goalAtom, goalThigh, goalLeftThigh, sameSide, startPos, out safeGoalInfo);
 
         try { moveKnee.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
         try { moveKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
@@ -2782,12 +2811,18 @@ public class HumanBodyAction : MVRScript
             " / moveAtom=" + moveAtom.uid +
             " / goalAtom=" + goalAtom.uid +
             " / knee=" + kneeLabel +
+            " / foot=" + footLabel +
+            " / footFree=" + (moveFoot != null ? "1" : "0") +
             " / thigh=" + thighLabel +
             " / sameSide=" + (sameSide ? "1" : "0") +
+            " / select=nearest-thigh" +
+            " / distL=" + F3(distToLThigh) +
+            " / distR=" + F3(distToRThigh) +
             " / moveRoll=" + F2(moveRoll) +
-            " / sideRoll=" + F2(sideRoll) +
             " / start=" + V3(startPos) +
-            " / goal=" + V3(goalPos) +
+            " / rawGoal=" + V3(rawGoalPos) +
+            " / safeGoal=" + V3(goalPos) +
+            " / safe=" + safeGoalInfo +
             " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
 
         float dur = Mathf.Max(0.01f, TargetKneeToSelfThighMoveSeconds);
@@ -2804,16 +2839,153 @@ public class HumanBodyAction : MVRScript
         if (runSerial != targetKneeToSelfThighRunSerial) yield break;
         SetControllerPosition(moveKnee, goalPos);
 
-        hbaLastBlock = "Random knee holding thigh: " + kneeLabel;
+        yield return StartCoroutine(HoldRandomKneePosition(moveKnee, goalPos, Mathf.Max(0.01f, TargetKneeToThighSoftSnapDelay)));
+        if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+
+        Vector3 holdPos = SoftSnapRandomKneePosition(moveKnee, goalPos, source, kneeLabel, thighLabel);
+        SetControllerPosition(moveKnee, holdPos);
+
+        hbaLastBlock = "Random knee holding safe thigh: " + kneeLabel;
         UpdateHbaStatus(true);
         DebugMessage("[HumanBodyAction] Random knee->thigh hold" +
             " / source=" + source +
             " / moveAtom=" + moveAtom.uid +
             " / goalAtom=" + goalAtom.uid +
             " / knee=" + kneeLabel +
+            " / foot=" + footLabel +
             " / thigh=" + thighLabel +
-            " / kneePos=" + V3(GetControllerPosition(moveKnee)) +
+            " / safeGoal=" + V3(goalPos) +
+            " / hold=" + V3(holdPos) +
             " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    Vector3 BuildRandomKneeSafeThighAnchor(Atom goalAtom, FreeControllerV3 goalThigh, bool goalLeftThigh, bool sameSide, Vector3 startPos, out string info)
+    {
+        Vector3 thighPos = GetControllerPosition(goalThigh);
+        Vector3 right = GetAtomHorizontalRight(goalAtom);
+        Vector3 forward = GetAtomHorizontalForward(goalAtom);
+
+        Vector3 outward = goalLeftThigh ? -right : right;
+        if (outward.sqrMagnitude < 0.0001f) outward = Vector3.right;
+        outward.Normalize();
+
+        Vector3 goal = thighPos
+            + outward * TargetKneeToThighSafeOutwardOffset
+            + Vector3.down * TargetKneeToThighSafeDownOffset
+            + forward * TargetKneeToThighSafeForwardOffset;
+
+        // Keep the anchor reasonably between the original knee height and the thigh height.
+        // Direct thigh-center Y was pulling the knee into the groin/hip area.
+        float minY = Mathf.Min(startPos.y + 0.060f, thighPos.y - 0.020f);
+        float maxY = thighPos.y - 0.035f;
+        if (maxY > minY) goal.y = Mathf.Clamp(goal.y, minY, maxY);
+
+        info = "raw=" + V3(thighPos) +
+            ",out=" + V3(outward) +
+            ",forward=" + V3(forward) +
+            ",outOff=" + F3(TargetKneeToThighSafeOutwardOffset) +
+            ",downOff=" + F3(TargetKneeToThighSafeDownOffset) +
+            ",fwdOff=" + F3(TargetKneeToThighSafeForwardOffset) +
+            ",sameSide=" + (sameSide ? "1" : "0");
+        return goal;
+    }
+
+    Vector3 GetAtomHorizontalRight(Atom atom)
+    {
+        Transform t = null;
+        try
+        {
+            if (atom != null && atom.mainController != null) t = atom.mainController.transform;
+        }
+        catch { }
+        if (t == null && atom != null)
+        {
+            try { t = atom.transform; } catch { }
+        }
+
+        Vector3 v = t != null ? t.right : Vector3.right;
+        v.y = 0.0f;
+        if (v.sqrMagnitude < 0.0001f) v = Vector3.right;
+        v.Normalize();
+        return v;
+    }
+
+    Vector3 GetAtomHorizontalForward(Atom atom)
+    {
+        Transform t = null;
+        try
+        {
+            if (atom != null && atom.mainController != null) t = atom.mainController.transform;
+        }
+        catch { }
+        if (t == null && atom != null)
+        {
+            try { t = atom.transform; } catch { }
+        }
+
+        Vector3 v = t != null ? t.forward : Vector3.forward;
+        v.y = 0.0f;
+        if (v.sqrMagnitude < 0.0001f) v = Vector3.forward;
+        v.Normalize();
+        return v;
+    }
+
+    IEnumerator HoldRandomKneePosition(FreeControllerV3 knee, Vector3 position, float seconds)
+    {
+        if (knee == null) yield break;
+        float dur = Mathf.Max(0.01f, seconds);
+        float start = Time.time;
+        while (Time.time - start < dur)
+        {
+            SetControllerPosition(knee, position);
+            yield return null;
+        }
+        SetControllerPosition(knee, position);
+    }
+
+    Vector3 SoftSnapRandomKneePosition(FreeControllerV3 knee, Vector3 commandedPosition, string source, string kneeLabel, string thighLabel)
+    {
+        if (knee == null) return commandedPosition;
+
+        Vector3 bodyKneePosition;
+        string bodyName;
+        if (!TryGetBodyTransformPositionForController(knee, out bodyKneePosition, out bodyName))
+        {
+            DebugMessage("[HumanBodyAction] Random knee soft snap skip / reason=no-body-transform" +
+                " / source=" + source +
+                " / knee=" + kneeLabel +
+                " / thigh=" + thighLabel +
+                " / commanded=" + V3(commandedPosition));
+            return commandedPosition;
+        }
+
+        float distance = Vector3.Distance(commandedPosition, bodyKneePosition);
+        if (distance < TargetKneeToThighSoftSnapMinDistance)
+        {
+            DebugMessage("[HumanBodyAction] Random knee soft snap skip / reason=near" +
+                " / source=" + source +
+                " / knee=" + kneeLabel +
+                " / thigh=" + thighLabel +
+                " / dist=" + F3(distance));
+            return commandedPosition;
+        }
+
+        Vector3 snapped = bodyKneePosition;
+        bool clamped = distance > TargetKneeToThighSoftSnapMaxDistance;
+        SetControllerPosition(knee, snapped);
+
+        DebugMessage("[HumanBodyAction] Random knee soft snap" +
+            " / source=" + source +
+            " / knee=" + kneeLabel +
+            " / thigh=" + thighLabel +
+            " / body=" + bodyName +
+            " / commanded=" + V3(commandedPosition) +
+            " / bodyPos=" + V3(bodyKneePosition) +
+            " / hold=" + V3(snapped) +
+            " / dist=" + F3(distance) +
+            " / max=" + F3(TargetKneeToThighSoftSnapMaxDistance) +
+            " / clamped=" + (clamped ? "1" : "0"));
+        return snapped;
     }
 
     void SetSingleMoveKneeFree(FreeControllerV3 knee, string source, string moveUid, string goalUid, string kneeLabel, string reason)
@@ -2833,6 +3005,35 @@ public class HumanBodyAction : MVRScript
             " / knee=" + kneeLabel +
             " / reason=" + reason +
             " / seconds=" + F2(TargetKneeToSelfThighPreFreeSeconds) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    void SetSingleMoveKneeAndFootFree(FreeControllerV3 knee, FreeControllerV3 foot, string source, string moveUid, string goalUid, string kneeLabel, string footLabel, string reason)
+    {
+        if (knee != null)
+        {
+            try { knee.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { knee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+        if (foot != null)
+        {
+            try { foot.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { foot.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+
+        hbaLastBlock = "Random knee+foot pre-free: " + kneeLabel;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Random knee foot pre-free" +
+            " / source=" + source +
+            " / moveAtom=" + moveUid +
+            " / goalAtom=" + goalUid +
+            " / knee=" + kneeLabel +
+            " / foot=" + footLabel +
+            " / kneeFree=" + (knee != null ? "1" : "0") +
+            " / footFree=" + (foot != null ? "1" : "0") +
+            " / reason=" + reason +
+            " / seconds=" + F2(TargetKneeToSelfThighPreFreeSeconds) +
+            " / next=move-knee-to-thigh" +
             " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
     }
 
@@ -2904,6 +3105,8 @@ public class HumanBodyAction : MVRScript
         // Move the knees on the Person that owns this HumanBodyAction, and use the nearest other Person thighs as the goals.
         FreeControllerV3 moveLKnee = FindControllerByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee");
         FreeControllerV3 moveRKnee = FindControllerByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee");
+        FreeControllerV3 moveLFoot = FindControllerByAliases("lFootControl", "leftFootControl", "lFoot", "leftFoot");
+        FreeControllerV3 moveRFoot = FindControllerByAliases("rFootControl", "rightFootControl", "rFoot", "rightFoot");
         FreeControllerV3 goalLThigh = FindControllerByAliasesOnAtom(goalAtom, "lThighControl", "leftThighControl", "lThigh", "leftThigh");
         FreeControllerV3 goalRThigh = FindControllerByAliasesOnAtom(goalAtom, "rThighControl", "rightThighControl", "rThigh", "rightThigh");
 
@@ -2916,17 +3119,19 @@ public class HumanBodyAction : MVRScript
                 " / goalAtom=" + goalAtom.uid +
                 " / moveLKnee=" + (moveLKnee != null ? "1" : "0") +
                 " / moveRKnee=" + (moveRKnee != null ? "1" : "0") +
+                " / moveLFoot=" + (moveLFoot != null ? "1" : "0") +
+                " / moveRFoot=" + (moveRFoot != null ? "1" : "0") +
                 " / goalLThigh=" + (goalLThigh != null ? "1" : "0") +
                 " / goalRThigh=" + (goalRThigh != null ? "1" : "0") +
                 " / source=" + source);
             yield break;
         }
 
-        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee);
+        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee, moveLFoot, moveRFoot);
 
-        // Briefly free the moving knees first so the current IK chain does not fight the move.
+        // Briefly free the moving knees and feet first so the current IK chain does not fight the move.
         // Then positionState is turned back On and the knees are moved to the other Person's thighs.
-        SetTargetKneePreFreeForTest(moveLKnee, moveRKnee, source, moveAtom.uid, goalAtom.uid);
+        SetTargetKneeFootPreFreeForTest(moveLKnee, moveRKnee, moveLFoot, moveRFoot, source, moveAtom.uid, goalAtom.uid);
         if (TargetKneeToSelfThighPreFreeSeconds > 0.0f)
             yield return new WaitForSeconds(TargetKneeToSelfThighPreFreeSeconds);
         if (runSerial != targetKneeToSelfThighRunSerial) yield break;
@@ -2950,8 +3155,10 @@ public class HumanBodyAction : MVRScript
             " / goalAtom=" + goalAtom.uid +
             " / lStart=" + V3(lStart) +
             " / lGoal=" + V3(lGoal) +
+            " / lFootFree=" + (moveLFoot != null ? "1" : "0") +
             " / rStart=" + V3(rStart) +
             " / rGoal=" + V3(rGoal) +
+            " / rFootFree=" + (moveRFoot != null ? "1" : "0") +
             " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
 
         float dur = Mathf.Max(0.01f, TargetKneeToSelfThighMoveSeconds);
@@ -2982,7 +3189,7 @@ public class HumanBodyAction : MVRScript
     }
 
 
-    void SetTargetKneePreFreeForTest(FreeControllerV3 lKnee, FreeControllerV3 rKnee, string source, string moveUid, string goalUid)
+    void SetTargetKneeFootPreFreeForTest(FreeControllerV3 lKnee, FreeControllerV3 rKnee, FreeControllerV3 lFoot, FreeControllerV3 rFoot, string source, string moveUid, string goalUid)
     {
         if (lKnee != null)
         {
@@ -2994,16 +3201,28 @@ public class HumanBodyAction : MVRScript
             try { rKnee.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
             try { rKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
         }
+        if (lFoot != null)
+        {
+            try { lFoot.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { lFoot.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+        if (rFoot != null)
+        {
+            try { rFoot.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { rFoot.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
 
-        hbaLastBlock = "Move knee pre-free: " + moveUid;
+        hbaLastBlock = "Move knee+foot pre-free: " + moveUid;
         UpdateHbaStatus(true);
-        DebugMessage("[HumanBodyAction] Move knee pre-free" +
+        DebugMessage("[HumanBodyAction] Move knee foot pre-free" +
             " / source=" + source +
             " / moveAtom=" + moveUid +
             " / goalAtom=" + goalUid +
             " / seconds=" + F2(TargetKneeToSelfThighPreFreeSeconds) +
             " / lKnee=" + (lKnee != null ? "free" : "none") +
             " / rKnee=" + (rKnee != null ? "free" : "none") +
+            " / lFoot=" + (lFoot != null ? "free" : "none") +
+            " / rFoot=" + (rFoot != null ? "free" : "none") +
             " / next=move-knee-to-other-thigh" +
             " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
     }
@@ -3590,12 +3809,14 @@ public class HumanBodyAction : MVRScript
 
 
 
-    void CaptureTargetKneeToSelfThighSnapshot(Atom targetAtom, FreeControllerV3 lKnee, FreeControllerV3 rKnee)
+    void CaptureTargetKneeToSelfThighSnapshot(Atom targetAtom, FreeControllerV3 lKnee, FreeControllerV3 rKnee, FreeControllerV3 lFoot, FreeControllerV3 rFoot)
     {
         activeTargetKneeToSelfThighSnapshot = new TargetKneeToSelfThighSnapshot();
         activeTargetKneeToSelfThighSnapshot.targetAtom = targetAtom;
         activeTargetKneeToSelfThighSnapshot.lKnee = lKnee;
         activeTargetKneeToSelfThighSnapshot.rKnee = rKnee;
+        activeTargetKneeToSelfThighSnapshot.lFoot = lFoot;
+        activeTargetKneeToSelfThighSnapshot.rFoot = rFoot;
 
         if (lKnee != null)
         {
@@ -3611,6 +3832,22 @@ public class HumanBodyAction : MVRScript
             activeTargetKneeToSelfThighSnapshot.rKneeRotation = GetControllerRotation(rKnee);
             activeTargetKneeToSelfThighSnapshot.rKneePositionState = rKnee.currentPositionState;
             activeTargetKneeToSelfThighSnapshot.rKneeRotationState = rKnee.currentRotationState;
+        }
+
+        if (lFoot != null)
+        {
+            activeTargetKneeToSelfThighSnapshot.lFootPosition = GetControllerPosition(lFoot);
+            activeTargetKneeToSelfThighSnapshot.lFootRotation = GetControllerRotation(lFoot);
+            activeTargetKneeToSelfThighSnapshot.lFootPositionState = lFoot.currentPositionState;
+            activeTargetKneeToSelfThighSnapshot.lFootRotationState = lFoot.currentRotationState;
+        }
+
+        if (rFoot != null)
+        {
+            activeTargetKneeToSelfThighSnapshot.rFootPosition = GetControllerPosition(rFoot);
+            activeTargetKneeToSelfThighSnapshot.rFootRotation = GetControllerRotation(rFoot);
+            activeTargetKneeToSelfThighSnapshot.rFootPositionState = rFoot.currentPositionState;
+            activeTargetKneeToSelfThighSnapshot.rFootRotationState = rFoot.currentRotationState;
         }
     }
 
@@ -3638,7 +3875,25 @@ public class HumanBodyAction : MVRScript
             try { snap.rKnee.currentRotationState = snap.rKneeRotationState; } catch { }
         }
 
-        DebugMessage("[HumanBodyAction] Move knee->other thigh restore / reason=" + reason + " / moveAtom=" + (snap.targetAtom != null ? snap.targetAtom.uid : "<none>"));
+        if (snap.lFoot != null)
+        {
+            SetControllerPosition(snap.lFoot, snap.lFootPosition);
+            SetControllerRotation(snap.lFoot, snap.lFootRotation);
+            try { snap.lFoot.currentPositionState = snap.lFootPositionState; } catch { }
+            try { snap.lFoot.currentRotationState = snap.lFootRotationState; } catch { }
+        }
+
+        if (snap.rFoot != null)
+        {
+            SetControllerPosition(snap.rFoot, snap.rFootPosition);
+            SetControllerRotation(snap.rFoot, snap.rFootRotation);
+            try { snap.rFoot.currentPositionState = snap.rFootPositionState; } catch { }
+            try { snap.rFoot.currentRotationState = snap.rFootRotationState; } catch { }
+        }
+
+        DebugMessage("[HumanBodyAction] Move knee->other thigh restore / reason=" + reason + " / moveAtom=" + (snap.targetAtom != null ? snap.targetAtom.uid : "<none>") +
+            " / lFoot=" + (snap.lFoot != null ? "restore" : "none") +
+            " / rFoot=" + (snap.rFoot != null ? "restore" : "none"));
     }
 
     FreeControllerV3 FindMatchingElbowForHandCover(FreeControllerV3 hand)
@@ -4928,7 +5183,7 @@ public class HumanBodyAction : MVRScript
             ",fast=" + GetConfiguredInsideAction("Fast") + "]" +
             " / eventActions[deep=" + GetConfiguredEventAction("Deep") +
             ",end=" + GetConfiguredEventAction("End") + "]" +
-            " / actions=HBA_Event_Start,HBA_Event_Inside,HBA_Event_Deep,HBA_Event_End,HBA_Twitch_Slow,HBA_Twitch_Weak,HBA_Twitch_Normal,HBA_Twitch_Strong,HBA_Cover_RandomHand,HBR_Cover_RandomHand,HBA_Cover_Restore,HBR_Cover_Restore,HBA_Cover_RandomKneeToThigh,HBR_Cover_RandomKneeToThigh,HBA_Head_Nod,HBA_Head_QuickNod,HBA_Head_IntenseShake"
+            " / actions=HBA_Event_Start,HBA_Event_Inside,HBA_Event_Deep,HBA_Event_End,HBA_Twitch_Slow,HBA_Twitch_Weak,HBA_Twitch_Normal,HBA_Twitch_Strong,HBA_Cover_RandomHand,HBR_Cover_RandomHand,HBA_Cover_Restore,HBR_Cover_Restore,HBA_Cover_RandomKneeToThigh,HBR_Cover_RandomKneeToThigh,HBA_Cover_RandomKneeToThigh_Force,HBR_Cover_RandomKneeToThigh_Force,HBA_Head_Nod,HBA_Head_QuickNod,HBA_Head_IntenseShake"
         );
     }
 
