@@ -1,3 +1,22 @@
+// HBA_RANDOM_HAND_FALLBACK_BOTH_ON_BUILD 2026-06-25: If both hand IK position states are On, RandomHandCover now falls back to either hand instead of skipping no-free-hand.
+// HBA_RANDOM_KNEE_LEGACY_TG_ALIAS_BUILD 2026-06-25: Keeps random knee chance30 minimal build, but accepts old saved TG/Test action names as hidden aliases so Start/Inside TG Atom routes do not silently die.
+// HBA_RANDOM_KNEE_MINIMAL_CHANCE30_BUILD 2026-06-25: Adds random one-knee action: moveAtom L/R Knee -> goalAtom L/R Thigh with same-side weighting, or free one knee; keeps v055 direct test.
+// HBA_RANDOM_HAND_COVER_HIP2_THIGH_BUILD 2026-06-25: Changes Hip Back weight from 3 to 2 and adds L/R Thigh cover targets. Hold/rot-fixed behavior unchanged.
+// HBA_RANDOM_HAND_COVER_BUILD 2026-06-25: Adds random free-hand cover action/button. Moves one non-held hand to non-explicit body cover targets, then restores. Adds HBA_ and HBR_ actions.
+// HBA_RANDOM_HAND_COVER_SOFT_SNAP_BUILD 2026-06-25: Adds hidden fixed soft-snap after RandomHandCover move so IK holds at the reachable body-hand position instead of pushing through.
+// HBA_RANDOM_HAND_COVER_SCOPE_DEFAULT_BUILD 2026-06-25: Adds Cover Scope All/Self/Target, defaults chance to 80%, and defaults Inside Active Action to HBA_Cover_RandomHand.
+// HBA_RANDOM_HAND_COVER_PUSHAWAY_MIX_BUILD 2026-06-25: Keeps HBA_Cover_RandomHand button but mixes normal Cover with reachable PushAway hand placement targets, adding Mix/Reach/Offset sliders.
+// HBA_RANDOM_HAND_COVER_CHANCE_BUILD 2026-06-25: Adds Cover Random Chance % slider under HBA_Cover_RandomHand; event/action/TG calls obey probability while manual button forces execution.
+// HBA_RANDOM_HAND_COVER_HIP_BACK_WEIGHT_BUILD 2026-06-25: Makes Hip Back easier to appear in RandomHandCover by weighting it higher; hold/rot-fixed behavior unchanged.
+// HBA_RANDOM_HAND_COVER_HOLD_BUILD 2026-06-25: RandomHandCover moves hand position only, turns hand rotation IK OFF/fixed, and keeps the hand at the cover point until explicit restore/reset or the next cover action.
+// HBA_COVER_KNEE_THIGH_DIRECT_BUILD 2026-06-25: Test Knee/Thigh cover runs immediately outside the latest-only queue and temporarily suppresses event Cover overwrite.
+// HBA_COVER_REACH_ELBOW_ASSIST_BUILD 2026-06-25: Clamps hand-cover command distance and temporarily relaxes the same-side elbow so Knee/Thigh test can visibly move without stale coroutine overwrite.
+// HBA_TARGET_KNEE_TO_SELF_THIGH_TEST_BUILD 2026-06-25: Replaces the manual cover test with Target L/R Knee -> Self L/R Thigh IK move; keeps random cover behavior unchanged.
+// HBA_COVER_SELF_THIGH_TEST_BUILD 2026-06-25: Changes the manual cover test button to Self L/R Thigh only; removes Target L/R Knee from the test route.
+// HBA_TARGET_KNEE_OPPOSITE_PERSON_BUILD 2026-06-25: Swaps the knee test route so the Person that did NOT move in v054 is moved: containingAtom knees -> nearest other Person thighs.
+// HBA_TARGET_KNEE_TO_SELF_THIGH_FREE_MIX_BUILD 2026-06-25: Adds direct test action that moves target L/R knee IK to self L/R thigh or randomly frees target knees; restore via HBA_Cover_Restore.
+// HBA_TARGET_KNEE_TO_SELF_THIGH_RUNSERIAL_FIX_BUILD 2026-06-25: Fixes test route stopping after pre-free by assigning run serial after restart restore.
+// HBA_TARGET_KNEE_TO_SELF_THIGH_PREFREE_BUILD 2026-06-25: Test action always moves target L/R knee IK to self L/R thigh, with a brief pre-free relax before the move.
 // HBA_SLOW_MORE_SENSITIVE_BUILD 2026-06-24: Widens the Slow band so Auto Line Slow is less likely to be classified as Active, while keeping v032 Fast compromise and v035 Face Time Scale.
 // HBA_FACE_MORPH_TIME_SCALE_BUILD 2026-06-24: Adds Face Time Scale to slow Eyes/Mouth morph playback without changing HBA classifier v032.
 // HBA_LINE_CLASSIFIER_STABLE_BUILD 2026-06-24: Raises Fast classification to Auto Line Fast-level peaks and adds a slow-entry grace so normal Auto Line stays Active instead of Fast->Slow.
@@ -84,6 +103,12 @@ public class HumanBodyAction : MVRScript
     JSONStorableFloat twitchChestScale;
     JSONStorableFloat twitchHipScale;
     JSONStorableFloat twitchLimbScale;
+    JSONStorableStringChooser handCoverScope;
+    JSONStorableFloat handCoverChance;
+    JSONStorableFloat randomKneeToThighChance;
+    JSONStorableFloat handCoverPushAwayMix;
+    JSONStorableFloat handCoverPushAwayReach;
+    JSONStorableFloat handCoverPushAwayOffset;
 
     JSONStorableBool useBodyAxes;
     JSONStorableBool twitchChest;
@@ -108,6 +133,13 @@ public class HumanBodyAction : MVRScript
     Coroutine tgStartOffRoutine;
     Coroutine tgDeepOffRoutine;
     Coroutine tgEndOffRoutine;
+    HandCoverSnapshot activeHandCoverSnapshot;
+    TargetKneeToSelfThighSnapshot activeTargetKneeToSelfThighSnapshot;
+    Coroutine directHandCoverRoutine;
+    Coroutine directRandomKneeRoutine;
+    int handCoverRunSerial = 0;
+    int targetKneeToSelfThighRunSerial = 0;
+    float suppressEventHandCoverUntil = -999.0f;
 
     FreeControllerV3 headControl;
     HeadControlSnapshot activeHeadSnapshot;
@@ -241,6 +273,51 @@ public class HumanBodyAction : MVRScript
     const string HbaActionTwitchWeak = "HBA_Twitch_Weak";
     const string HbaActionTwitchNormal = "HBA_Twitch_Normal";
     const string HbaActionTwitchStrong = "HBA_Twitch_Strong";
+    const string HbaActionCoverRandomHand = "HBA_Cover_RandomHand";
+    const string HbrActionCoverRandomHand = "HBR_Cover_RandomHand";
+    const string HbaActionCoverRestore = "HBA_Cover_Restore";
+    const string HbrActionCoverRestore = "HBR_Cover_Restore";
+    // Hidden legacy aliases: older saved scenes may still store these in Start/Inside/Deep/End TG Atom.
+    // Do not show them in the UI choices, but treat them as safe HBA actions and map them to the new random knee route.
+    const string HbaActionCoverTestKneeThighLegacy = "HBA_Cover_Test_TargetKneeToSelfThigh";
+    const string HbrActionCoverTestKneeThighLegacy = "HBR_Cover_Test_TargetKneeToSelfThigh";
+    const string HbaActionCoverRandomKneeToThigh = "HBA_Cover_RandomKneeToThigh";
+    const string HbrActionCoverRandomKneeToThigh = "HBR_Cover_RandomKneeToThigh";
+    const float HandCoverMoveSeconds = 0.32f;
+    const float HandCoverHoldSeconds = 0.42f;
+    const float HandCoverReturnSeconds = 0.34f;
+    const float HandCoverSoftSnapDelay = 0.12f;
+    const float HandCoverSoftSnapMaxDistance = 0.12f;
+    const float HandCoverSoftSnapMinDistance = 0.004f;
+    const float HandCoverManualSuppressEventSeconds = 3.00f;
+    const float HandCoverCommandMaxDistance = 0.46f;
+    const float HandCoverKneeThighCommandMaxDistance = 0.42f;
+    const float TargetKneeToSelfThighMoveSeconds = 0.32f;
+    const float TargetKneeToSelfThighPreFreeSeconds = 0.10f;
+    const float RandomKneeToThighMoveChance = 80.0f;
+    const float RandomKneeToThighSameSideChance = 70.0f;
+    const float RandomKneeToThighChanceDefault = 30.0f;
+    const float RandomKneeToThighChanceMin = 0.0f;
+    const float RandomKneeToThighChanceMax = 100.0f;
+    const float HandCoverSurfaceOffset = 0.055f;
+    const float HandCoverHipBackOffset = 0.18f;
+    const int HandCoverHipBackWeight = 2;
+    const string HandCoverScopeAll = "All";
+    const string HandCoverScopeSelf = "Self";
+    const string HandCoverScopeTarget = "Target";
+    const string HandCoverScopeDefault = HandCoverScopeAll;
+    const float HandCoverChanceDefault = 80.0f;
+    const float HandCoverChanceMin = 0.0f;
+    const float HandCoverChanceMax = 100.0f;
+    const float HandCoverPushAwayMixDefault = 30.0f;
+    const float HandCoverPushAwayMixMin = 0.0f;
+    const float HandCoverPushAwayMixMax = 100.0f;
+    const float HandCoverPushAwayReachDefault = 0.58f;
+    const float HandCoverPushAwayReachMin = 0.05f;
+    const float HandCoverPushAwayReachMax = 1.50f;
+    const float HandCoverPushAwayOffsetDefault = 0.075f;
+    const float HandCoverPushAwayOffsetMin = 0.00f;
+    const float HandCoverPushAwayOffsetMax = 0.25f;
     const string TgModeOff = "Off";
     const string TgModeState = "State";
     const string TgModeButtonPulse = "Button Pulse";
@@ -351,6 +428,9 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchWeak,
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
+        HbaActionCoverRandomHand,
+        HbaActionCoverRestore,
+        HbaActionCoverRandomKneeToThigh,
         "HBA_Head_Shake",
         "HBA_Head_Tilt",
         "HBA_Head_BigNod",
@@ -374,6 +454,9 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchWeak,
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
+        HbaActionCoverRandomHand,
+        HbaActionCoverRestore,
+        HbaActionCoverRandomKneeToThigh,
         "HBA_Head_Shake",
         "HBA_Head_Tilt",
         "HBA_Head_BigNod",
@@ -397,6 +480,9 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchWeak,
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
+        HbaActionCoverRandomHand,
+        HbaActionCoverRestore,
+        HbaActionCoverRandomKneeToThigh,
         "HBA_Head_Shake",
         "HBA_Head_Tilt",
         "HBA_Head_BigNod",
@@ -442,6 +528,8 @@ public class HumanBodyAction : MVRScript
         public bool runEyes;
         public bool runMouth;
         public bool runHead;
+        public bool runHandCover;
+        public bool runTargetKneeToSelfThighTest;
         public string headPreset;
     }
 
@@ -451,6 +539,58 @@ public class HumanBodyAction : MVRScript
         public Quaternion rotation;
         public FreeControllerV3.PositionState positionState;
         public FreeControllerV3.RotationState rotationState;
+    }
+
+    class HandCoverSnapshot
+    {
+        public FreeControllerV3 hand;
+        public Vector3 position;
+        public Quaternion rotation;
+        public FreeControllerV3.PositionState positionState;
+        public FreeControllerV3.RotationState rotationState;
+        public FreeControllerV3 elbow;
+        public Vector3 elbowPosition;
+        public Quaternion elbowRotation;
+        public FreeControllerV3.PositionState elbowPositionState;
+        public FreeControllerV3.RotationState elbowRotationState;
+    }
+
+
+
+    class TargetKneeToSelfThighSnapshot
+    {
+        public Atom targetAtom;
+        public FreeControllerV3 lKnee;
+        public FreeControllerV3 rKnee;
+        public Vector3 lKneePosition;
+        public Vector3 rKneePosition;
+        public Quaternion lKneeRotation;
+        public Quaternion rKneeRotation;
+        public FreeControllerV3.PositionState lKneePositionState;
+        public FreeControllerV3.PositionState rKneePositionState;
+        public FreeControllerV3.RotationState lKneeRotationState;
+        public FreeControllerV3.RotationState rKneeRotationState;
+    }
+
+    class HandCoverTarget
+    {
+        public string label;
+        public Vector3 position;
+        public Vector3 outward;
+        public bool pushAway;
+
+        public HandCoverTarget(string label, Vector3 position, Vector3 outward)
+            : this(label, position, outward, false)
+        {
+        }
+
+        public HandCoverTarget(string label, Vector3 position, Vector3 outward, bool pushAway)
+        {
+            this.label = label;
+            this.position = position;
+            this.outward = outward;
+            this.pushAway = pushAway;
+        }
     }
 
     class Keyframe
@@ -591,7 +731,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v035 face morph time scale / v032 classifier / tw tuned defaults / head slow stable / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v041 random hand cover hip2 thigh / v038 rot fixed / v036 slow sensitive / v035 face time scale / v032 classifier / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -621,7 +761,7 @@ public class HumanBodyAction : MVRScript
 
         // Bridge marker used by TargetLinePerson to prefer the currently loaded HBA build
         // instead of a stale/old HBA instance when scripts are swapped during testing.
-        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 35.0f, 0.0f, 999.0f, true);
+        hbaBridgeVersion = new JSONStorableFloat("HBA_BridgeVersion", 38.0f, 0.0f, 999.0f, true);
         RegisterFloat(hbaBridgeVersion);
 
         hbaTgTriggers = new JSONStorableBool("TG Triggers", true);
@@ -640,7 +780,7 @@ public class HumanBodyAction : MVRScript
         hbaStartNormalAction = CreateHiddenActionChooser("Start Normal Action", hbaEventActionChoices, HbaActionTwitchWeak);
         hbaStartSlowAction = CreateHiddenActionChooser("Start Slow Action", hbaStartVariantActionChoices, HbaActionTwitchSlow);
         hbaStartFastAction = CreateHiddenActionChooser("Start Fast Action", hbaStartVariantActionChoices, HbaActionSameAsNormal);
-        hbaInsideActiveAction = CreateHiddenActionChooser("Inside Active Action", hbaEventActionChoices, HbaActionTwitchNormal);
+        hbaInsideActiveAction = CreateHiddenActionChooser("Inside Active Action", hbaEventActionChoices, HbaActionCoverRandomHand);
         hbaInsideHoldAction = CreateHiddenActionChooser("Inside Hold Action", hbaInsideVariantActionChoices, HbaActionTwitchSlow);
         hbaInsideSlowAction = CreateHiddenActionChooser("Inside Slow Action", hbaInsideVariantActionChoices, HbaActionTwitchSlow);
         hbaInsideIntenseAction = CreateHiddenActionChooser("Inside Fast Action", hbaInsideVariantActionChoices, HbaActionTwitchStrong);
@@ -731,6 +871,29 @@ public class HumanBodyAction : MVRScript
 
         twitchLimbScale = new JSONStorableFloat("TW Limb Scale", TwitchLimbScaleDefault, TwitchPartScaleMin, TwitchPartScaleMax);
         RegisterFloat(twitchLimbScale);
+
+        handCoverScope = new JSONStorableStringChooser(
+            "Cover Scope",
+            new List<string>() { HandCoverScopeAll, HandCoverScopeSelf, HandCoverScopeTarget },
+            HandCoverScopeDefault,
+            "Cover Scope"
+        );
+        RegisterStringChooser(handCoverScope);
+
+        handCoverChance = new JSONStorableFloat("Cover Random Chance %", HandCoverChanceDefault, HandCoverChanceMin, HandCoverChanceMax);
+        RegisterFloat(handCoverChance);
+
+        randomKneeToThighChance = new JSONStorableFloat("Random Knee To Thigh Chance %", RandomKneeToThighChanceDefault, RandomKneeToThighChanceMin, RandomKneeToThighChanceMax);
+        RegisterFloat(randomKneeToThighChance);
+
+        handCoverPushAwayMix = new JSONStorableFloat("Cover PushAway Mix %", HandCoverPushAwayMixDefault, HandCoverPushAwayMixMin, HandCoverPushAwayMixMax);
+        RegisterFloat(handCoverPushAwayMix);
+
+        handCoverPushAwayReach = new JSONStorableFloat("Cover PushAway Reach", HandCoverPushAwayReachDefault, HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
+        RegisterFloat(handCoverPushAwayReach);
+
+        handCoverPushAwayOffset = new JSONStorableFloat("Cover PushAway Offset", HandCoverPushAwayOffsetDefault, HandCoverPushAwayOffsetMin, HandCoverPushAwayOffsetMax);
+        RegisterFloat(handCoverPushAwayOffset);
 
         queueLastAction = new JSONStorableBool("Queue Last Action", true);
         RegisterBool(queueLastAction);
@@ -845,6 +1008,15 @@ public class HumanBodyAction : MVRScript
         CreateButton("HBA_Twitch_Weak", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Weak", "Weak"); });
         CreateButton("HBA_Twitch_Normal", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Normal", "Normal"); });
         CreateButton("HBA_Twitch_Strong", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Strong", "Strong"); });
+        CreateButton("HBA_Cover_RandomHand", false).button.onClick.AddListener(delegate { RequestRandomHandCover("button:HBA_Cover_RandomHand"); });
+        CreateScrollablePopup(handCoverScope, false);
+        CreateSlider(handCoverChance, false);
+        CreateSlider(randomKneeToThighChance, false);
+        CreateSlider(handCoverPushAwayMix, false);
+        CreateSlider(handCoverPushAwayReach, false);
+        CreateSlider(handCoverPushAwayOffset, false);
+        CreateButton("HBA_Cover_Restore", false).button.onClick.AddListener(delegate { RestoreHandCoverSnapshot("button:HBA_Cover_Restore"); RestoreTargetKneeToSelfThighSnapshot("button:HBA_Cover_Restore"); UpdateHbaStatus(true); });
+        CreateButton("HBA_Cover_RandomKneeToThigh", false).button.onClick.AddListener(delegate { RequestRandomKneeToThigh("button:HBA_Cover_RandomKneeToThigh"); });
     }
 
 
@@ -1174,6 +1346,15 @@ public class HumanBodyAction : MVRScript
         RegisterAction(new JSONStorableAction("HBA_Twitch_Weak", delegate { RequestPresetAction("action:HBA_Twitch_Weak", "Weak"); }));
         RegisterAction(new JSONStorableAction("HBA_Twitch_Normal", delegate { RequestPresetAction("action:HBA_Twitch_Normal", "Normal"); }));
         RegisterAction(new JSONStorableAction("HBA_Twitch_Strong", delegate { RequestPresetAction("action:HBA_Twitch_Strong", "Strong"); }));
+        RegisterAction(new JSONStorableAction(HbaActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbaActionCoverRandomHand); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbrActionCoverRandomHand); }));
+        RegisterAction(new JSONStorableAction(HbaActionCoverRestore, delegate { RestoreHandCoverSnapshot("action:" + HbaActionCoverRestore); RestoreTargetKneeToSelfThighSnapshot("action:" + HbaActionCoverRestore); UpdateHbaStatus(true); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverRestore, delegate { RestoreHandCoverSnapshot("action:" + HbrActionCoverRestore); RestoreTargetKneeToSelfThighSnapshot("action:" + HbrActionCoverRestore); UpdateHbaStatus(true); }));
+        RegisterAction(new JSONStorableAction(HbaActionCoverRandomKneeToThigh, delegate { RequestRandomKneeToThigh("action:" + HbaActionCoverRandomKneeToThigh); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverRandomKneeToThigh, delegate { RequestRandomKneeToThigh("action:" + HbrActionCoverRandomKneeToThigh); }));
+        // Hidden legacy action aliases for old saved routes.
+        RegisterAction(new JSONStorableAction(HbaActionCoverTestKneeThighLegacy, delegate { RequestRandomKneeToThigh("legacy-action:" + HbaActionCoverTestKneeThighLegacy); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverTestKneeThighLegacy, delegate { RequestRandomKneeToThigh("legacy-action:" + HbrActionCoverTestKneeThighLegacy); }));
 
         RegisterAction(new JSONStorableAction("HBA_Event_Start", delegate { HandleHbaEvent("Start", 0); }));
         RegisterAction(new JSONStorableAction("HBA_Event_Inside", delegate { HandleHbaEvent("Inside", 0); }));
@@ -1764,6 +1945,29 @@ public class HumanBodyAction : MVRScript
             RequestPresetAction(source + ":" + actionName, "Strong");
             return true;
         }
+        if (actionName == HbaActionCoverRandomHand || actionName == HbrActionCoverRandomHand)
+        {
+            RequestRandomHandCover(source + ":" + actionName);
+            return true;
+        }
+        if (actionName == HbaActionCoverRestore || actionName == HbrActionCoverRestore)
+        {
+            RestoreHandCoverSnapshot(source + ":" + actionName);
+            RestoreTargetKneeToSelfThighSnapshot(source + ":" + actionName);
+            UpdateHbaStatus(true);
+            return true;
+        }
+        if (actionName == HbaActionCoverTestKneeThighLegacy || actionName == HbrActionCoverTestKneeThighLegacy)
+        {
+            DebugMessage("[HumanBodyAction] Legacy knee action alias / source=" + source + " / oldAction=" + actionName + " / mapped=" + HbaActionCoverRandomKneeToThigh);
+            RequestRandomKneeToThigh(source + ":legacy:" + actionName);
+            return true;
+        }
+        if (actionName == HbaActionCoverRandomKneeToThigh || actionName == HbrActionCoverRandomKneeToThigh)
+        {
+            RequestRandomKneeToThigh(source + ":" + actionName);
+            return true;
+        }
 
         string headPreset = GetHeadPresetFromHbaAction(actionName);
         if (!IsOff(headPreset))
@@ -2073,6 +2277,10 @@ public class HumanBodyAction : MVRScript
     {
         if (string.IsNullOrEmpty(actionName)) return false;
         if (actionName == HbaActionTwitchSlow || actionName == HbaActionTwitchWeak || actionName == HbaActionTwitchNormal || actionName == HbaActionTwitchStrong) return true;
+        if (actionName == HbaActionCoverRandomHand || actionName == HbrActionCoverRandomHand) return true;
+        if (actionName == HbaActionCoverRestore || actionName == HbrActionCoverRestore) return true;
+        if (actionName == HbaActionCoverTestKneeThighLegacy || actionName == HbrActionCoverTestKneeThighLegacy) return true;
+        if (actionName == HbaActionCoverRandomKneeToThigh || actionName == HbrActionCoverRandomKneeToThigh) return true;
         return !IsOff(GetHeadPresetFromHbaAction(actionName));
     }
 
@@ -2081,7 +2289,16 @@ public class HumanBodyAction : MVRScript
         JSONStorableStringChooser chooser = GetTgAtomChooser(eventName);
         if (chooser != null && !string.IsNullOrEmpty(chooser.val))
         {
-            return chooser.val;
+            string v = chooser.val;
+            // If a saved scene keeps an old HBA/HBR action string, route it only when it is still known-safe.
+            // Unknown HBA/HBR strings should not be treated as Atom UIDs because that silently kills TG output.
+            if ((v.StartsWith("HBA_", StringComparison.OrdinalIgnoreCase) || v.StartsWith("HBR_", StringComparison.OrdinalIgnoreCase)) && !IsSafeExternalHbaAction(v))
+            {
+                DebugMessage("[HumanBodyAction] TG/HBA stale action fallback / event=" + eventName + " / value=" + v + " / fallback=" + GetDefaultTgAtomForEvent(eventName));
+                string fallback = GetDefaultTgAtomForEvent(eventName);
+                if (!string.IsNullOrEmpty(fallback)) return fallback;
+            }
+            return v;
         }
         return GetTgPrefix() + eventName;
     }
@@ -2132,6 +2349,21 @@ public class HumanBodyAction : MVRScript
                 hbaTgAtomChoices.Add(actionName);
                 hbaCount++;
             }
+        }
+        if (!hbaTgAtomChoices.Contains(HbrActionCoverRandomHand))
+        {
+            hbaTgAtomChoices.Add(HbrActionCoverRandomHand);
+            hbaCount++;
+        }
+        if (!hbaTgAtomChoices.Contains(HbrActionCoverRestore))
+        {
+            hbaTgAtomChoices.Add(HbrActionCoverRestore);
+            hbaCount++;
+        }
+        if (!hbaTgAtomChoices.Contains(HbrActionCoverRandomKneeToThigh))
+        {
+            hbaTgAtomChoices.Add(HbrActionCoverRandomKneeToThigh);
+            hbaCount++;
         }
 
         hbaTgAtomChoices.Sort(StringComparer.OrdinalIgnoreCase);
@@ -2326,8 +2558,492 @@ public class HumanBodyAction : MVRScript
             runEyes = false,
             runMouth = false,
             runHead = true,
+            runHandCover = false,
             headPreset = headPreset
         });
+    }
+
+    void RequestRandomHandCover(string source)
+    {
+        if (!ShouldRunRandomHandCover(source))
+            return;
+
+        // RandomHandCover must not use the shared latest-only action queue.
+        // Head/Twitch actions can be queued repeatedly while Inside/Deep is active, and they can overwrite
+        // a queued CoverRandomHand request before ExecuteAction reaches runHandCover.
+        // Run hand cover directly, like the knee random route, so it actually starts when the chance passes.
+        if (!IsHbaEnabled())
+        {
+            hbaLastBlock = "Disabled: cover skipped";
+            DebugMessage("[HumanBodyAction] Cover skipped because HBA Enable is OFF / source=" + source);
+            UpdateHbaStatus(true);
+            return;
+        }
+
+        if (directHandCoverRoutine != null)
+        {
+            StopCoroutine(directHandCoverRoutine);
+            directHandCoverRoutine = null;
+        }
+
+        directHandCoverRoutine = StartCoroutine(DirectRandomHandCoverRoutine(source));
+    }
+
+    IEnumerator DirectRandomHandCoverRoutine(string source)
+    {
+        hbaLastAction = source;
+        hbaLastBlock = "CoverRandomHand direct";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] ACTION START DIRECT / source=" + source + " / preset=CoverRandomHand / head=Off");
+
+        yield return StartCoroutine(RandomHandCoverRoutine(source));
+
+        DebugMessage("[HumanBodyAction] ACTION DONE DIRECT / source=" + source + " / preset=CoverRandomHand");
+        directHandCoverRoutine = null;
+    }
+
+    bool ShouldRunRandomKneeToThigh(string source)
+    {
+        // Manual button is deterministic for verification. Event/Action/TG/HBR routes obey this probability slider.
+        if (!string.IsNullOrEmpty(source) && source.StartsWith("button:"))
+            return true;
+
+        float chance = randomKneeToThighChance != null ? randomKneeToThighChance.val : RandomKneeToThighChanceDefault;
+        chance = Mathf.Clamp(chance, RandomKneeToThighChanceMin, RandomKneeToThighChanceMax);
+
+        if (chance >= 99.999f)
+            return true;
+
+        if (chance <= 0.001f)
+        {
+            hbaLastBlock = "Random knee chance skipped: 0%";
+            DebugMessage("[HumanBodyAction] Random knee chance skipped / source=" + source + " / chance=" + F1(chance) + "%");
+            UpdateHbaStatus(true);
+            return false;
+        }
+
+        float roll = UnityEngine.Random.Range(0.0f, 100.0f);
+        if (roll > chance)
+        {
+            hbaLastBlock = "Random knee chance skipped: " + F1(roll) + " > " + F1(chance) + "%";
+            DebugMessage("[HumanBodyAction] Random knee chance skipped / source=" + source + " / roll=" + F1(roll) + " / chance=" + F1(chance) + "%");
+            UpdateHbaStatus(true);
+            return false;
+        }
+
+        DebugMessage("[HumanBodyAction] Random knee chance pass / source=" + source + " / roll=" + F1(roll) + " / chance=" + F1(chance) + "%");
+        return true;
+    }
+
+    void RequestRandomKneeToThigh(string source)
+    {
+        // Random knee action is direct like the manual knee test: it must run immediately and not be swallowed by the latest-only body/head queue.
+        if (!IsHbaEnabled())
+        {
+            hbaLastBlock = "Disabled: random knee skipped";
+            DebugMessage("[HumanBodyAction] Random knee->thigh skipped because HBA Enable is OFF / source=" + source);
+            UpdateHbaStatus(true);
+            return;
+        }
+
+        if (!ShouldRunRandomKneeToThigh(source))
+        {
+            return;
+        }
+
+        // Keep RandomKnee independent from RandomHandCover.
+        // Do not clear pendingRequest, do not increment handCoverRunSerial,
+        // and do not stop directHandCoverRoutine here; otherwise a knee action
+        // can silently cancel the existing RandomHandCover route/hold.
+        targetKneeToSelfThighRunSerial++;
+
+        if (directRandomKneeRoutine != null)
+        {
+            StopCoroutine(directRandomKneeRoutine);
+            directRandomKneeRoutine = null;
+        }
+
+        directRandomKneeRoutine = StartCoroutine(DirectRandomKneeToThighRoutine(source));
+    }
+
+    IEnumerator DirectRandomKneeToThighRoutine(string source)
+    {
+        hbaLastAction = source;
+        hbaLastBlock = "Random knee -> thigh direct";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] ACTION START DIRECT / source=" + source + " / preset=RandomKneeToThigh / head=Off");
+
+        yield return StartCoroutine(RandomKneeToThighRoutine(source));
+
+        DebugMessage("[HumanBodyAction] ACTION DONE DIRECT / source=" + source + " / preset=RandomKneeToThigh");
+        directRandomKneeRoutine = null;
+    }
+
+    IEnumerator RandomKneeToThighRoutine(string source)
+    {
+        RefreshControllersNoReset();
+
+        // Restore only the previous knee hold. Do not touch hand cover here.
+        // RandomHandCover and RandomKneeToThigh must be able to coexist.
+        RestoreTargetKneeToSelfThighSnapshot("restart-random-knee");
+        int runSerial = ++targetKneeToSelfThighRunSerial;
+
+        Atom moveAtom = containingAtom;
+        Atom goalAtom = FindNearestOtherPersonAtom();
+        if (moveAtom == null || goalAtom == null)
+        {
+            hbaLastBlock = "Random knee: missing move/goal Person";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Random knee->thigh skipped / reason=missing-person" +
+                " / moveAtom=" + (moveAtom != null ? moveAtom.uid : "<none>") +
+                " / goalAtom=" + (goalAtom != null ? goalAtom.uid : "<none>") +
+                " / source=" + source);
+            yield break;
+        }
+
+        FreeControllerV3 moveLKnee = FindControllerByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee");
+        FreeControllerV3 moveRKnee = FindControllerByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee");
+        FreeControllerV3 goalLThigh = FindControllerByAliasesOnAtom(goalAtom, "lThighControl", "leftThighControl", "lThigh", "leftThigh");
+        FreeControllerV3 goalRThigh = FindControllerByAliasesOnAtom(goalAtom, "rThighControl", "rightThighControl", "rThigh", "rightThigh");
+
+        if (moveLKnee == null || moveRKnee == null || goalLThigh == null || goalRThigh == null)
+        {
+            hbaLastBlock = "Random knee: missing IK";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Random knee->thigh skipped / reason=missing-ik" +
+                " / moveAtom=" + moveAtom.uid +
+                " / goalAtom=" + goalAtom.uid +
+                " / moveLKnee=" + (moveLKnee != null ? "1" : "0") +
+                " / moveRKnee=" + (moveRKnee != null ? "1" : "0") +
+                " / goalLThigh=" + (goalLThigh != null ? "1" : "0") +
+                " / goalRThigh=" + (goalRThigh != null ? "1" : "0") +
+                " / source=" + source);
+            yield break;
+        }
+
+        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee);
+
+        bool useLeftKnee = UnityEngine.Random.Range(0, 2) == 0;
+        FreeControllerV3 moveKnee = useLeftKnee ? moveLKnee : moveRKnee;
+        string kneeLabel = useLeftKnee ? "L Knee" : "R Knee";
+
+        float moveRoll = UnityEngine.Random.Range(0.0f, 100.0f);
+        bool doMove = moveRoll < RandomKneeToThighMoveChance;
+        if (!doMove)
+        {
+            SetSingleMoveKneeFree(moveKnee, source, moveAtom.uid, goalAtom.uid, kneeLabel, "random-free");
+            hbaLastBlock = "Random knee free: " + kneeLabel;
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Random knee free hold" +
+                " / source=" + source +
+                " / moveAtom=" + moveAtom.uid +
+                " / goalAtom=" + goalAtom.uid +
+                " / knee=" + kneeLabel +
+                " / moveRoll=" + F2(moveRoll) +
+                " / moveChance=" + F2(RandomKneeToThighMoveChance) +
+                " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+            yield break;
+        }
+
+        float sideRoll = UnityEngine.Random.Range(0.0f, 100.0f);
+        bool sameSide = sideRoll < RandomKneeToThighSameSideChance;
+        FreeControllerV3 goalThigh;
+        string thighLabel;
+        if (useLeftKnee)
+        {
+            goalThigh = sameSide ? goalLThigh : goalRThigh;
+            thighLabel = sameSide ? "L Thigh" : "R Thigh";
+        }
+        else
+        {
+            goalThigh = sameSide ? goalRThigh : goalLThigh;
+            thighLabel = sameSide ? "R Thigh" : "L Thigh";
+        }
+
+        SetSingleMoveKneeFree(moveKnee, source, moveAtom.uid, goalAtom.uid, kneeLabel, "pre-free-before-random-move");
+        if (TargetKneeToSelfThighPreFreeSeconds > 0.0f)
+            yield return new WaitForSeconds(TargetKneeToSelfThighPreFreeSeconds);
+        if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+
+        Vector3 startPos = GetControllerPosition(moveKnee);
+        Vector3 goalPos = GetControllerPosition(goalThigh);
+
+        try { moveKnee.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        try { moveKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+
+        hbaLastBlock = "Random knee -> thigh: " + kneeLabel + " -> " + thighLabel;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Random knee->thigh start" +
+            " / source=" + source +
+            " / moveAtom=" + moveAtom.uid +
+            " / goalAtom=" + goalAtom.uid +
+            " / knee=" + kneeLabel +
+            " / thigh=" + thighLabel +
+            " / sameSide=" + (sameSide ? "1" : "0") +
+            " / moveRoll=" + F2(moveRoll) +
+            " / sideRoll=" + F2(sideRoll) +
+            " / start=" + V3(startPos) +
+            " / goal=" + V3(goalPos) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+
+        float dur = Mathf.Max(0.01f, TargetKneeToSelfThighMoveSeconds);
+        float startTime = Time.time;
+        while (Time.time - startTime < dur)
+        {
+            if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+            float t = Mathf.Clamp01((Time.time - startTime) / dur);
+            float e = Smooth01(t);
+            SetControllerPosition(moveKnee, Vector3.Lerp(startPos, goalPos, e));
+            yield return null;
+        }
+
+        if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+        SetControllerPosition(moveKnee, goalPos);
+
+        hbaLastBlock = "Random knee holding thigh: " + kneeLabel;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Random knee->thigh hold" +
+            " / source=" + source +
+            " / moveAtom=" + moveAtom.uid +
+            " / goalAtom=" + goalAtom.uid +
+            " / knee=" + kneeLabel +
+            " / thigh=" + thighLabel +
+            " / kneePos=" + V3(GetControllerPosition(moveKnee)) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    void SetSingleMoveKneeFree(FreeControllerV3 knee, string source, string moveUid, string goalUid, string kneeLabel, string reason)
+    {
+        if (knee != null)
+        {
+            try { knee.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { knee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+
+        hbaLastBlock = "Random knee free: " + kneeLabel;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Random knee free" +
+            " / source=" + source +
+            " / moveAtom=" + moveUid +
+            " / goalAtom=" + goalUid +
+            " / knee=" + kneeLabel +
+            " / reason=" + reason +
+            " / seconds=" + F2(TargetKneeToSelfThighPreFreeSeconds) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    void RequestTargetKneeToSelfThighTest(string source)
+    {
+        // Test button/action is direct because it is intended to verify Target knee IK routing immediately.
+        // It does not use the shared latest-only action queue or the random hand cover path.
+        suppressEventHandCoverUntil = Time.time + HandCoverManualSuppressEventSeconds;
+        pendingRequest = null;
+        handCoverRunSerial++;
+        targetKneeToSelfThighRunSerial++;
+
+        if (!IsHbaEnabled())
+        {
+            hbaLastBlock = "Disabled: target knee test skipped";
+            DebugMessage("[HumanBodyAction] Target knee test skipped because HBA Enable is OFF / source=" + source);
+            UpdateHbaStatus(true);
+            return;
+        }
+
+        if (directHandCoverRoutine != null)
+        {
+            StopCoroutine(directHandCoverRoutine);
+            directHandCoverRoutine = null;
+        }
+
+        directHandCoverRoutine = StartCoroutine(DirectTargetKneeToSelfThighTestRoutine(source));
+    }
+
+    IEnumerator DirectTargetKneeToSelfThighTestRoutine(string source)
+    {
+        hbaLastAction = source;
+        hbaLastBlock = "Move knee -> other thigh direct prefree";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] ACTION START DIRECT / source=" + source + " / preset=TargetKneeToSelfThighTest / head=Off");
+
+        yield return StartCoroutine(TargetKneeToSelfThighTestRoutine(source));
+
+        suppressEventHandCoverUntil = Mathf.Max(suppressEventHandCoverUntil, Time.time + HandCoverManualSuppressEventSeconds);
+        DebugMessage("[HumanBodyAction] ACTION DONE DIRECT / source=" + source + " / preset=TargetKneeToSelfThighTest");
+        directHandCoverRoutine = null;
+    }
+
+    IEnumerator TargetKneeToSelfThighTestRoutine(string source)
+    {
+        RefreshControllersNoReset();
+
+        // This test is not a hand-cover action. Restore any held cover first so the old hand route does not confuse verification.
+        // Important: RestoreTargetKneeToSelfThighSnapshot increments targetKneeToSelfThighRunSerial.
+        // Assign this run serial AFTER restore, otherwise the route exits after pre-free before moving.
+        RestoreHandCoverSnapshot("target-knee-test-start");
+        RestoreTargetKneeToSelfThighSnapshot("restart-target-knee-test");
+        int runSerial = ++targetKneeToSelfThighRunSerial;
+
+        Atom moveAtom = containingAtom;
+        Atom goalAtom = FindNearestOtherPersonAtom();
+        if (moveAtom == null || goalAtom == null)
+        {
+            hbaLastBlock = "Knee test: missing move/goal Person";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Knee->thigh test skipped / reason=missing-person" +
+                " / moveAtom=" + (moveAtom != null ? moveAtom.uid : "<none>") +
+                " / goalAtom=" + (goalAtom != null ? goalAtom.uid : "<none>") +
+                " / source=" + source);
+            yield break;
+        }
+
+        // v055: opposite route from v054.
+        // Move the knees on the Person that owns this HumanBodyAction, and use the nearest other Person thighs as the goals.
+        FreeControllerV3 moveLKnee = FindControllerByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee");
+        FreeControllerV3 moveRKnee = FindControllerByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee");
+        FreeControllerV3 goalLThigh = FindControllerByAliasesOnAtom(goalAtom, "lThighControl", "leftThighControl", "lThigh", "leftThigh");
+        FreeControllerV3 goalRThigh = FindControllerByAliasesOnAtom(goalAtom, "rThighControl", "rightThighControl", "rThigh", "rightThigh");
+
+        if (moveLKnee == null || moveRKnee == null || goalLThigh == null || goalRThigh == null)
+        {
+            hbaLastBlock = "Knee test: missing IK";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Knee->thigh test skipped / reason=missing-ik" +
+                " / moveAtom=" + moveAtom.uid +
+                " / goalAtom=" + goalAtom.uid +
+                " / moveLKnee=" + (moveLKnee != null ? "1" : "0") +
+                " / moveRKnee=" + (moveRKnee != null ? "1" : "0") +
+                " / goalLThigh=" + (goalLThigh != null ? "1" : "0") +
+                " / goalRThigh=" + (goalRThigh != null ? "1" : "0") +
+                " / source=" + source);
+            yield break;
+        }
+
+        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee);
+
+        // Briefly free the moving knees first so the current IK chain does not fight the move.
+        // Then positionState is turned back On and the knees are moved to the other Person's thighs.
+        SetTargetKneePreFreeForTest(moveLKnee, moveRKnee, source, moveAtom.uid, goalAtom.uid);
+        if (TargetKneeToSelfThighPreFreeSeconds > 0.0f)
+            yield return new WaitForSeconds(TargetKneeToSelfThighPreFreeSeconds);
+        if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+
+        Vector3 lStart = GetControllerPosition(moveLKnee);
+        Vector3 rStart = GetControllerPosition(moveRKnee);
+        Vector3 lGoal = GetControllerPosition(goalLThigh);
+        Vector3 rGoal = GetControllerPosition(goalRThigh);
+
+        try { moveLKnee.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        try { moveRKnee.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        // Keep moving knee rotation free while the position IK is moved.
+        try { moveLKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        try { moveRKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+
+        hbaLastBlock = "Move knee -> other thigh: " + moveAtom.uid + " -> " + goalAtom.uid;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Move knee->other thigh start" +
+            " / source=" + source +
+            " / moveAtom=" + moveAtom.uid +
+            " / goalAtom=" + goalAtom.uid +
+            " / lStart=" + V3(lStart) +
+            " / lGoal=" + V3(lGoal) +
+            " / rStart=" + V3(rStart) +
+            " / rGoal=" + V3(rGoal) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+
+        float dur = Mathf.Max(0.01f, TargetKneeToSelfThighMoveSeconds);
+        float start = Time.time;
+        while (Time.time - start < dur)
+        {
+            if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+            float t = Mathf.Clamp01((Time.time - start) / dur);
+            float e = Smooth01(t);
+            SetControllerPosition(moveLKnee, Vector3.Lerp(lStart, lGoal, e));
+            SetControllerPosition(moveRKnee, Vector3.Lerp(rStart, rGoal, e));
+            yield return null;
+        }
+
+        if (runSerial != targetKneeToSelfThighRunSerial) yield break;
+        SetControllerPosition(moveLKnee, lGoal);
+        SetControllerPosition(moveRKnee, rGoal);
+
+        hbaLastBlock = "Move knee holding other thigh";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Move knee->other thigh hold" +
+            " / source=" + source +
+            " / moveAtom=" + moveAtom.uid +
+            " / goalAtom=" + goalAtom.uid +
+            " / lKnee=" + V3(GetControllerPosition(moveLKnee)) +
+            " / rKnee=" + V3(GetControllerPosition(moveRKnee)) +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+
+    void SetTargetKneePreFreeForTest(FreeControllerV3 lKnee, FreeControllerV3 rKnee, string source, string moveUid, string goalUid)
+    {
+        if (lKnee != null)
+        {
+            try { lKnee.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { lKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+        if (rKnee != null)
+        {
+            try { rKnee.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { rKnee.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        }
+
+        hbaLastBlock = "Move knee pre-free: " + moveUid;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Move knee pre-free" +
+            " / source=" + source +
+            " / moveAtom=" + moveUid +
+            " / goalAtom=" + goalUid +
+            " / seconds=" + F2(TargetKneeToSelfThighPreFreeSeconds) +
+            " / lKnee=" + (lKnee != null ? "free" : "none") +
+            " / rKnee=" + (rKnee != null ? "free" : "none") +
+            " / next=move-knee-to-other-thigh" +
+            " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    bool ShouldRunRandomHandCover(string source)
+    {
+        // Manual button is a test button, so it always runs.
+        // Event/Action/TG/HBR routes obey the probability slider to avoid firing on every Inside Active tick.
+        if (!string.IsNullOrEmpty(source) && source.StartsWith("button:"))
+            return true;
+
+        if (Time.time < suppressEventHandCoverUntil)
+        {
+            hbaLastBlock = "Cover skipped: manual test hold";
+            DebugMessage("[HumanBodyAction] Cover skipped / source=" + source + " / reason=manual-test-hold / remain=" + F1(suppressEventHandCoverUntil - Time.time));
+            UpdateHbaStatus(true);
+            return false;
+        }
+
+        float chance = handCoverChance != null ? handCoverChance.val : HandCoverChanceDefault;
+        chance = Mathf.Clamp(chance, HandCoverChanceMin, HandCoverChanceMax);
+
+        if (chance >= 99.999f)
+            return true;
+
+        if (chance <= 0.001f)
+        {
+            hbaLastBlock = "Cover chance skipped: 0%";
+            DebugMessage("[HumanBodyAction] Cover chance skipped / source=" + source + " / chance=" + F1(chance) + "%");
+            UpdateHbaStatus(true);
+            return false;
+        }
+
+        float roll = UnityEngine.Random.Range(0.0f, 100.0f);
+        if (roll > chance)
+        {
+            hbaLastBlock = "Cover chance skipped: " + F1(roll) + " > " + F1(chance) + "%";
+            DebugMessage("[HumanBodyAction] Cover chance skipped / source=" + source + " / roll=" + F1(roll) + " / chance=" + F1(chance) + "%");
+            UpdateHbaStatus(true);
+            return false;
+        }
+
+        DebugMessage("[HumanBodyAction] Cover chance hit / source=" + source + " / roll=" + F1(roll) + " / chance=" + F1(chance) + "%");
+        return true;
     }
 
     void QueueAction(ActionRequest request)
@@ -2414,6 +3130,16 @@ public class HumanBodyAction : MVRScript
         if (request.runHead && IsHeadActionEnabled() && !IsOff(request.headPreset))
         {
             yield return StartCoroutine(PlayHeadPoseByName(request.headPreset));
+        }
+
+        if (request.runHandCover)
+        {
+            yield return StartCoroutine(RandomHandCoverRoutine(request.source));
+        }
+
+        if (request.runTargetKneeToSelfThighTest)
+        {
+            yield return StartCoroutine(TargetKneeToSelfThighTestRoutine(request.source));
         }
 
         DebugMessage("[HumanBodyAction] ACTION DONE / source=" + request.source + " / preset=" + request.preset);
@@ -2517,6 +3243,751 @@ public class HumanBodyAction : MVRScript
         SetFloat(hitCount, hitCountValue);
         SetFloat(sharpness, sharpnessValue);
         SetFloat(randomness, randomnessValue);
+    }
+
+
+    IEnumerator RandomHandCoverRoutine(string source)
+    {
+        return RandomHandCoverRoutine(source, false);
+    }
+
+    IEnumerator RandomHandCoverRoutine(string source, bool kneeThighTestOnly)
+    {
+        int runSerial = ++handCoverRunSerial;
+        RefreshControllersNoReset();
+
+        // v039: a previous cover hand stays at the cover point until explicit restore/reset.
+        // Before starting a new random cover, restore the previous hand first so hand-free detection is correct.
+        RestoreHandCoverSnapshot("restart-cover");
+
+        FreeControllerV3 leftHand = FindControllerByAliases("lHandControl", "leftHandControl", "lHand");
+        FreeControllerV3 rightHand = FindControllerByAliases("rHandControl", "rightHandControl", "rHand");
+
+        List<FreeControllerV3> freeHands = new List<FreeControllerV3>();
+        if (IsHandFreeForCover(leftHand)) freeHands.Add(leftHand);
+        if (IsHandFreeForCover(rightHand)) freeHands.Add(rightHand);
+
+        // In many VaM poses both hand IK controllers are already PositionState.On even though
+        // they are not being held by this HBA cover routine. Older builds treated that as
+        // "no free hand" and skipped forever. Prefer Off/Comply hands, but if both are On,
+        // fall back to either available hand so RandomHandCover can still run.
+        if (freeHands.Count == 0)
+        {
+            if (leftHand != null) freeHands.Add(leftHand);
+            if (rightHand != null) freeHands.Add(rightHand);
+
+            if (freeHands.Count > 0)
+            {
+                DebugMessage("[HumanBodyAction] Cover hand fallback / reason=no-position-off-hand" +
+                    " / source=" + source +
+                    " / lState=" + GetPositionStateLabel(leftHand) +
+                    " / rState=" + GetPositionStateLabel(rightHand) +
+                    " / candidates=" + freeHands.Count);
+            }
+        }
+
+        if (freeHands.Count == 0)
+        {
+            hbaLastBlock = "Cover: no hand controller";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Cover skipped / no hand controller / source=" + source);
+            yield break;
+        }
+
+        FreeControllerV3 hand = freeHands[UnityEngine.Random.Range(0, freeHands.Count)];
+        Vector3 startPosition = GetControllerPosition(hand);
+
+        List<HandCoverTarget> targets = kneeThighTestOnly
+            ? BuildHandCoverSelfThighTestTargets(startPosition)
+            : BuildMixedHandCoverTargets(startPosition);
+        if (targets.Count == 0)
+        {
+            hbaLastBlock = kneeThighTestOnly ? "Cover test: no Self Thigh target" : "Cover: no target";
+            UpdateHbaStatus(true);
+            DebugMessage("[HumanBodyAction] Cover skipped / no target / source=" + source + " / hand=" + GetHandLabel(hand) + " / kneeThighTest=" + (kneeThighTestOnly ? "1" : "0"));
+            yield break;
+        }
+
+        HandCoverTarget target = targets[UnityEngine.Random.Range(0, targets.Count)];
+
+        CaptureHandCoverSnapshot(hand);
+        RelaxHandCoverElbow(hand);
+
+        Quaternion lockedRotation = GetControllerRotation(hand);
+        Vector3 coverOut = target.outward;
+        if (coverOut.sqrMagnitude < 0.0001f) coverOut = Vector3.forward;
+        coverOut.Normalize();
+        float targetOffset = target.pushAway
+            ? Mathf.Clamp(handCoverPushAwayOffset != null ? handCoverPushAwayOffset.val : HandCoverPushAwayOffsetDefault, HandCoverPushAwayOffsetMin, HandCoverPushAwayOffsetMax)
+            : HandCoverSurfaceOffset;
+        Vector3 coverPosition = target.position + coverOut * targetOffset;
+
+        try
+        {
+            hand.currentPositionState = FreeControllerV3.PositionState.On;
+        }
+        catch { }
+
+        // v039: position-only cover hold. Rotation IK is OFF and the current wrist rotation is kept.
+        // The hand does not auto-return; HBA_Cover_Restore/HBR_Cover_Restore or HBA_Reset restores it.
+        try
+        {
+            hand.currentRotationState = FreeControllerV3.RotationState.Off;
+        }
+        catch { }
+        SetControllerRotation(hand, lockedRotation);
+
+        string coverMode = kneeThighTestOnly ? "SelfThighTest" : target.pushAway ? "PushAway" : "Cover";
+        coverPosition = ClampHandCoverCommandPosition(startPosition, coverPosition, coverMode, target.label, kneeThighTestOnly);
+        hbaLastBlock = coverMode + " hold: " + GetHandLabel(hand) + " -> " + target.label;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Cover start / mode=" + coverMode + " / source=" + source + " / hand=" + GetHandLabel(hand) + " / target=" + target.label + " / start=" + V3(startPosition) + " / cover=" + V3(coverPosition) + " / offset=" + F3(targetOffset) + " / rot=off-fixed / return=manual");
+
+        yield return StartCoroutine(MoveHandCoverPosition(hand, startPosition, coverPosition, HandCoverMoveSeconds, lockedRotation, true));
+        if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
+
+        // v045: Hidden fixed soft snap. Give VaM/body collision a short moment to settle while the hand is
+        // still commanded toward the cover point, then snap the IK control back toward the actual body hand.
+        // This reduces the strong "push through the body" feeling without exposing more tuning UI.
+        yield return StartCoroutine(HoldHandCoverPosition(hand, coverPosition, Mathf.Max(0.01f, HandCoverSoftSnapDelay), lockedRotation, true));
+        if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
+
+        Vector3 holdPosition = SoftSnapHandCoverPosition(hand, coverPosition, lockedRotation, coverMode, target.label);
+        yield return StartCoroutine(HoldHandCoverPosition(hand, holdPosition, Mathf.Max(0.01f, HandCoverHoldSeconds), lockedRotation, true));
+        if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
+
+        SetControllerPosition(hand, holdPosition);
+        SetControllerRotation(hand, lockedRotation);
+        hbaLastBlock = coverMode + " holding: " + target.label;
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Cover hold / mode=" + coverMode + " / source=" + source + " / hand=" + GetHandLabel(hand) + " / target=" + target.label + " / hold=" + V3(holdPosition) + " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+    }
+
+    bool IsHandCoverRunStillCurrent(int runSerial)
+    {
+        return runSerial == handCoverRunSerial;
+    }
+
+    Vector3 ClampHandCoverCommandPosition(Vector3 startPosition, Vector3 commandPosition, string coverMode, string targetLabel, bool kneeThighTestOnly)
+    {
+        float maxDistance = kneeThighTestOnly ? HandCoverKneeThighCommandMaxDistance : HandCoverCommandMaxDistance;
+        Vector3 delta = commandPosition - startPosition;
+        float distance = delta.magnitude;
+        if (distance <= maxDistance || distance < 0.0001f)
+            return commandPosition;
+
+        Vector3 clamped = startPosition + delta.normalized * maxDistance;
+        DebugMessage("[HumanBodyAction] Cover command clamp / mode=" + coverMode + " / target=" + targetLabel + " / from=" + V3(startPosition) + " / requested=" + V3(commandPosition) + " / clamped=" + V3(clamped) + " / dist=" + F3(distance) + " / max=" + F3(maxDistance));
+        return clamped;
+    }
+
+    IEnumerator MoveHandCoverPosition(FreeControllerV3 hand, Vector3 from, Vector3 to, float seconds, Quaternion lockedRotation, bool lockRotation)
+    {
+        if (hand == null) yield break;
+
+        float dur = Mathf.Max(0.01f, seconds);
+        float start = Time.time;
+        while (Time.time - start < dur)
+        {
+            float t = Mathf.Clamp01((Time.time - start) / dur);
+            float e = Smooth01(t);
+            SetControllerPosition(hand, Vector3.Lerp(from, to, e));
+            if (lockRotation) SetControllerRotation(hand, lockedRotation);
+            yield return null;
+        }
+        SetControllerPosition(hand, to);
+        if (lockRotation) SetControllerRotation(hand, lockedRotation);
+    }
+
+    IEnumerator HoldHandCoverPosition(FreeControllerV3 hand, Vector3 position, float seconds, Quaternion lockedRotation, bool lockRotation)
+    {
+        if (hand == null) yield break;
+
+        float dur = Mathf.Max(0.01f, seconds);
+        float start = Time.time;
+        while (Time.time - start < dur)
+        {
+            SetControllerPosition(hand, position);
+            if (lockRotation) SetControllerRotation(hand, lockedRotation);
+            yield return null;
+        }
+        SetControllerPosition(hand, position);
+        if (lockRotation) SetControllerRotation(hand, lockedRotation);
+    }
+
+    Vector3 SoftSnapHandCoverPosition(FreeControllerV3 hand, Vector3 commandedPosition, Quaternion lockedRotation, string coverMode, string targetLabel)
+    {
+        if (hand == null) return commandedPosition;
+
+        Vector3 bodyHandPosition;
+        string bodyHandName;
+        if (!TryGetBodyTransformPositionForController(hand, out bodyHandPosition, out bodyHandName))
+        {
+            DebugMessage("[HumanBodyAction] Cover soft snap skip / reason=no-body-transform / hand=" + GetHandLabel(hand) + " / mode=" + coverMode + " / target=" + targetLabel);
+            return commandedPosition;
+        }
+
+        float distance = Vector3.Distance(commandedPosition, bodyHandPosition);
+        if (distance < HandCoverSoftSnapMinDistance)
+        {
+            DebugMessage("[HumanBodyAction] Cover soft snap skip / reason=near / hand=" + GetHandLabel(hand) + " / mode=" + coverMode + " / target=" + targetLabel + " / dist=" + F3(distance));
+            return commandedPosition;
+        }
+
+        Vector3 snappedPosition = bodyHandPosition;
+        bool clamped = distance > HandCoverSoftSnapMaxDistance;
+        // v048: For cover actions the snap is intended to stop the command from pushing through the body.
+        // Holding the actual body-hand position is safer than holding a point still biased toward an unreachable command.
+        // The max value is kept only as a diagnostic threshold in the log.
+
+        SetControllerPosition(hand, snappedPosition);
+        SetControllerRotation(hand, lockedRotation);
+
+        DebugMessage("[HumanBodyAction] Cover soft snap / hand=" + GetHandLabel(hand) + " / body=" + bodyHandName + " / mode=" + coverMode + " / target=" + targetLabel + " / commanded=" + V3(commandedPosition) + " / bodyPos=" + V3(bodyHandPosition) + " / hold=" + V3(snappedPosition) + " / dist=" + F3(distance) + " / max=" + F3(HandCoverSoftSnapMaxDistance) + " / clamped=" + (clamped ? "1" : "0"));
+        return snappedPosition;
+    }
+
+    bool TryGetBodyTransformPositionForController(FreeControllerV3 controller, out Vector3 position, out string transformName)
+    {
+        position = Vector3.zero;
+        transformName = "";
+
+        if (controller == null || containingAtom == null || string.IsNullOrEmpty(controller.name))
+            return false;
+
+        string keyword = controller.name.Replace("Control", "").Replace("control", "").ToLowerInvariant();
+        if (string.IsNullOrEmpty(keyword))
+            return false;
+
+        Transform[] transforms = containingAtom.GetComponentsInChildren<Transform>(false);
+        if (transforms == null)
+            return false;
+
+        Transform best = null;
+        float bestDistance = float.MaxValue;
+        Vector3 current = GetControllerPosition(controller);
+
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            Transform t = transforms[i];
+            if (t == null || string.IsNullOrEmpty(t.name))
+                continue;
+
+            string n = t.name.ToLowerInvariant();
+            if (n.Contains("control"))
+                continue;
+            if (!n.Contains(keyword))
+                continue;
+
+            float d = Vector3.Distance(current, t.position);
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = t;
+            }
+        }
+
+        if (best == null)
+            return false;
+
+        position = best.position;
+        transformName = best.name;
+        return true;
+    }
+
+    bool IsHandFreeForCover(FreeControllerV3 hand)
+    {
+        if (hand == null) return false;
+        try
+        {
+            return hand.currentPositionState != FreeControllerV3.PositionState.On;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    void CaptureHandCoverSnapshot(FreeControllerV3 hand)
+    {
+        if (hand == null) return;
+        activeHandCoverSnapshot = new HandCoverSnapshot();
+        activeHandCoverSnapshot.hand = hand;
+        activeHandCoverSnapshot.position = GetControllerPosition(hand);
+        activeHandCoverSnapshot.rotation = GetControllerRotation(hand);
+        activeHandCoverSnapshot.positionState = hand.currentPositionState;
+        activeHandCoverSnapshot.rotationState = hand.currentRotationState;
+
+        FreeControllerV3 elbow = FindMatchingElbowForHandCover(hand);
+        if (elbow != null)
+        {
+            activeHandCoverSnapshot.elbow = elbow;
+            activeHandCoverSnapshot.elbowPosition = GetControllerPosition(elbow);
+            activeHandCoverSnapshot.elbowRotation = GetControllerRotation(elbow);
+            activeHandCoverSnapshot.elbowPositionState = elbow.currentPositionState;
+            activeHandCoverSnapshot.elbowRotationState = elbow.currentRotationState;
+        }
+    }
+
+    void RestoreHandCoverSnapshot(string reason)
+    {
+        if (activeHandCoverSnapshot == null) return;
+
+        HandCoverSnapshot snap = activeHandCoverSnapshot;
+        activeHandCoverSnapshot = null;
+
+        if (snap.hand != null)
+        {
+            SetControllerPosition(snap.hand, snap.position);
+            SetControllerRotation(snap.hand, snap.rotation);
+            try { snap.hand.currentPositionState = snap.positionState; } catch { }
+            try { snap.hand.currentRotationState = snap.rotationState; } catch { }
+        }
+
+        if (snap.elbow != null)
+        {
+            SetControllerPosition(snap.elbow, snap.elbowPosition);
+            SetControllerRotation(snap.elbow, snap.elbowRotation);
+            try { snap.elbow.currentPositionState = snap.elbowPositionState; } catch { }
+            try { snap.elbow.currentRotationState = snap.elbowRotationState; } catch { }
+        }
+
+        DebugMessage("[HumanBodyAction] Cover restore / reason=" + reason + " / hand=" + GetHandLabel(snap.hand) + " / elbow=" + GetControllerLabel(snap.elbow));
+    }
+
+
+
+    void CaptureTargetKneeToSelfThighSnapshot(Atom targetAtom, FreeControllerV3 lKnee, FreeControllerV3 rKnee)
+    {
+        activeTargetKneeToSelfThighSnapshot = new TargetKneeToSelfThighSnapshot();
+        activeTargetKneeToSelfThighSnapshot.targetAtom = targetAtom;
+        activeTargetKneeToSelfThighSnapshot.lKnee = lKnee;
+        activeTargetKneeToSelfThighSnapshot.rKnee = rKnee;
+
+        if (lKnee != null)
+        {
+            activeTargetKneeToSelfThighSnapshot.lKneePosition = GetControllerPosition(lKnee);
+            activeTargetKneeToSelfThighSnapshot.lKneeRotation = GetControllerRotation(lKnee);
+            activeTargetKneeToSelfThighSnapshot.lKneePositionState = lKnee.currentPositionState;
+            activeTargetKneeToSelfThighSnapshot.lKneeRotationState = lKnee.currentRotationState;
+        }
+
+        if (rKnee != null)
+        {
+            activeTargetKneeToSelfThighSnapshot.rKneePosition = GetControllerPosition(rKnee);
+            activeTargetKneeToSelfThighSnapshot.rKneeRotation = GetControllerRotation(rKnee);
+            activeTargetKneeToSelfThighSnapshot.rKneePositionState = rKnee.currentPositionState;
+            activeTargetKneeToSelfThighSnapshot.rKneeRotationState = rKnee.currentRotationState;
+        }
+    }
+
+    void RestoreTargetKneeToSelfThighSnapshot(string reason)
+    {
+        if (activeTargetKneeToSelfThighSnapshot == null) return;
+
+        TargetKneeToSelfThighSnapshot snap = activeTargetKneeToSelfThighSnapshot;
+        activeTargetKneeToSelfThighSnapshot = null;
+        targetKneeToSelfThighRunSerial++;
+
+        if (snap.lKnee != null)
+        {
+            SetControllerPosition(snap.lKnee, snap.lKneePosition);
+            SetControllerRotation(snap.lKnee, snap.lKneeRotation);
+            try { snap.lKnee.currentPositionState = snap.lKneePositionState; } catch { }
+            try { snap.lKnee.currentRotationState = snap.lKneeRotationState; } catch { }
+        }
+
+        if (snap.rKnee != null)
+        {
+            SetControllerPosition(snap.rKnee, snap.rKneePosition);
+            SetControllerRotation(snap.rKnee, snap.rKneeRotation);
+            try { snap.rKnee.currentPositionState = snap.rKneePositionState; } catch { }
+            try { snap.rKnee.currentRotationState = snap.rKneeRotationState; } catch { }
+        }
+
+        DebugMessage("[HumanBodyAction] Move knee->other thigh restore / reason=" + reason + " / moveAtom=" + (snap.targetAtom != null ? snap.targetAtom.uid : "<none>"));
+    }
+
+    FreeControllerV3 FindMatchingElbowForHandCover(FreeControllerV3 hand)
+    {
+        if (hand == null || string.IsNullOrEmpty(hand.name)) return null;
+        string n = hand.name.ToLowerInvariant();
+        if (n.Contains("lhand") || n.Contains("lefthand"))
+            return FindControllerByAliases("lElbowControl", "leftElbowControl", "lElbow", "leftElbow");
+        if (n.Contains("rhand") || n.Contains("righthand"))
+            return FindControllerByAliases("rElbowControl", "rightElbowControl", "rElbow", "rightElbow");
+        return null;
+    }
+
+    void RelaxHandCoverElbow(FreeControllerV3 hand)
+    {
+        FreeControllerV3 elbow = activeHandCoverSnapshot != null ? activeHandCoverSnapshot.elbow : FindMatchingElbowForHandCover(hand);
+        if (elbow == null) return;
+        try { elbow.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+        try { elbow.currentRotationState = FreeControllerV3.RotationState.Comply; } catch { }
+        DebugMessage("[HumanBodyAction] Cover elbow comply / hand=" + GetHandLabel(hand) + " / elbow=" + GetControllerLabel(elbow));
+    }
+
+    string GetControllerLabel(FreeControllerV3 fc)
+    {
+        return fc != null && !string.IsNullOrEmpty(fc.name) ? fc.name : "<none>";
+    }
+
+    string GetPositionStateLabel(FreeControllerV3 fc)
+    {
+        if (fc == null) return "<none>";
+        try { return fc.currentPositionState.ToString(); }
+        catch { return "<error>"; }
+    }
+
+    List<HandCoverTarget> BuildHandCoverSelfThighTestTargets(Vector3 handStartPosition)
+    {
+        List<HandCoverTarget> targets = new List<HandCoverTarget>();
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+
+        // Test-only route: keep the main random Cover scope untouched and only sample from
+        // reachable Self-side L/R Thigh push-away points. Target L/R Knee was intentionally removed.
+
+        FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
+        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
+        Vector3 bodyCenter = hip != null ? GetControllerPosition(hip) : chest != null ? GetControllerPosition(chest) : (containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+
+        AddControlPushAwayTarget(targets, "Self L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "Self R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), handStartPosition, bodyCenter);
+
+        DebugMessage("[HumanBodyAction] Cover self thigh test targets / count=" + targets.Count);
+        return targets;
+    }
+
+    List<HandCoverTarget> BuildMixedHandCoverTargets(Vector3 handStartPosition)
+    {
+        List<HandCoverTarget> coverTargets = BuildHandCoverTargets();
+        List<HandCoverTarget> pushAwayTargets = BuildHandCoverPushAwayTargets(handStartPosition);
+        string scope = GetHandCoverScope();
+
+        if (scope == HandCoverScopeSelf)
+        {
+            DebugMessage("[HumanBodyAction] Cover scope / scope=Self / pushTargets=" + pushAwayTargets.Count);
+            return pushAwayTargets;
+        }
+
+        if (scope == HandCoverScopeTarget)
+        {
+            DebugMessage("[HumanBodyAction] Cover scope / scope=Target / coverTargets=" + coverTargets.Count);
+            return coverTargets;
+        }
+
+        float mix = handCoverPushAwayMix != null ? handCoverPushAwayMix.val : HandCoverPushAwayMixDefault;
+        mix = Mathf.Clamp(mix, HandCoverPushAwayMixMin, HandCoverPushAwayMixMax);
+
+        bool preferPushAway = false;
+        if (mix >= 99.999f)
+        {
+            preferPushAway = true;
+        }
+        else if (mix > 0.001f)
+        {
+            float roll = UnityEngine.Random.Range(0.0f, 100.0f);
+            preferPushAway = roll <= mix;
+            DebugMessage("[HumanBodyAction] Cover mix roll / scope=All / roll=" + F1(roll) + " / mix=" + F1(mix) + "% / pushTargets=" + pushAwayTargets.Count + " / coverTargets=" + coverTargets.Count);
+        }
+
+        if (preferPushAway && pushAwayTargets.Count > 0)
+            return pushAwayTargets;
+
+        if (!preferPushAway && coverTargets.Count > 0)
+            return coverTargets;
+
+        // All mode fallback: if the selected branch has no valid targets, use the other branch instead.
+        if (pushAwayTargets.Count > 0)
+            return pushAwayTargets;
+
+        return coverTargets;
+    }
+
+    string GetHandCoverScope()
+    {
+        if (handCoverScope == null || string.IsNullOrEmpty(handCoverScope.val)) return HandCoverScopeDefault;
+        if (handCoverScope.val == HandCoverScopeSelf) return HandCoverScopeSelf;
+        if (handCoverScope.val == HandCoverScopeTarget) return HandCoverScopeTarget;
+        return HandCoverScopeAll;
+    }
+
+    List<HandCoverTarget> BuildHandCoverPushAwayTargets(Vector3 handStartPosition)
+    {
+        List<HandCoverTarget> targets = new List<HandCoverTarget>();
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+
+        FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
+        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
+        Vector3 bodyCenter = hip != null ? GetControllerPosition(hip) : chest != null ? GetControllerPosition(chest) : (containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+
+        AddControlPushAwayTarget(targets, "Self Head", FindControllerByAliases("headControl", "head"), handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "Self Chest", chest, handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "Self L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "Self R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), handStartPosition, bodyCenter);
+
+        return targets;
+    }
+
+    void AddControlPushAwayTarget(List<HandCoverTarget> targets, string label, FreeControllerV3 control, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (control == null) return;
+        AddPushAwayTargetIfReachable(targets, label, GetControllerPosition(control), Vector3.zero, handStartPosition, bodyCenter);
+    }
+
+    void AddPushAwayTargetIfReachable(List<HandCoverTarget> targets, string label, Vector3 position, Vector3 preferredOutward, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (targets == null) return;
+
+        float reach = handCoverPushAwayReach != null ? handCoverPushAwayReach.val : HandCoverPushAwayReachDefault;
+        reach = Mathf.Clamp(reach, HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
+        float distance = Vector3.Distance(handStartPosition, position);
+        if (distance > reach)
+        {
+            DebugMessage("[HumanBodyAction] PushAway skip reach / target=" + label + " / dist=" + F3(distance) + " / reach=" + F3(reach));
+            return;
+        }
+
+        Vector3 outward = preferredOutward;
+        if (outward.sqrMagnitude < 0.0001f)
+        {
+            outward = position - bodyCenter;
+            outward.y *= 0.35f;
+        }
+        if (outward.sqrMagnitude < 0.0001f)
+        {
+            Vector3 forward;
+            Vector3 right;
+            GetCoverBodyAxes(out forward, out right);
+            outward = forward;
+        }
+        if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
+        outward.Normalize();
+
+        targets.Add(new HandCoverTarget(label, position, outward, true));
+    }
+
+
+    List<HandCoverTarget> BuildHandCoverTargets()
+    {
+        List<HandCoverTarget> targets = new List<HandCoverTarget>();
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+        Vector3 up = Vector3.up;
+
+        AddControlCoverTarget(targets, "Head", FindControllerByAliases("headControl", "head"), forward);
+        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
+        AddControlCoverTarget(targets, "Chest", FindControllerByAliases("chestControl", "chest"), forward);
+
+
+        FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
+        if (hip != null)
+        {
+            Vector3 back = -forward;
+            if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
+            back.Normalize();
+            HandCoverTarget hipBackTarget = new HandCoverTarget("Hip Back", GetControllerPosition(hip) + back * HandCoverHipBackOffset + up * 0.035f, back);
+            int hipBackWeight = Mathf.Max(1, HandCoverHipBackWeight);
+            for (int i = 0; i < hipBackWeight; i++)
+            {
+                targets.Add(hipBackTarget);
+            }
+        }
+
+        AddControlCoverTarget(targets, "L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), forward);
+        AddControlCoverTarget(targets, "R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), forward);
+        AddControlCoverTarget(targets, "L Knee", FindControllerByAliases("lKneeControl", "leftKneeControl", "lKnee", "leftKnee"), forward);
+        AddControlCoverTarget(targets, "R Knee", FindControllerByAliases("rKneeControl", "rightKneeControl", "rKnee", "rightKnee"), forward);
+
+        return targets;
+    }
+
+    void AddControlCoverTarget(List<HandCoverTarget> targets, string label, FreeControllerV3 control, Vector3 outward)
+    {
+        if (targets == null || control == null) return;
+        targets.Add(new HandCoverTarget(label, GetControllerPosition(control), outward));
+    }
+
+
+    void GetCoverBodyAxes(out Vector3 forward, out Vector3 right)
+    {
+        Quaternion rot = Quaternion.identity;
+        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
+        FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
+        if (chest != null) rot = GetControllerRotation(chest);
+        else if (hip != null) rot = GetControllerRotation(hip);
+        else if (containingAtom != null && containingAtom.transform != null) rot = containingAtom.transform.rotation;
+
+        forward = rot * Vector3.forward;
+        forward.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            forward = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.forward : Vector3.forward;
+            forward.y = 0.0f;
+        }
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+
+        right = rot * Vector3.right;
+        right.y = 0.0f;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.Cross(Vector3.up, forward);
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        right.Normalize();
+    }
+
+
+
+    Atom FindNearestOtherPersonAtom()
+    {
+        if (SuperController.singleton == null || containingAtom == null || containingAtom.transform == null)
+            return null;
+
+        Atom best = null;
+        float bestDistanceSqr = float.MaxValue;
+        Vector3 selfPos = containingAtom.transform.position;
+        List<Atom> atoms = SuperController.singleton.GetAtoms();
+        if (atoms == null) return null;
+
+        for (int i = 0; i < atoms.Count; i++)
+        {
+            Atom atom = atoms[i];
+            if (atom == null || atom == containingAtom || atom.type != "Person" || atom.transform == null)
+                continue;
+
+            float d = (atom.transform.position - selfPos).sqrMagnitude;
+            if (d < bestDistanceSqr)
+            {
+                bestDistanceSqr = d;
+                best = atom;
+            }
+        }
+
+        return best;
+    }
+
+    FreeControllerV3 FindControllerByAliasesOnAtom(Atom atom, params string[] aliases)
+    {
+        if (atom == null || aliases == null) return null;
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            FreeControllerV3 found = FindControllerExactOnly(atom, aliases[i]);
+            if (found != null) return found;
+        }
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            FreeControllerV3 found = FindControllerContains(atom, aliases[i]);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    FreeControllerV3 FindControllerByAliases(params string[] aliases)
+    {
+        if (aliases == null) return null;
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            FreeControllerV3 found = FindControllerExactOnly(containingAtom, aliases[i]);
+            if (found != null) return found;
+        }
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            FreeControllerV3 found = FindControllerContains(containingAtom, aliases[i]);
+            if (found != null) return found;
+        }
+
+        return null;
+    }
+
+    FreeControllerV3 FindControllerExactOnly(Atom atom, string controllerName)
+    {
+        if (atom == null || atom.freeControllers == null || string.IsNullOrEmpty(controllerName)) return null;
+        for (int i = 0; i < atom.freeControllers.Length; i++)
+        {
+            FreeControllerV3 fc = atom.freeControllers[i];
+            if (fc != null && string.Equals(fc.name, controllerName, StringComparison.OrdinalIgnoreCase)) return fc;
+        }
+        return null;
+    }
+
+    FreeControllerV3 FindControllerContains(Atom atom, string controllerName)
+    {
+        if (atom == null || atom.freeControllers == null || string.IsNullOrEmpty(controllerName)) return null;
+        string lowered = controllerName.ToLowerInvariant();
+        for (int i = 0; i < atom.freeControllers.Length; i++)
+        {
+            FreeControllerV3 fc = atom.freeControllers[i];
+            if (fc != null && fc.name != null && fc.name.ToLowerInvariant().Contains(lowered)) return fc;
+        }
+        return null;
+    }
+
+    Vector3 GetControllerPosition(FreeControllerV3 fc)
+    {
+        if (fc == null) return Vector3.zero;
+        return fc.control != null ? fc.control.position : fc.transform.position;
+    }
+
+    Quaternion GetControllerRotation(FreeControllerV3 fc)
+    {
+        if (fc == null) return Quaternion.identity;
+        return fc.control != null ? fc.control.rotation : fc.transform.rotation;
+    }
+
+    void SetControllerPosition(FreeControllerV3 fc, Vector3 pos)
+    {
+        if (fc == null) return;
+        fc.transform.position = pos;
+        if (fc.control != null) fc.control.position = pos;
+    }
+
+    void SetControllerRotation(FreeControllerV3 fc, Quaternion rot)
+    {
+        if (fc == null) return;
+        fc.transform.rotation = rot;
+        if (fc.control != null) fc.control.rotation = rot;
+    }
+
+    string GetHandLabel(FreeControllerV3 hand)
+    {
+        if (hand == null || hand.name == null) return "<none>";
+        string n = hand.name.ToLowerInvariant();
+        if (n.Contains("lhand")) return "L Hand";
+        if (n.Contains("rhand")) return "R Hand";
+        return hand.name;
+    }
+
+    string V3(Vector3 value)
+    {
+        return "(" + value.x.ToString("F3", CultureInfo.InvariantCulture) + "," + value.y.ToString("F3", CultureInfo.InvariantCulture) + "," + value.z.ToString("F3", CultureInfo.InvariantCulture) + ")";
+    }
+
+    string F1(float value)
+    {
+        return value.ToString("F1", CultureInfo.InvariantCulture);
+    }
+
+    string F2(float value)
+    {
+        return value.ToString("F2", CultureInfo.InvariantCulture);
+    }
+
+    string F3(float value)
+    {
+        return value.ToString("F3", CultureInfo.InvariantCulture);
     }
 
     void StartBodyTwitchOnce()
@@ -3264,7 +4735,18 @@ public class HumanBodyAction : MVRScript
             StopCoroutine(actionRoutine);
             actionRoutine = null;
         }
+        if (directHandCoverRoutine != null)
+        {
+            StopCoroutine(directHandCoverRoutine);
+            directHandCoverRoutine = null;
+        }
+        if (directRandomKneeRoutine != null)
+        {
+            StopCoroutine(directRandomKneeRoutine);
+            directRandomKneeRoutine = null;
+        }
         pendingRequest = null;
+        suppressEventHandCoverUntil = -999.0f;
         StopStartDecisionRoutine();
         StopInsideMonitorRoutine("reset");
 
@@ -3291,6 +4773,8 @@ public class HumanBodyAction : MVRScript
             mouthRoutine = null;
         }
 
+        RestoreHandCoverSnapshot("reset:" + reason);
+        RestoreTargetKneeToSelfThighSnapshot("reset:" + reason);
         RestoreEyesMorphs(reason);
         RestoreMouthMorphs(reason);
         ResetOffsets(reason);
@@ -3371,7 +4855,7 @@ public class HumanBodyAction : MVRScript
             ",fast=" + GetConfiguredInsideAction("Fast") + "]" +
             " / eventActions[deep=" + GetConfiguredEventAction("Deep") +
             ",end=" + GetConfiguredEventAction("End") + "]" +
-            " / actions=HBA_Event_Start,HBA_Event_Inside,HBA_Event_Deep,HBA_Event_End,HBA_Twitch_Slow,HBA_Twitch_Weak,HBA_Twitch_Normal,HBA_Twitch_Strong,HBA_Head_Nod,HBA_Head_QuickNod,HBA_Head_IntenseShake"
+            " / actions=HBA_Event_Start,HBA_Event_Inside,HBA_Event_Deep,HBA_Event_End,HBA_Twitch_Slow,HBA_Twitch_Weak,HBA_Twitch_Normal,HBA_Twitch_Strong,HBA_Cover_RandomHand,HBR_Cover_RandomHand,HBA_Cover_Restore,HBR_Cover_Restore,HBA_Cover_RandomKneeToThigh,HBR_Cover_RandomKneeToThigh,HBA_Head_Nod,HBA_Head_QuickNod,HBA_Head_IntenseShake"
         );
     }
 
