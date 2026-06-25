@@ -1,3 +1,6 @@
+// HBA_RANDOM_HAND_UPPER_REACH_SNAP_FIX_BUILD 2026-06-25: Lets RandomHand upper targets actually reach Head/Neck by using a larger command clamp and skipping soft-snap for upper labels.
+// HBA_RANDOM_HAND_UPPER_TARGETS_RESTORE_BUILD 2026-06-25: Keeps RandomHand upper targets reachable/weighted again; Self Head/Chest bypass PushAway reach filter and Head/Neck/Chest get cover weight.
+// HBA_RANDOM_KNEE_DEEP_DEFAULT_BUILD 2026-06-25: Defaults Deep Action to HBA_Cover_RandomKneeToThigh while keeping v066 RandomHand fallback and RandomKnee behavior.
 // HBA_RANDOM_HAND_FALLBACK_BOTH_ON_BUILD 2026-06-25: If both hand IK position states are On, RandomHandCover now falls back to either hand instead of skipping no-free-hand.
 // HBA_RANDOM_KNEE_LEGACY_TG_ALIAS_BUILD 2026-06-25: Keeps random knee chance30 minimal build, but accepts old saved TG/Test action names as hidden aliases so Start/Inside TG Atom routes do not silently die.
 // HBA_RANDOM_KNEE_MINIMAL_CHANCE30_BUILD 2026-06-25: Adds random one-knee action: moveAtom L/R Knee -> goalAtom L/R Thigh with same-side weighting, or free one knee; keeps v055 direct test.
@@ -291,6 +294,7 @@ public class HumanBodyAction : MVRScript
     const float HandCoverSoftSnapMinDistance = 0.004f;
     const float HandCoverManualSuppressEventSeconds = 3.00f;
     const float HandCoverCommandMaxDistance = 0.46f;
+    const float HandCoverUpperCommandMaxDistance = 0.82f;
     const float HandCoverKneeThighCommandMaxDistance = 0.42f;
     const float TargetKneeToSelfThighMoveSeconds = 0.32f;
     const float TargetKneeToSelfThighPreFreeSeconds = 0.10f;
@@ -784,7 +788,7 @@ public class HumanBodyAction : MVRScript
         hbaInsideHoldAction = CreateHiddenActionChooser("Inside Hold Action", hbaInsideVariantActionChoices, HbaActionTwitchSlow);
         hbaInsideSlowAction = CreateHiddenActionChooser("Inside Slow Action", hbaInsideVariantActionChoices, HbaActionTwitchSlow);
         hbaInsideIntenseAction = CreateHiddenActionChooser("Inside Fast Action", hbaInsideVariantActionChoices, HbaActionTwitchStrong);
-        hbaEventDeepAction = CreateHiddenActionChooser("Deep Action", hbaEventActionChoices, HbaActionTwitchStrong);
+        hbaEventDeepAction = CreateHiddenActionChooser("Deep Action", hbaEventActionChoices, HbaActionCoverRandomKneeToThigh);
         hbaEventEndAction = CreateHiddenActionChooser("End Action", hbaEventActionChoices, HbaActionTwitchWeak);
 
         hbaTgStartAtom = CreateHiddenTgAtomChooser("Start TG Atom");
@@ -1855,7 +1859,7 @@ public class HumanBodyAction : MVRScript
     {
         if (eventName == "Start") return GetConfiguredStartAction("Normal");
         if (eventName == "Inside") return GetConfiguredInsideAction("Active");
-        if (eventName == "Deep") return GetChooserValue(hbaEventDeepAction, HbaActionTwitchStrong);
+        if (eventName == "Deep") return GetChooserValue(hbaEventDeepAction, HbaActionCoverRandomKneeToThigh);
         if (eventName == "End") return GetChooserValue(hbaEventEndAction, HbaActionTwitchWeak);
         return HbaActionOff;
     }
@@ -3309,6 +3313,13 @@ public class HumanBodyAction : MVRScript
         }
 
         HandCoverTarget target = targets[UnityEngine.Random.Range(0, targets.Count)];
+        bool upperTarget = IsUpperHandCoverTargetLabel(target.label);
+
+        DebugMessage("[HumanBodyAction] Cover target selected / source=" + source +
+            " / hand=" + GetHandLabel(hand) +
+            " / target=" + target.label +
+            " / upper=" + (upperTarget ? "1" : "0") +
+            " / candidates=" + targets.Count);
 
         CaptureHandCoverSnapshot(hand);
         RelaxHandCoverElbow(hand);
@@ -3352,7 +3363,18 @@ public class HumanBodyAction : MVRScript
         yield return StartCoroutine(HoldHandCoverPosition(hand, coverPosition, Mathf.Max(0.01f, HandCoverSoftSnapDelay), lockedRotation, true));
         if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
 
-        Vector3 holdPosition = SoftSnapHandCoverPosition(hand, coverPosition, lockedRotation, coverMode, target.label);
+        Vector3 holdPosition = coverPosition;
+        if (IsUpperHandCoverTargetLabel(target.label))
+        {
+            // Head/Neck/upper-body cover was often selected but visually stopped around the shoulder
+            // because soft-snap immediately replaced the command with the current body-hand position.
+            // For upper targets, keep the commanded IK point so the hand actually travels upward.
+            DebugMessage("[HumanBodyAction] Cover soft snap skip / reason=upper-target / hand=" + GetHandLabel(hand) + " / mode=" + coverMode + " / target=" + target.label + " / hold=" + V3(holdPosition));
+        }
+        else
+        {
+            holdPosition = SoftSnapHandCoverPosition(hand, coverPosition, lockedRotation, coverMode, target.label);
+        }
         yield return StartCoroutine(HoldHandCoverPosition(hand, holdPosition, Mathf.Max(0.01f, HandCoverHoldSeconds), lockedRotation, true));
         if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
 
@@ -3368,9 +3390,20 @@ public class HumanBodyAction : MVRScript
         return runSerial == handCoverRunSerial;
     }
 
+    bool IsUpperHandCoverTargetLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return false;
+        string n = label.ToLowerInvariant();
+        return n.Contains("head") || n.Contains("neck") || n.Contains("chest");
+    }
+
     Vector3 ClampHandCoverCommandPosition(Vector3 startPosition, Vector3 commandPosition, string coverMode, string targetLabel, bool kneeThighTestOnly)
     {
         float maxDistance = kneeThighTestOnly ? HandCoverKneeThighCommandMaxDistance : HandCoverCommandMaxDistance;
+        if (!kneeThighTestOnly && IsUpperHandCoverTargetLabel(targetLabel))
+        {
+            maxDistance = HandCoverUpperCommandMaxDistance;
+        }
         Vector3 delta = commandPosition - startPosition;
         float distance = delta.magnitude;
         if (distance <= maxDistance || distance < 0.0001f)
@@ -3728,8 +3761,11 @@ public class HumanBodyAction : MVRScript
         FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
         Vector3 bodyCenter = hip != null ? GetControllerPosition(hip) : chest != null ? GetControllerPosition(chest) : (containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
 
-        AddControlPushAwayTarget(targets, "Self Head", FindControllerByAliases("headControl", "head"), handStartPosition, bodyCenter);
-        AddControlPushAwayTarget(targets, "Self Chest", chest, handStartPosition, bodyCenter);
+        // v068: RandomHand was becoming lower-body heavy because Self Head/Chest could be
+        // filtered out by PushAway Reach. Keep upper-body candidates available; final motion is
+        // still clamped by HandCoverCommandMaxDistance, so this does not force an unreachable jump.
+        AddControlPushAwayTargetAlways(targets, "Self Head", FindControllerByAliases("headControl", "head"), handStartPosition, bodyCenter);
+        AddControlPushAwayTargetAlways(targets, "Self Chest", chest, handStartPosition, bodyCenter);
         AddControlPushAwayTarget(targets, "Self L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), handStartPosition, bodyCenter);
         AddControlPushAwayTarget(targets, "Self R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), handStartPosition, bodyCenter);
 
@@ -3740,6 +3776,37 @@ public class HumanBodyAction : MVRScript
     {
         if (control == null) return;
         AddPushAwayTargetIfReachable(targets, label, GetControllerPosition(control), Vector3.zero, handStartPosition, bodyCenter);
+    }
+
+    void AddControlPushAwayTargetAlways(List<HandCoverTarget> targets, string label, FreeControllerV3 control, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (control == null) return;
+        AddPushAwayTargetNoReachLimit(targets, label, GetControllerPosition(control), Vector3.zero, handStartPosition, bodyCenter);
+    }
+
+    void AddPushAwayTargetNoReachLimit(List<HandCoverTarget> targets, string label, Vector3 position, Vector3 preferredOutward, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (targets == null) return;
+
+        Vector3 outward = preferredOutward;
+        if (outward.sqrMagnitude < 0.0001f)
+        {
+            outward = position - bodyCenter;
+            outward.y *= 0.35f;
+        }
+        if (outward.sqrMagnitude < 0.0001f)
+        {
+            Vector3 forward;
+            Vector3 right;
+            GetCoverBodyAxes(out forward, out right);
+            outward = forward;
+        }
+        if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
+        outward.Normalize();
+
+        float distance = Vector3.Distance(handStartPosition, position);
+        DebugMessage("[HumanBodyAction] PushAway include upper / target=" + label + " / dist=" + F3(distance) + " / reachFilter=off / commandClamp=on");
+        targets.Add(new HandCoverTarget(label, position, outward, true));
     }
 
     void AddPushAwayTargetIfReachable(List<HandCoverTarget> targets, string label, Vector3 position, Vector3 preferredOutward, Vector3 handStartPosition, Vector3 bodyCenter)
@@ -3784,8 +3851,14 @@ public class HumanBodyAction : MVRScript
         GetCoverBodyAxes(out forward, out right);
         Vector3 up = Vector3.up;
 
+        // v068: Keep upper-body targets visible in random selection again.
+        // Lower-body targets are numerous and Hip Back is weighted, so give Head/Neck/Chest
+        // one extra entry each without changing labels or UI.
+        AddControlCoverTarget(targets, "Head", FindControllerByAliases("headControl", "head"), forward);
         AddControlCoverTarget(targets, "Head", FindControllerByAliases("headControl", "head"), forward);
         AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
+        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
+        AddControlCoverTarget(targets, "Chest", FindControllerByAliases("chestControl", "chest"), forward);
         AddControlCoverTarget(targets, "Chest", FindControllerByAliases("chestControl", "chest"), forward);
 
 
