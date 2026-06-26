@@ -1,3 +1,5 @@
+// FOOT_FRONTSIDE_PATH_FIX_BUILD 2026-06-26: Grab Foot now flips L/R path only on the target front-side route so the normal back-side foot direction remains unchanged.
+// LOAD_USER_DEFAULTS_POSE_RESYNC_BUILD 2026-06-26: After Self/Target Load User Defaults, clears/rebases TargetGrabber pose-dependent snap/restore caches so old pose snapshots are not reused.
 // TARGET_NONE_BODY_NUDGE_HIP_AXIS_BUILD 2026-06-25: None Body Nudge Pull/Push/Left/Right now use target hip/body visual horizontal axes; Atom transform root was often fixed to world +Z.
 // TARGET_NONE_BODY_NUDGE_TARGET_ROOT_AXIS_BUILD 2026-06-25: Target Controller None Body Nudge Pull/Push/Left/Right now use target root horizontal forward/right axes instead of self-to-target position axis.
 // TARGET_NONE_BODY_NUDGE_COMPLY_BUILD 2026-06-25: Target Controller None Body Nudge now temporarily sets non-moving target limb IK to Comply and restores it on Target Release.
@@ -367,6 +369,7 @@ public class TargetGrabber : MVRScript
     private UIDynamicButton releaseButton;
     private UIDynamicButton swoonDropButton;
     private Coroutine deferredGrabHandUtilityButtonUpdateRoutine;
+    private Coroutine poseLoadRuntimeResyncRoutine;
 
     private Atom selectedPerson;
     private Atom selectedTargetAtom;
@@ -731,7 +734,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v5az_target_none_body_nudge_hdu_route / based-on-v5ay_target_none_body_nudge_comply");
+        DebugLog("ready / v5bd_foot_frontside_path_fix / based-on-v5bc_load_defaults_pose_resync");
     }
 
     private void RegisterExternalActions()
@@ -1855,7 +1858,8 @@ public class TargetGrabber : MVRScript
 
         if (TryExecutePosePresetAction(actionNames))
         {
-            SetStatus("Load User Defaults applied");
+            QueuePostPoseLoadRuntimeResync(true, false, "self-load-user-defaults");
+            SetStatus("Load User Defaults applied / snap resync");
             return;
         }
 
@@ -1957,7 +1961,8 @@ public class TargetGrabber : MVRScript
 
         if (TryExecutePosePresetActionOnAtom(selectedTargetPerson, actionNames, "TARGET LOAD DEFAULTS"))
         {
-            SetStatus("Target Load User Defaults applied");
+            QueuePostPoseLoadRuntimeResync(false, true, "target-load-user-defaults");
+            SetStatus("Target Load User Defaults applied / snap resync");
             return;
         }
 
@@ -2108,6 +2113,99 @@ public class TargetGrabber : MVRScript
         return false;
     }
 
+
+    private void QueuePostPoseLoadRuntimeResync(bool selfSide, bool targetSide, string reason)
+    {
+        ResetPoseDependentRuntimeStateAfterPoseLoad(selfSide, targetSide, reason + "/now");
+
+        if (poseLoadRuntimeResyncRoutine != null)
+        {
+            try { StopCoroutine(poseLoadRuntimeResyncRoutine); }
+            catch { }
+            poseLoadRuntimeResyncRoutine = null;
+        }
+
+        poseLoadRuntimeResyncRoutine = StartCoroutine(PostPoseLoadRuntimeResyncRoutine(selfSide, targetSide, reason));
+    }
+
+    private System.Collections.IEnumerator PostPoseLoadRuntimeResyncRoutine(bool selfSide, bool targetSide, string reason)
+    {
+        // PosePresets can update controllers during/after the action callback.
+        // Wait a couple of frames, then invalidate caches again so future Grab/Release uses the new pose as baseline.
+        yield return null;
+        yield return null;
+
+        ResetPoseDependentRuntimeStateAfterPoseLoad(selfSide, targetSide, reason + "/delayed");
+
+        if (selfSide)
+            InvalidatePersonControlCache();
+        if (targetSide)
+            InvalidateTargetPersonControlCache();
+
+        ResolveControls();
+        UpdateGrabHandUtilityButtons();
+
+        poseLoadRuntimeResyncRoutine = null;
+        DebugLog("[POSE LOAD RESYNC] done / reason=" + reason +
+            " / self=" + Bool01(selfSide) +
+            " / target=" + Bool01(targetSide));
+    }
+
+    private void ResetPoseDependentRuntimeStateAfterPoseLoad(bool selfSide, bool targetSide, string reason)
+    {
+        // A pose load is an explicit new baseline.  Any old TargetGrabber move/release/snap snapshot
+        // must not be reused, otherwise the next release/follow can pull controls back to the old pose.
+        ClearPendingWristHandLocks();
+        pendingAutoSnapIKControls.Clear();
+        pendingSelfFollowTargets.Clear();
+        hugBodyWristReferencePositions.Clear();
+        hugBodyHandSnapAnchorPositions.Clear();
+
+        if (selfSide)
+        {
+            ResetHugBodyHdcHipUpperState(reason);
+            hasActiveGrab = false;
+            ClearHeldTargetGrabState();
+            grabElapsed = 0.0f;
+            activeMoveTimeMultiplier = 1.0f;
+            activeIncludeHead = false;
+            pufupufuActive = false;
+
+            // Do not restore job base positions here. A pose load is the new baseline,
+            // and restoring the old job base can pull the freshly loaded pose backward.
+            jobActive = false;
+            RestoreSelfFollowParentLinks();
+            RestoreTemporaryRelaxLinkedIK();
+            RestoreTemporaryHandRotationOffStates();
+
+            grabStartPositions.Clear();
+            grabStartRotations.Clear();
+            positionStateOnControls.Clear();
+            rotationStateOnControls.Clear();
+            releaseRestorePositionControls.Clear();
+            releaseRestoreRotationControls.Clear();
+            releaseRestoreIKPending = false;
+        }
+
+        if (targetSide)
+        {
+            ClearHeldTargetGrabState();
+            StopSwoonDrop(true, reason);
+            RestoreTargetNoneBodyRelaxIK();
+            RestoreTargetLocks();
+
+            targetOriginalPositions.Clear();
+            targetOriginalRotations.Clear();
+            targetLockPositionStates.Clear();
+            targetLockRotationStates.Clear();
+            targetLockControls.Clear();
+        }
+
+        DebugLog("[POSE LOAD RESYNC] clear snapshots / reason=" + reason +
+            " / self=" + Bool01(selfSide) +
+            " / target=" + Bool01(targetSide) +
+            " / active=" + Bool01(hasActiveGrab));
+    }
 
     private string TryReapplyTargetHumanPoseControllerAfterRelease()
     {
@@ -6892,11 +6990,23 @@ public class TargetGrabber : MVRScript
 
         if (includeFeet)
         {
+            bool frontSideForFeet = IsGrabberInFrontOfTargetPerson(center);
+
+            if (logHandTargetsThisFrame)
+            {
+                DebugLog("[FOOT PATH] frontSide=" + Bool01(frontSideForFeet) +
+                    " backSide=" + Bool01(!frontSideForFeet) +
+                    " swapPaths=" + Bool01(swapSidePaths) +
+                    " leftPathRight=" + Bool01(frontSideForFeet ? swapSidePaths : !swapSidePaths) +
+                    " rightPathRight=" + Bool01(frontSideForFeet ? !swapSidePaths : swapSidePaths));
+            }
+
             if (leftFootJSON != null && leftFootJSON.val)
             {
-                // v3.0al:
-                // 足も手と同じく、正面/背面のワールド位置で左右行き先を反転しない。
-                bool pathRightSide = !swapSidePaths;
+                // v5bd:
+                // Foot path must keep the known-good back-side route, but flip L/R on the target front-side route.
+                // Hands already use their final-point route; feet still use the legacy side-path route, so front-side needs its own correction.
+                bool pathRightSide = frontSideForFeet ? swapSidePaths : !swapSidePaths;
                 if (lKneeControl != null)
                 {
                     Vector3 kneeTarget = GetKneeTargetPosition(pathRightSide, footCenter, footSide);
@@ -6914,9 +7024,10 @@ public class TargetGrabber : MVRScript
 
             if (rightFootJSON != null && rightFootJSON.val)
             {
-                // v3.0al:
-                // 足も手と同じく、正面/背面のワールド位置で左右行き先を反転しない。
-                bool pathRightSide = swapSidePaths;
+                // v5bd:
+                // Foot path must keep the known-good back-side route, but flip L/R on the target front-side route.
+                // Hands already use their final-point route; feet still use the legacy side-path route, so front-side needs its own correction.
+                bool pathRightSide = frontSideForFeet ? !swapSidePaths : swapSidePaths;
                 if (rKneeControl != null)
                 {
                     Vector3 kneeTarget = GetKneeTargetPosition(pathRightSide, footCenter, footSide);

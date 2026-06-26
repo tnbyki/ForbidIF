@@ -1,3 +1,5 @@
+// HBA_KNEE_PAIR_ONLY_DISABLE_BONUS_LOCAL_BUILD 2026-06-26: Disables automatic RandomHand bonus knee-local/single knee nudges and keeps RandomKnee reactions to Pair Open/Close only; pair fallback now skips instead of running a single nudge.
+// HBA_RANDOM_HAND_BONUS_KNEE_MICRO_BUILD 2026-06-26: Makes RandomHand bonus knee local a tiny micro reaction only: about one-third of v042 again, no overshoot, much smaller arc, shorter hold, and snapshots/restores only the selected knee.
 // HBA_RANDOM_HAND_BONUS_KNEE_1THIRD_BUILD 2026-06-26: Reduces RandomHand bonus knee local nudge travel to roughly one-third while keeping chance/timing unchanged.
 // HBA_RANDOM_KNEE_PAIR_Y_GUARD_BUILD 2026-06-26: Pair Open/Close now skips when L/R knee heights are far apart and falls back to a single safe knee nudge; single knee selection prefers the higher/stable knee when vertical gap is large to avoid whole-body drop.
 // HBA_RANDOM_KNEE_NO_DROP_GUARD_BUILD 2026-06-26: RandomKnee single Knee->Thigh no longer lowers knee target Y or temporarily turns Foot IK off; Pair/Free still leave feet untouched to prevent hip/root drop.
@@ -376,23 +378,23 @@ public class HumanBodyAction : MVRScript
     const float RandomKneeReactionArcSideMax = 0.012f;
     const float RandomKneeReactionArcUpMin = 0.006f;
     const float RandomKneeReactionArcUpMax = 0.020f;
-    const float HandFailKneeNudgeAmount = 0.033f;
-    const float HandFailKneeNudgeAmountMin = 0.012f;
-    const float HandFailKneeNudgeAmountMax = 0.028f;
+    const float HandFailKneeNudgeAmount = 0.010f;
+    const float HandFailKneeNudgeAmountMin = 0.004f;
+    const float HandFailKneeNudgeAmountMax = 0.012f;
     const float HandFailKneeNudgeChance = 50.0f;
     const float HandFailKneeNudgeMoveSeconds = 0.42f;
     const float HandFailKneeNudgeMoveSecondsMin = 0.55f;
     const float HandFailKneeNudgeMoveSecondsMax = 0.95f;
     const float HandFailKneeNudgeHoldSeconds = 0.20f;
-    const float HandFailKneeNudgeHoldSecondsMin = 0.06f;
-    const float HandFailKneeNudgeHoldSecondsMax = 0.18f;
-    const float HandFailKneeNudgeArcSideMax = 0.018f;
-    const float HandFailKneeNudgeArcUpMin = 0.010f;
-    const float HandFailKneeNudgeArcUpMax = 0.028f;
-    const float HandFailKneeNudgeOvershoot = 0.08f;
+    const float HandFailKneeNudgeHoldSecondsMin = 0.02f;
+    const float HandFailKneeNudgeHoldSecondsMax = 0.07f;
+    const float HandFailKneeNudgeArcSideMax = 0.004f;
+    const float HandFailKneeNudgeArcUpMin = 0.001f;
+    const float HandFailKneeNudgeArcUpMax = 0.006f;
+    const float HandFailKneeNudgeOvershoot = 0.000f;
     const float HandFailKneeNudgeThighGuideMaxDistance = 0.650f;
-    const float HandFailKneeNudgeSettleBackMin = 0.220f;
-    const float HandFailKneeNudgeSettleBackMax = 0.500f;
+    const float HandFailKneeNudgeSettleBackMin = 0.650f;
+    const float HandFailKneeNudgeSettleBackMax = 0.850f;
     const float HandFailKneeNudgeSettleSecondsMin = 0.120f;
     const float HandFailKneeNudgeSettleSecondsMax = 0.280f;
     const float HandFailKneeNudgeReleaseBackMin = 0.620f;
@@ -870,7 +872,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v042 random hand bonus knee 1third / v041 random hand cover hip2 thigh / v038 rot fixed / v036 slow sensitive / v035 face time scale / v032 classifier / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v044 knee pair only disable bonus local / v043 bonus knee micro / v041 random hand cover hip2 thigh / v038 rot fixed / v036 slow sensitive / v035 face time scale / v032 classifier / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -2894,19 +2896,9 @@ public class HumanBodyAction : MVRScript
         // This avoids single-knee actions restoring/forcing the opposite knee or both feet.
 
         float roll = UnityEngine.Random.Range(0.0f, 100.0f);
-        float smallEnd = RandomKneeReactionSmallNudgeChance;
-        float openEnd = smallEnd + RandomKneeReactionPairOpenChance;
-        float closeEnd = openEnd + RandomKneeReactionPairCloseChance;
-        string mode;
-
-        if (roll < smallEnd)
-            mode = "single-thigh-smooth";
-        else if (roll < openEnd)
-            mode = "pair-open";
-        else if (roll < closeEnd)
-            mode = "pair-close";
-        else
-            mode = "single-free";
+        // v044: keep knee reactions to Pair Open / Pair Close only.
+        // Single thigh/free/small local knee routes are disabled because they looked too jumpy in motion.
+        string mode = roll < 50.0f ? "pair-open" : "pair-close";
 
         DebugMessage("[HumanBodyAction] Random knee reaction roll" +
             " / source=" + source +
@@ -2916,23 +2908,16 @@ public class HumanBodyAction : MVRScript
             " / moveRKneeOwnerGuard=" + (moveRKnee != null ? "1" : "0") +
             " / roll=" + F2(roll) +
             " / mode=" + mode +
-            " / distribution=thigh20/open30/close30/free20" +
+            " / distribution=pair-open50/pair-close50/single-disabled" +
             " / outerChance=" + F1(randomKneeToThighChance != null ? randomKneeToThighChance.val : RandomKneeToThighChanceDefault) + "%");
 
         if (mode == "single-free")
         {
-            bool useLeft = PickAvailableKneeSide(moveLKnee, moveRKnee);
-            FreeControllerV3 knee = useLeft ? moveLKnee : moveRKnee;
-            string kneeLabel = useLeft ? "L Knee" : "R Knee";
-            CaptureTargetKneeToSelfThighSnapshot(moveAtom, useLeft ? moveLKnee : null, useLeft ? null : moveRKnee, null, null);
-            SetSingleMoveKneeFree(knee, source, moveAtom.uid, "<none>", kneeLabel, "random-reaction-free");
-            hbaLastBlock = "Random knee reaction free: " + kneeLabel;
+            hbaLastBlock = "Random knee reaction single-free disabled";
             UpdateHbaStatus(true);
-            DebugMessage("[HumanBodyAction] Random knee reaction free hold" +
+            DebugMessage("[HumanBodyAction] Random knee reaction single-free disabled" +
                 " / source=" + source +
-                " / moveAtom=" + moveAtom.uid +
-                " / knee=" + kneeLabel +
-                " / restore=HBA_Cover_Restore,HBR_Cover_Restore,HBA_Reset");
+                " / moveAtom=" + moveAtom.uid);
             yield break;
         }
 
@@ -2947,7 +2932,12 @@ public class HumanBodyAction : MVRScript
                     " / requested=" + mode +
                     " / lKnee=" + (moveLKnee != null ? "1" : "0") +
                     " / rKnee=" + (moveRKnee != null ? "1" : "0"));
-                yield return StartCoroutine(RandomKneeSingleSmallNudgeRoutine(source, runSerial, moveAtom, PickStableKneeSideForReaction(moveLKnee, moveRKnee, "pair-fallback"), moveLKnee, moveRKnee, moveLFoot, moveRFoot));
+                hbaLastBlock = "Random knee pair skipped: missing one knee";
+                UpdateHbaStatus(true);
+                DebugMessage("[HumanBodyAction] Random knee pair skipped / single fallback disabled" +
+                    " / source=" + source +
+                    " / requested=" + mode +
+                    " / moveAtom=" + moveAtom.uid);
                 yield break;
             }
 
@@ -2955,7 +2945,13 @@ public class HumanBodyAction : MVRScript
             yield break;
         }
 
-        yield return StartCoroutine(RandomKneeSingleThighSmoothRoutine(source, runSerial, moveAtom, PickStableKneeSideForReaction(moveLKnee, moveRKnee, "single-thigh"), moveLKnee, moveRKnee, moveLFoot, moveRFoot));
+        hbaLastBlock = "Random knee single-thigh disabled";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] Random knee single-thigh disabled" +
+            " / source=" + source +
+            " / moveAtom=" + moveAtom.uid +
+            " / mode=" + mode);
+        yield break;
     }
 
     bool PickAvailableKneeSide(FreeControllerV3 lKnee, FreeControllerV3 rKnee)
@@ -3298,13 +3294,11 @@ public class HumanBodyAction : MVRScript
         float verticalGap = Mathf.Abs(lStart.y - rStart.y);
         string mode = open ? "pair-open" : "pair-close";
 
-        // v095: Pair Open/Close assumes both knee controls are on roughly the same height plane.
-        // If one knee controller is much lower, forcing both knees On can make VaM solve by dropping the whole body.
-        // In that case, do not run a two-knee pair motion; use only the higher/stable knee for a small local reaction.
+        // v044: Pair Open/Close is allowed, but non-pair single knee fallback is disabled.
+        // If the knees are too far apart vertically, skip instead of falling back to a single nudge.
         if (verticalGap > RandomKneeReactionPairMaxVerticalGap)
         {
-            bool useLeft = lStart.y >= rStart.y;
-            hbaLastBlock = "Random knee pair " + mode + " fallback: vertical gap";
+            hbaLastBlock = "Random knee pair " + mode + " skipped: vertical gap";
             UpdateHbaStatus(true);
             DebugMessage("[HumanBodyAction] Random knee pair " + (open ? "open" : "close") + " skipped" +
                 " / source=" + source +
@@ -3314,11 +3308,9 @@ public class HumanBodyAction : MVRScript
                 " / rStart=" + V3(rStart) +
                 " / verticalGap=" + F3(verticalGap) +
                 " / threshold=" + F3(RandomKneeReactionPairMaxVerticalGap) +
-                " / fallback=single-small-nudge" +
-                " / selected=" + (useLeft ? "L Knee" : "R Knee") +
+                " / fallback=disabled" +
                 " / footUntouched=1" +
                 " / avoidWholeBodyDrop=1");
-            yield return StartCoroutine(RandomKneeSingleSmallNudgeRoutine(source, runSerial, moveAtom, useLeft, lKnee, rKnee, lFoot, rFoot));
             yield break;
         }
 
@@ -4167,7 +4159,7 @@ public class HumanBodyAction : MVRScript
             hbaLastBlock = "Cover: no hand controller";
             UpdateHbaStatus(true);
             DebugMessage("[HumanBodyAction] Cover skipped / no hand controller / source=" + source);
-            yield return StartCoroutine(MaybeRandomHandKneeNudgeRoutine(source, "no-hand-controller"));
+            DebugMessage("[HumanBodyAction] Hand bonus knee local disabled / source=" + source + " / reason=no-hand-controller");
             yield return StartCoroutine(MaybeRandomHandElbowNudgeRoutine(source, "no-hand-controller"));
             yield break;
         }
@@ -4183,7 +4175,7 @@ public class HumanBodyAction : MVRScript
             hbaLastBlock = kneeThighTestOnly ? "Cover test: no Self Thigh target" : "Cover: no target";
             UpdateHbaStatus(true);
             DebugMessage("[HumanBodyAction] Cover skipped / no target / source=" + source + " / hand=" + GetHandLabel(hand) + " / kneeThighTest=" + (kneeThighTestOnly ? "1" : "0"));
-            yield return StartCoroutine(MaybeRandomHandKneeNudgeRoutine(source, kneeThighTestOnly ? "no-self-thigh-target" : "no-cover-target"));
+            DebugMessage("[HumanBodyAction] Hand bonus knee local disabled / source=" + source + " / reason=" + (kneeThighTestOnly ? "no-self-thigh-target" : "no-cover-target"));
             yield return StartCoroutine(MaybeRandomHandElbowNudgeRoutine(source, kneeThighTestOnly ? "no-self-thigh-target" : "no-cover-target"));
             yield break;
         }
@@ -4246,7 +4238,7 @@ public class HumanBodyAction : MVRScript
         if (handFarTooFar)
         {
             SetHandCoverIkOffAfterFarReach(hand, lockedRotation, source, coverMode, target.label, requestedCoverPosition, coverPosition, requestedCoverDistance, handTooFarThreshold);
-            yield return StartCoroutine(MaybeRandomHandKneeNudgeRoutine(source, "hand-far-too-far:" + target.label));
+            DebugMessage("[HumanBodyAction] Hand bonus knee local disabled / source=" + source + " / reason=hand-far-too-far:" + target.label);
             yield return StartCoroutine(MaybeRandomHandElbowNudgeRoutine(source, "hand-far-too-far:" + target.label));
             yield break;
         }
@@ -4274,7 +4266,7 @@ public class HumanBodyAction : MVRScript
 
         // v077: RandomHand's small knee nudge was too rare when it only ran on hard failures.
         // Also let a successful hand cover add a subtle knee reaction at a fixed 30% chance.
-        yield return StartCoroutine(MaybeRandomHandKneeNudgeRoutine(source, "random-hand-bonus"));
+        DebugMessage("[HumanBodyAction] Hand bonus knee local disabled / source=" + source + " / reason=random-hand-bonus");
             yield return StartCoroutine(MaybeRandomHandElbowNudgeRoutine(source, "random-hand-bonus"));
     }
 
@@ -4382,9 +4374,10 @@ public class HumanBodyAction : MVRScript
         }
 
         // Keep this fallback independent from the hand cover hold, but still restoreable by HBA_Cover_Restore/HBA_Reset.
+        // v043: restart still cancels/restores the previous knee branch, but the new bonus snapshot is taken
+        // only for the selected knee below. Capturing both knees/feet made unrelated knees look like they jumped.
         RestoreTargetKneeToSelfThighSnapshot("hand-bonus-knee-local-restart");
         int runSerial = ++targetKneeToSelfThighRunSerial;
-        CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveLKnee, moveRKnee, moveLFoot, moveRFoot);
 
         FreeControllerV3 moveKnee = null;
         string kneeLabel = "";
@@ -4431,6 +4424,12 @@ public class HumanBodyAction : MVRScript
             handFallbackKneeLastSide = selectedSide;
             sideSelect = "only-right";
         }
+
+        // v043: snapshot only the knee this bonus actually moves. Do not snapshot feet here.
+        if (selectedSide < 0)
+            CaptureTargetKneeToSelfThighSnapshot(moveAtom, moveKnee, null, null, null);
+        else
+            CaptureTargetKneeToSelfThighSnapshot(moveAtom, null, moveKnee, null, null);
 
         Vector3 startPos = GetControllerPosition(moveKnee);
 
@@ -4513,6 +4512,7 @@ public class HumanBodyAction : MVRScript
             " / peak=" + V3(peakPos) +
             " / settle=" + V3(settlePos) +
             " / amount=" + F3(nudgeAmount) +
+            " / micro=1" +
             " / preDelay=" + F3(preDelay) +
             " / moveSeconds=" + F3(moveDur) +
             " / holdSeconds=" + F3(holdDur) +
