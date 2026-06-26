@@ -1,3 +1,13 @@
+// NOW_DOCKING_AXIS_HEIGHT_FINISH_BUILD 2026-06-27: Now Docking finalizes body yaw to the selected docking axis and re-aligns P Base height after Auto Pose/line snap.
+// AUTO_POSE_LIE_G_DOWN_ELSE_SIT_BUILD 2026-06-27: Auto Pose now applies Lie On Back only when ride-like target has G/inside direction facing down; otherwise applies Sit Ground for ride-like targets.
+// AUTO_POSE_SIT_GROUND_BUILD 2026-06-27: Renames Auto Lie On Ride Pose to Auto Pose and applies Sit Ground Pose instead of Lie On Back when ride-like+G-down conditions match.
+// AUTO_LIE_G_DOWN_GATE_BUILD 2026-06-27: Auto Lie On Ride Pose now also requires the genital inside/G direction to face downward enough, reducing accidental Lie entry.
+// NOW_DOCKING_NEAR_LINE_SNAP_BUILD 2026-06-27: Now Docking within 0.45m no longer side-starts when sideDot is poor; it horizontally snaps the body hip to the current docking line. Cyan G-depth debug line is semi-transparent.
+// DOCKING_PELVIS_TRIANGLE_DIRECTION_BUILD 2026-06-26: Uses target hip/L/R thigh pelvis direction for genital Docking body placement while preserving Labia/G axis for final line/depth/Axis Align.
+// P_TIP_CYAN_LINE_ASSIST_BUILD 2026-06-26: During Yellow Guide P follow, gently pulls P Tip/Mid toward the live cyan inside line before full Depth P Follow engages. Base remains unchanged.
+// NOW_DOCKING_NEAR_LINE_SNAP_CYAN_ALPHA_BUILD 2026-06-26: Now Docking near side-start projects the body onto the current docking line instead of resetting to Distance=1.0; cyan debug line is semi-transparent.
+// NOW_DOCKING_NEAR_NEGATIVE_PULLBACK_CURRENT_SIDE_BUILD 2026-06-26: Limits negative Distance pullback to near Now Docking and applies it on the freshly selected current-side line so Now Docking never flips to the opposite side.
+// NOW_DOCKING_NEGATIVE_DISTANCE_PULLBACK_BUILD 2026-06-26: If Now Docking is pressed while Distance is negative, first pull back to 0.10 on the existing captured line, then run Now Docking to prevent violent inside-line fits.
 // YELLOW_DIP_MAX_DEFAULT_LAYOUT_BUILD 2026-06-24: Sets Yellow Dip Angle Max default to 125 degrees and moves its slider above Switch Retract.
 // HBA_RAW_DEPTH_FALLBACK_RESTORE_BUILD 2026-06-24: Restores raw/HUD depth fallback for HBA reactions when control GenDepth is angle-gated to 0%.
 // LINE_SLOW_SPEED_TUNE_BUILD 2026-06-24: Slows Auto Line and Auto Line Slow defaults for the higher-FPS feel while keeping Auto Line Fast unchanged.
@@ -249,7 +259,7 @@ public class TargetLinePerson : MVRScript
     JSONStorableStringChooser lowTargetAction;
     bool lowTargetActionReached;
     float lowTargetActionHipDrop;
-    JSONStorableBool autoLieOnRidePose;
+    JSONStorableBool autoPose;
 
     JSONStorableFloat sitGroundYThreshold;
 
@@ -536,6 +546,9 @@ public class TargetLinePerson : MVRScript
     Coroutine avoidCaptureRoutine;
     Coroutine delayedLineLockRoutine;
     Coroutine delayedInsideReactionRoutine;
+    Coroutine nowDockingNegativeDistancePullbackRoutine;
+    bool nowDockingNegativeDistancePullbackRequested;
+    float nowDockingNegativeDistancePullbackOriginal;
 
     const float LineLockDelaySeconds = 0.20f;
     const int DelayedGuideRefreshFrameCount = 2;
@@ -563,6 +576,13 @@ public class TargetLinePerson : MVRScript
     const float PMidAxisAssistBaseScale = 0.38f;
     const float PMidAxisAssistUnconfirmedScale = 0.35f;
     const float PMidAxisAssistLogInterval = 2.5f;
+    const float PTipCyanLineAssistBackDepth = -0.080f;
+    const float PTipCyanLineAssistForwardDepth = 0.450f;
+    const float PTipCyanLineAssistLateralMax = 0.140f;
+    const float PTipCyanLineAssistLateralMin = 0.003f;
+    const float PTipCyanLineAssistTipMaxMove = 0.040f;
+    const float PTipCyanLineAssistMidScale = 0.60f;
+    const float PTipCyanLineAssistLogInterval = 2.5f;
     const float PMidGAlignBaseFollowScale = 0.35f;
     const float PMidGAlignBaseMaxMove = 0.035f;
     const float AxisAlignMidMaxMove = 0.045f;
@@ -668,6 +688,9 @@ public class TargetLinePerson : MVRScript
     const float NowDockingNearKeepPlacementDistance = 0.450f;
     const float NowDockingLieNearKeepOrientationDistance = 0.220f;
     const float NowDockingLieNearMicroAdjustMax = 0.080f;
+    const float AutoPoseGenitalDownDotMin = 0.65f;
+    const float NowDockingNegativeDistancePullback = 0.100f;
+    const int NowDockingNegativeDistancePullbackFrames = 2;
     const float LieDockingSafeDistance = 1.300f;
     const float NowDockingYellowSmartShapeDistance = 1.000f;
     const float GenDepthProbeLogMinInterval = 0.20f;
@@ -841,6 +864,8 @@ public class TargetLinePerson : MVRScript
     float lastGDepthPFollowLogTime = -999f;
     bool lastGDepthAngleGateBlocked;
     bool pMidAxisAssistApplied;
+    bool pTipCyanLineAssistApplied;
+    float lastPTipCyanLineAssistLogTime = -999f;
     float lastPMidAxisAssistLogTime = -999f;
     bool pTipOnGContactKnown;
     bool pTipOnGContact;
@@ -1289,12 +1314,12 @@ public class TargetLinePerson : MVRScript
             ActionLoadPoseUserDefaults();
         });
 
-        autoLieOnRidePose = new JSONStorableBool(
-            "Auto Lie On Ride Pose",
+        autoPose = new JSONStorableBool(
+            "Auto Pose",
             true
         );
-        RegisterBool(autoLieOnRidePose);
-        CreateToggle(autoLieOnRidePose, true);
+        RegisterBool(autoPose);
+        CreateToggle(autoPose, true);
 
         autoUpperTilt = new JSONStorableBool(
             "Auto Upper Tilt",
@@ -1675,7 +1700,26 @@ public class TargetLinePerson : MVRScript
 
     void ActionNowDocking()
     {
-        CaptureHorizontalCurrentSide(false);
+        if (nowDockingNegativeDistancePullbackRoutine != null)
+        {
+            StopCoroutine(nowDockingNegativeDistancePullbackRoutine);
+            nowDockingNegativeDistancePullbackRoutine = null;
+        }
+
+        nowDockingNegativeDistancePullbackRequested = distance != null && distance.val < 0.0f;
+        nowDockingNegativeDistancePullbackOriginal = distance != null ? distance.val : 0.0f;
+
+        try
+        {
+            // Now Docking must preserve the current side.
+            // Negative Distance pullback is resolved inside FitNowDockingDistanceToCurrentLine()
+            // after the fresh current-side docking line has been selected.
+            CaptureHorizontalCurrentSide(false);
+        }
+        finally
+        {
+            nowDockingNegativeDistancePullbackRequested = false;
+        }
     }
 
     void ActionSmartDocking()
@@ -4179,7 +4223,7 @@ if (!nowDockingLieNearKeepOrientation)
     ApplyAutoUpperTiltYOffsetOnce();
     AlignHipRelativeControllersHeightToCapturedOriginOnce();
     ApplyAutoUpperTiltOnce();
-    if (!ApplyAutoLieOnRidePoseIfNeeded())
+    if (!ApplyAutoPoseIfNeeded())
     {
         ReleaseRideLieIfNeeded();
         ApplySitGroundPoseIfNeeded();
@@ -4217,20 +4261,28 @@ else
             if (nowDockingKeepCurrentPlacement)
             {
                 DebugLog(
-                    "[TargetLinePerson] Now Docking keep current placement" +
+                    "[TargetLinePerson] Now Docking near line snap" +
                     " / distance=" + (distance != null ? distance.val.ToString("F3") : "n/a") +
                     " / threshold=" + NowDockingNearKeepPlacementDistance.ToString("F3") +
                     " / lieNearKeepYaw=" + (nowDockingLieNearKeepOrientation ? "1" : "0")
                 );
-                if (nowDockingLieNearKeepOrientation)
-                {
-                    ApplyPlacementMicroNoRotate(NowDockingLieNearMicroAdjustMax);
-                }
+                ApplyNowDockingNearLineSnapToCurrentLine(
+                    nowDockingLieNearKeepOrientation ? NowDockingLieNearMicroAdjustMax : 0.0f,
+                    nowDockingLieNearKeepOrientation ? "lie-near-line-snap" : "near-line-snap"
+                );
             }
             else
             {
                 ApplyPlacement(true);
             }
+
+            if (chooseCurrentSide)
+            {
+                FinalizeNowDockingAxisAndHeight(
+                    nowDockingKeepCurrentPlacement ? "now-docking-near-line-snap" : "now-docking-placement"
+                );
+            }
+
             ScheduleDelayedLineLock(nowDockingKeepCurrentPlacement ? "now-docking-keep-current" : "capture-after-placement");
         }
 
@@ -4568,18 +4620,35 @@ else
         Vector3 forward = lineDir;
         if (genitalLine != null)
         {
-            Vector3 flatLabia = lineDir;
-            flatLabia.y = 0f;
-            if (flatLabia.sqrMagnitude >= 0.0001f)
+            // Docking body placement should follow the target pelvis/body entry direction,
+            // not the final Labia/G axis alone.  Keep lineDir as Labia/G for depth and
+            // final Axis Align, but use hip + L/R thigh derived forward for capturedDir
+            // whenever it is available and stable.
+            string pelvisDockingSource;
+            Vector3 pelvisDockingDir = GetTargetPelvisDockingDirection(targetAtom, lineDir, out pelvisDockingSource);
+            Vector3 flatPelvisDocking = pelvisDockingDir;
+            flatPelvisDocking.y = 0f;
+
+            if (flatPelvisDocking.sqrMagnitude >= 0.0001f)
             {
-                forward = lineDir;
-                dockingDirSource = "LabiaTrigger.-up";
+                forward = flatPelvisDocking;
+                dockingDirSource = pelvisDockingSource;
             }
             else
             {
-                forward = GetTargetRootForward(targetAtom, lineDir);
-                dockingDirSource = "targetRoot.forward fallback";
-                DebugLog("[TargetLinePerson] Labia smart direction fallback: LabiaTrigger axis is nearly vertical; using target root forward.");
+                Vector3 flatLabia = lineDir;
+                flatLabia.y = 0f;
+                if (flatLabia.sqrMagnitude >= 0.0001f)
+                {
+                    forward = lineDir;
+                    dockingDirSource = "LabiaTrigger.-up fallback";
+                }
+                else
+                {
+                    forward = GetTargetRootForward(targetAtom, lineDir);
+                    dockingDirSource = "targetRoot.forward fallback";
+                    DebugLog("[TargetLinePerson] Labia smart direction fallback: pelvis direction and LabiaTrigger flat axis are unavailable; using target root forward.");
+                }
             }
         }
         else if (anusLine != null)
@@ -4926,6 +4995,94 @@ else
         return fallback;
     }
 
+    Vector3 GetTargetPelvisDockingDirection(Atom targetAtom, Vector3 fallback, out string source)
+    {
+        source = "pelvis-thigh fallback";
+
+        Vector3 fallbackFlat = fallback;
+        fallbackFlat.y = 0f;
+        if (fallbackFlat.sqrMagnitude < 0.0001f)
+        {
+            fallbackFlat = GetTargetRootForward(targetAtom, Vector3.forward);
+            fallbackFlat.y = 0f;
+        }
+        if (fallbackFlat.sqrMagnitude < 0.0001f)
+        {
+            fallbackFlat = Vector3.forward;
+        }
+        fallbackFlat.Normalize();
+
+        FreeControllerV3 lThigh = GetTargetThighController(targetAtom, false);
+        FreeControllerV3 rThigh = GetTargetThighController(targetAtom, true);
+
+        if (lThigh == null || rThigh == null)
+        {
+            source = "LabiaTrigger.-up fallback:no-thigh-pair";
+            return fallbackFlat;
+        }
+
+        Vector3 pelvisRight = rThigh.transform.position - lThigh.transform.position;
+        pelvisRight.y = 0f;
+        if (pelvisRight.sqrMagnitude < 0.0001f)
+        {
+            source = "LabiaTrigger.-up fallback:thigh-right-zero";
+            return fallbackFlat;
+        }
+        pelvisRight.Normalize();
+
+        Vector3 pelvisUp = Vector3.up;
+        FreeControllerV3 hip = GetTargetHipController(targetAtom);
+        FreeControllerV3 chest = GetTargetChestController(targetAtom);
+        if (hip != null && chest != null)
+        {
+            Vector3 hipToChest = chest.transform.position - hip.transform.position;
+            if (hipToChest.sqrMagnitude >= 0.0001f)
+            {
+                pelvisUp = hipToChest.normalized;
+            }
+        }
+        else if (targetAtom != null && targetAtom.mainController != null)
+        {
+            Vector3 rootUp = targetAtom.mainController.transform.up;
+            if (rootUp.sqrMagnitude >= 0.0001f)
+            {
+                pelvisUp = rootUp.normalized;
+            }
+        }
+
+        Vector3 pelvisForward = Vector3.Cross(pelvisRight, pelvisUp);
+        pelvisForward.y = 0f;
+        if (pelvisForward.sqrMagnitude < 0.0001f)
+        {
+            pelvisForward = Vector3.Cross(pelvisRight, Vector3.up);
+            pelvisForward.y = 0f;
+        }
+        if (pelvisForward.sqrMagnitude < 0.0001f)
+        {
+            source = "LabiaTrigger.-up fallback:pelvis-forward-zero";
+            return fallbackFlat;
+        }
+        pelvisForward.Normalize();
+
+        Vector3 signReference = GetTargetRootForward(targetAtom, fallbackFlat);
+        signReference.y = 0f;
+        if (signReference.sqrMagnitude < 0.0001f)
+        {
+            signReference = fallbackFlat;
+        }
+        signReference.Normalize();
+
+        if (Vector3.Dot(pelvisForward, signReference) < 0f)
+        {
+            pelvisForward = -pelvisForward;
+        }
+
+        float labiaDot = Vector3.Dot(pelvisForward, fallbackFlat);
+        source = "pelvis-thigh-triangle" +
+            " dotLabia=" + labiaDot.ToString("F3");
+        return pelvisForward;
+    }
+
     Vector3 GetAnusInsideDirection(Atom targetAtom, Transform anusLine)
     {
         Vector3 fallback = anusLine != null ? anusLine.forward : Vector3.forward;
@@ -5184,8 +5341,30 @@ else
             return;
         }
 
+        Vector3 fromOrigin = ownHip.transform.position - capturedOrigin;
+        fromOrigin.y = 0f;
+
+        float currentHorizontalDistance = fromOrigin.magnitude;
+        Vector3 lineDir = capturedDir;
+        lineDir.y = 0f;
+        if (lineDir.sqrMagnitude < 0.0001f)
+        {
+            return;
+        }
+        lineDir.Normalize();
+
+        // Use the distance along the selected Now Docking line, not the raw radial
+        // distance from the target.  For near starts, even when sideDot is poor,
+        // keep the current-side line and snap the body hip horizontally onto it
+        // instead of forcing Distance back to the safe 1.0m side-start placement.
+        float currentProjectedDistance = Mathf.Max(0.0f, Vector3.Dot(fromOrigin, lineDir));
         bool currentFit = Mathf.Abs(sideDot) >= NowDockingCurrentFitSideDotMin;
-        if (!currentFit)
+        bool nearCandidate = currentHorizontalDistance <= NowDockingNearKeepPlacementDistance;
+        bool negativePullbackNear = nowDockingNegativeDistancePullbackRequested && nearCandidate;
+        bool negativePullbackFar = nowDockingNegativeDistancePullbackRequested && !negativePullbackNear;
+        bool nearLineSnap = nearCandidate && !negativePullbackNear;
+
+        if (!currentFit && !nearLineSnap)
         {
             nowDockingLineFitActive = false;
             nowDockingKeepCurrentPlacement = false;
@@ -5200,42 +5379,52 @@ else
             DebugLog(
                 "[TargetLinePerson] Now Docking current line fit skipped" +
                 " / currentFit=0" +
+                " / nearLineSnap=0" +
                 " / sideDot=" + sideDot.ToString("F3") +
                 " / threshold=" + NowDockingCurrentFitSideDotMin.ToString("F3") +
+                " / radialDist=" + currentHorizontalDistance.ToString("F3") +
+                " / nearThreshold=" + NowDockingNearKeepPlacementDistance.ToString("F3") +
                 " / distance=1.000" +
                 " / reason=side-start"
             );
             return;
         }
 
-        Vector3 fromOrigin = ownHip.transform.position - capturedOrigin;
-        fromOrigin.y = 0f;
-
-        float currentHorizontalDistance = fromOrigin.magnitude;
-        Vector3 lineDir = capturedDir;
-        lineDir.y = 0f;
-        if (lineDir.sqrMagnitude < 0.0001f)
-        {
-            return;
-        }
-        lineDir.Normalize();
-
-        // Use the distance along the selected Now Docking line, not the raw radial
-        // distance from the target.  Side starts can otherwise feel too far away.
-        // If the body is already very close, keep the current root placement instead
-        // of pushing it back to the safe minimum distance.
-        float currentProjectedDistance = Mathf.Max(0.0f, Vector3.Dot(fromOrigin, lineDir));
-        bool nearKeepPlacement = currentHorizontalDistance <= NowDockingNearKeepPlacementDistance;
+        bool nearKeepPlacement = nearLineSnap;
         bool lieNearKeepOrientation = nearKeepPlacement &&
             currentHorizontalDistance <= NowDockingLieNearKeepOrientationDistance &&
             (rideLieActive || IsOwnLiePoseForYellowGuide());
-        float fittedDistance = nearKeepPlacement
-            ? Mathf.Clamp(currentProjectedDistance, 0.0f, NowDockingCurrentDistanceMax)
-            : Mathf.Clamp(
-                Mathf.Max(currentProjectedDistance, NowDockingCurrentDistanceMin),
-                0.0f,
-                NowDockingCurrentDistanceMax
+        float fittedDistance = negativePullbackNear
+            ? NowDockingNegativeDistancePullback
+            : nearKeepPlacement
+                ? Mathf.Clamp(currentProjectedDistance, 0.0f, NowDockingCurrentDistanceMax)
+                : Mathf.Clamp(
+                    Mathf.Max(currentProjectedDistance, NowDockingCurrentDistanceMin),
+                    0.0f,
+                    NowDockingCurrentDistanceMax
+                );
+
+        if (negativePullbackNear)
+        {
+            DebugLog(
+                "[TargetLinePerson] Now Docking negative distance pullback" +
+                " / mode=near-current-side" +
+                " / from=" + nowDockingNegativeDistancePullbackOriginal.ToString("F3") +
+                " / to=" + NowDockingNegativeDistancePullback.ToString("F3") +
+                " / currentDistance=" + currentHorizontalDistance.ToString("F3") +
+                " / projected=" + currentProjectedDistance.ToString("F3")
             );
+        }
+        else if (negativePullbackFar)
+        {
+            DebugLog(
+                "[TargetLinePerson] Now Docking negative distance pullback skipped" +
+                " / reason=far" +
+                " / from=" + nowDockingNegativeDistancePullbackOriginal.ToString("F3") +
+                " / currentDistance=" + currentHorizontalDistance.ToString("F3") +
+                " / nearThreshold=" + NowDockingNearKeepPlacementDistance.ToString("F3")
+            );
+        }
 
         if (distance != null)
         {
@@ -5256,7 +5445,8 @@ else
 
         DebugLog(
             "[TargetLinePerson] Now Docking current line fit" +
-            " / currentFit=1" +
+            " / currentFit=" + (currentFit ? "1" : "0") +
+            " / nearLineSnap=" + (nearLineSnap ? "1" : "0") +
             " / sideDot=" + sideDot.ToString("F3") +
             " / radialDist=" + currentHorizontalDistance.ToString("F3") +
             " / projectedDist=" + currentProjectedDistance.ToString("F3") +
@@ -5501,6 +5691,181 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
         "[TargetLinePerson] Lie near Now Docking micro adjust" +
         " / delta=(" + FormatVector3(delta) + ")" +
         " / max=" + max.ToString("F3")
+    );
+}
+
+void ApplyNowDockingNearLineSnapToCurrentLine(float maxDelta, string reason)
+{
+    if (!captured)
+    {
+        return;
+    }
+
+    FreeControllerV3 ownHip = GetOwnHip();
+
+    if (ownHip == null || containingAtom == null || containingAtom.mainController == null)
+    {
+        return;
+    }
+
+    Vector3 lineDir = capturedDir;
+    lineDir.y = 0f;
+    if (lineDir.sqrMagnitude < 0.0001f)
+    {
+        return;
+    }
+    lineDir.Normalize();
+
+    Vector3 fromOrigin = ownHip.transform.position - capturedOrigin;
+    fromOrigin.y = 0f;
+
+    float projectedDistance = Mathf.Max(0.0f, Vector3.Dot(fromOrigin, lineDir));
+    Vector3 linePoint = capturedOrigin + lineDir * projectedDistance;
+    Vector3 delta = linePoint - ownHip.transform.position;
+    delta.y = 0f;
+
+    float max = Mathf.Max(0.0f, maxDelta);
+    bool capped = false;
+    if (max > 0.0f && delta.magnitude > max)
+    {
+        delta = delta.normalized * max;
+        capped = true;
+    }
+
+    if (delta.sqrMagnitude < 0.000001f)
+    {
+        DebugLog(
+            "[TargetLinePerson] Now Docking near line snap skipped" +
+            " / reason=" + reason +
+            " / projected=" + projectedDistance.ToString("F3") +
+            " / delta=0"
+        );
+        return;
+    }
+
+    containingAtom.mainController.transform.position += delta;
+    DebugLog(
+        "[TargetLinePerson] Now Docking near line snap applied" +
+        " / reason=" + reason +
+        " / projected=" + projectedDistance.ToString("F3") +
+        " / delta=(" + FormatVector3(delta) + ")" +
+        " / max=" + (max > 0.0f ? max.ToString("F3") : "unlimited") +
+        " / capped=" + (capped ? "1" : "0")
+    );
+}
+
+
+void FinalizeNowDockingAxisAndHeight(string reason)
+{
+    if (!captured)
+    {
+        return;
+    }
+
+    if (!nowDockingLieNearKeepOrientation)
+    {
+        FaceNowDockingAxis(reason);
+    }
+    else
+    {
+        DebugLog(
+            "[TargetLinePerson] Now Docking axis finish skipped" +
+            " / reason=" + reason +
+            " / mode=lie-near-keep-yaw"
+        );
+    }
+
+    RebaseAndAlignNowDockingHeight(reason);
+}
+
+void FaceNowDockingAxis(string reason)
+{
+    if (containingAtom == null || containingAtom.mainController == null)
+    {
+        return;
+    }
+
+    if (lieDockingYawLockActive && lieDockingYawLockForward.sqrMagnitude >= 0.0001f)
+    {
+        FaceDirection(lieDockingYawLockForward);
+        DebugLog(
+            "[TargetLinePerson] Now Docking axis finish" +
+            " / reason=" + reason +
+            " / source=lie-yaw-lock" +
+            " / dir=(" + FormatVector3(lieDockingYawLockForward) + ")"
+        );
+        return;
+    }
+
+    Vector3 dir = -capturedDir;
+    dir.y = 0f;
+
+    if (dir.sqrMagnitude < 0.0001f)
+    {
+        FreeControllerV3 ownHip = GetOwnHip();
+        if (ownHip != null)
+        {
+            dir = capturedOrigin - ownHip.transform.position;
+            dir.y = 0f;
+        }
+    }
+
+    if (dir.sqrMagnitude < 0.0001f)
+    {
+        DebugLog(
+            "[TargetLinePerson] Now Docking axis finish skipped" +
+            " / reason=" + reason +
+            " / source=invalid-dir"
+        );
+        return;
+    }
+
+    FaceDirection(dir.normalized);
+    DebugLog(
+        "[TargetLinePerson] Now Docking axis finish" +
+        " / reason=" + reason +
+        " / source=capturedDir" +
+        " / dir=(" + FormatVector3(dir.normalized) + ")"
+    );
+}
+
+void RebaseAndAlignNowDockingHeight(string reason)
+{
+    FreeControllerV3 ownHip = GetOwnHip();
+    FreeControllerV3 penisBase = GetOwnPenisBase();
+
+    if (ownHip == null || penisBase == null)
+    {
+        DebugLog(
+            "[TargetLinePerson] Now Docking height finish skipped" +
+            " / reason=" + reason +
+            " / ownHip=" + (ownHip != null ? "1" : "0") +
+            " / pBase=" + (penisBase != null ? "1" : "0")
+        );
+        return;
+    }
+
+    float beforeHipY = ownHip.transform.position.y;
+    float beforePBaseY = penisBase.transform.position.y;
+    float targetPBaseY = nowDockingLineFitActive ? nowDockingLineFitPBaseY : capturedOrigin.y;
+
+    // Auto Pose / Sit / Lie changes the local body layout after the first capture-height pass.
+    // Rebase hipYOffset from the current P Base relationship, then align the body once more
+    // so P Base lands on the selected Now Docking line height.
+    SetHipYOffsetFromPenisBase();
+    AlignHipRelativeControllersHeightToCapturedOriginOnce();
+
+    float afterHipY = ownHip.transform.position.y;
+    float afterPBaseY = penisBase.transform.position.y;
+
+    DebugLog(
+        "[TargetLinePerson] Now Docking height finish" +
+        " / reason=" + reason +
+        " / targetPBaseY=" + targetPBaseY.ToString("F3") +
+        " / pBaseY=" + beforePBaseY.ToString("F3") + "->" + afterPBaseY.ToString("F3") +
+        " / hipY=" + beforeHipY.ToString("F3") + "->" + afterHipY.ToString("F3") +
+        " / deltaPBase=" + (afterPBaseY - beforePBaseY).ToString("F3") +
+        " / hipYOffset=" + GetHipYOffset().ToString("F3")
     );
 }
 
@@ -6151,6 +6516,8 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
             }
         }
 
+        bool pTipCyanAssistApplied = ApplyPTipCyanLineAssistToYellowTargets(ref midTarget, ref tipTarget, reason);
+
         Vector3 midBefore = penisMid.transform.position;
         Vector3 tipBefore = penisTip.transform.position;
 
@@ -6193,6 +6560,7 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
                 " / folded=" + yellowFoldedOnGreen +
                 " / yellowLine=unchanged" +
                 " / mode=base-straight-mid-tip-yellow-angle-parallel-own-tilt-guard" +
+                " / cyanAssist=" + (pTipCyanAssistApplied ? "1" : "0") +
                 " / midMove=" + Vector3.Distance(midBefore, midTarget).ToString("F3") +
                 " / tipMove=" + Vector3.Distance(tipBefore, tipTarget).ToString("F3") +
                 " / position mid+tip / rotation base+mid+tip"
@@ -6350,6 +6718,94 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
 
         gDepthPFollowApplied = true;
         pAngleAtYellowP3Applied = true;
+        return true;
+    }
+
+    bool ApplyPTipCyanLineAssistToYellowTargets(ref Vector3 midTarget, ref Vector3 tipTarget, string reason)
+    {
+        // v222: This is a pre-contact assist for the Yellow Guide route only.
+        // Full Depth P Follow still owns the near/inside zone and returns before this function is reached.
+        // Keep Base untouched so the captured body/yellow-guide shape does not stretch or jump.
+        if (GetTargetModeName() != "genital")
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        string depthTargetMode;
+        if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        if (depthTargetMode != "genital" || dir.sqrMagnitude < 0.0001f)
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        dir.Normalize();
+
+        float gDepthAngle = Mathf.Abs(Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg);
+        if (gDepthAngle > GenDepthAngleGateLimitDegrees)
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        Vector3 fromOrigin = tipTarget - origin;
+        float rawDepth = Vector3.Dot(fromOrigin, dir);
+        if (rawDepth < PTipCyanLineAssistBackDepth || rawDepth > PTipCyanLineAssistForwardDepth)
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        Vector3 closestOnAxis = origin + dir * rawDepth;
+        Vector3 lateral = Vector3.ProjectOnPlane(tipTarget - closestOnAxis, dir);
+        float lateralDistance = lateral.magnitude;
+
+        if (lateralDistance < PTipCyanLineAssistLateralMin || lateralDistance > PTipCyanLineAssistLateralMax)
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        Vector3 correction = Vector3.ClampMagnitude(-lateral, PTipCyanLineAssistTipMaxMove);
+        if (correction.sqrMagnitude < 0.0000001f)
+        {
+            pTipCyanLineAssistApplied = false;
+            return false;
+        }
+
+        Vector3 midCorrection = correction * PTipCyanLineAssistMidScale;
+        tipTarget += correction;
+        midTarget += midCorrection;
+
+        bool shouldLog = !pTipCyanLineAssistApplied || (IsDebugViewEnabled() && Time.time - lastPTipCyanLineAssistLogTime >= PTipCyanLineAssistLogInterval);
+        if (shouldLog)
+        {
+            lastPTipCyanLineAssistLogTime = Time.time;
+            DebugLog(
+                "[TargetLinePerson] P Tip Cyan Line Assist" +
+                " / reason=" + reason +
+                " / target=" + depthTargetMode +
+                " / angle=" + gDepthAngle.ToString("F1") +
+                " / rawDepth=" + rawDepth.ToString("F3") +
+                " / lateral=" + lateralDistance.ToString("F3") +
+                " / tipMove=" + correction.magnitude.ToString("F3") +
+                " / midMove=" + midCorrection.magnitude.ToString("F3") +
+                " / origin=(" + FormatVector3(origin) + ")" +
+                " / dir=(" + FormatVector3(dir) + ")" +
+                " / mode=yellow-pre-depth-follow-position-only"
+            );
+        }
+
+        pTipCyanLineAssistApplied = true;
         return true;
     }
 
@@ -8178,9 +8634,9 @@ void ApplyPlacementMicroNoRotate(float maxDelta)
 
         DebugLog("[TargetLinePerson] Sit Ground pose applied.");
     }
-bool ApplyAutoLieOnRidePoseIfNeeded()
+bool ApplyAutoPoseIfNeeded()
 {
-    if (autoLieOnRidePose == null || !autoLieOnRidePose.val)
+    if (autoPose == null || !autoPose.val)
     {
         return false;
     }
@@ -8193,11 +8649,37 @@ bool ApplyAutoLieOnRidePoseIfNeeded()
     // Ride-like poses keep the current horizontal direction.
     OverrideCapturedDirectionForRidePose();
 
-    // Ride-like poses use the fixed Lie On Back preset.
-    ApplyLieOnBackPresetPose();
-    rideLieActive = true;
-    EnsureLieDockingSafeDistance("auto-lie");
-    DebugLog("[TargetLinePerson] Auto Lie On Ride Pose applied: Lie On Back fixed / genital dir ignored.");
+    float genitalDownDot;
+    bool genitalFacingDown = IsGenitalInsideLineFacingDownForAutoPose(out genitalDownDot);
+
+    // Auto Pose is intentionally simple: On/Off only.
+    // G/inside direction facing down => Lie On Back.
+    // Other ride-like cases => Sit Ground.
+    if (genitalFacingDown)
+    {
+        ApplyLieOnBackPresetPose();
+        rideLieActive = true;
+        EnsureLieDockingSafeDistance("auto-pose-g-down-lie");
+        DebugLog(
+            "[TargetLinePerson] Auto Pose applied: Lie On Back" +
+            " / reason=genital-down" +
+            " / gDownDot=" + genitalDownDot.ToString("F3") +
+            " / threshold=" + AutoPoseGenitalDownDotMin.ToString("F2")
+        );
+    }
+    else
+    {
+        ApplySitGroundPresetPose();
+        rideLieActive = false;
+        DebugLog(
+            "[TargetLinePerson] Auto Pose applied: Sit Ground" +
+            " / reason=genital-not-down" +
+            " / target=" + GetTargetModeName() +
+            " / gDownDot=" + genitalDownDot.ToString("F3") +
+            " / threshold=" + AutoPoseGenitalDownDotMin.ToString("F2")
+        );
+    }
+
     return true;
 }
 
@@ -8448,8 +8930,20 @@ bool IsTargetRideLikePose()
     bool upperAlmostVertical = upperVerticalDot >= 0.80f;
     bool hipLow = hipY <= 0.65f;
     bool hipNearKneeHeight = hipKneeDiff <= 0.20f;
+    bool ridePoseBasic = upperAlmostVertical && hipLow && hipNearKneeHeight;
 
-    return upperAlmostVertical && hipLow && hipNearKneeHeight;
+    if (ridePoseBasic)
+    {
+        DebugLog(
+            "[TargetLinePerson] Auto Pose ride-like" +
+            " / upperDot=" + upperVerticalDot.ToString("F3") +
+            " / hipY=" + hipY.ToString("F3") +
+            " / kneeY=" + kneeY.ToString("F3") +
+            " / hipKneeDiff=" + hipKneeDiff.ToString("F3")
+        );
+    }
+
+    return ridePoseBasic;
 }
     void ApplyLieOnBackPresetPose()
     {
@@ -8984,7 +9478,7 @@ bool IsTargetRideLikePose()
         // Extra debug lines: yellow shows the intended P path, purple marks the bend point.
         SetupLine(penisPathLine, Color.yellow);
         SetupLine(bendMarkerLine, new Color(1f, 0f, 1f, 1f));
-        SetupLine(gDepthGuideLine, Color.cyan);
+        SetupLine(gDepthGuideLine, new Color(0.0f, 1.0f, 1.0f, GuideLineAlpha));
 
         if (penisPathLine != null)
         {
@@ -9000,7 +9494,7 @@ bool IsTargetRideLikePose()
 
         if (gDepthGuideLine != null)
         {
-            Color solidCyan = new Color(0.0f, 1.0f, 1.0f, 1.0f);
+            Color solidCyan = new Color(0.0f, 1.0f, 1.0f, GuideLineAlpha);
             gDepthGuideLine.startWidth = 0.055f;
             gDepthGuideLine.endWidth = 0.055f;
             gDepthGuideLine.startColor = solidCyan;
@@ -11548,6 +12042,32 @@ bool IsTargetRideLikePose()
 
         dir.Normalize();
         return true;
+    }
+
+    bool IsGenitalInsideLineFacingDownForAutoPose(out float downDot)
+    {
+        downDot = -1.0f;
+
+        if (targetControllerChooser == null || targetControllerChooser.val != "genital")
+        {
+            return false;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        if (!TryGetLiveGenitalInsideLine(out origin, out dir, out length))
+        {
+            return false;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            return false;
+        }
+
+        downDot = Vector3.Dot(dir.normalized, Vector3.down);
+        return downDot >= AutoPoseGenitalDownDotMin;
     }
 
     bool TryGetLiveCurrentInsideLine(out Vector3 origin, out Vector3 dir, out float length, out string targetMode)

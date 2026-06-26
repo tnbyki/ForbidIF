@@ -1,3 +1,8 @@
+// HBA_COVER_CHANCE50_LOG_DEBUG_ONLY_BUILD 2026-06-27: Sets Cover Random Chance default to 50% and makes the short Hand Cover selection log obey Debug ON; status text still shows the selected target.
+// HBA_HAND_COVER_SELECTION_LOG_SHORT_BUILD 2026-06-27: Shortens the always-visible Hand Cover selection log to only "Cover selected: L Hand -> Target" / "PushAway selected: R Hand -> Target" while keeping verbose details behind Debug.
+// HBA_HAND_COVER_SELECTION_LOG_ALWAYS_BUILD 2026-06-27: Shows the selected Hand Cover target even when Debug is OFF; updates status immediately and logs a compact Cover selected line.
+// HBA_HAND_COVER_HEAD_SIDE_DOWN_SELF_NIPPLE_BUILD 2026-06-27: Sets Head Side L/R down offset to 0.10 and replaces Self Chest PushAway with Self L/R Nipple point targets while keeping Hand Cover behavior unchanged.
+// HBA_HAND_COVER_EXTRA_TARGETS_BUILD 2026-06-27: Adds Belly, G, and L/R head-side offset targets to RandomHandCover while keeping behavior/chance/restore unchanged.
 // HBA_KNEE_PAIR_ONLY_DISABLE_BONUS_LOCAL_BUILD 2026-06-26: Disables automatic RandomHand bonus knee-local/single knee nudges and keeps RandomKnee reactions to Pair Open/Close only; pair fallback now skips instead of running a single nudge.
 // HBA_RANDOM_HAND_BONUS_KNEE_MICRO_BUILD 2026-06-26: Makes RandomHand bonus knee local a tiny micro reaction only: about one-third of v042 again, no overshoot, much smaller arc, shorter hold, and snapshots/restores only the selected knee.
 // HBA_RANDOM_HAND_BONUS_KNEE_1THIRD_BUILD 2026-06-26: Reduces RandomHand bonus knee local nudge travel to roughly one-third while keeping chance/timing unchanged.
@@ -425,7 +430,7 @@ public class HumanBodyAction : MVRScript
     const string HandCoverScopeSelf = "Self";
     const string HandCoverScopeTarget = "Target";
     const string HandCoverScopeDefault = HandCoverScopeAll;
-    const float HandCoverChanceDefault = 80.0f;
+    const float HandCoverChanceDefault = 50.0f;
     const float HandCoverChanceMin = 0.0f;
     const float HandCoverChanceMax = 100.0f;
     const float HandCoverPushAwayMixDefault = 30.0f;
@@ -872,7 +877,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v044 knee pair only disable bonus local / v043 bonus knee micro / v041 random hand cover hip2 thigh / v038 rot fixed / v036 slow sensitive / v035 face time scale / v032 classifier / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v049 cover chance50 log debug only / v048 cover selection log short / v046 head side down self nipple / v045 cover extra targets / v044 knee pair only disable bonus local / v043 bonus knee micro / v041 random hand cover hip2 thigh / v038 rot fixed / v036 slow sensitive / v035 face time scale / v032 classifier / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -4182,12 +4187,20 @@ public class HumanBodyAction : MVRScript
 
         HandCoverTarget target = targets[UnityEngine.Random.Range(0, targets.Count)];
         bool upperTarget = IsUpperHandCoverTargetLabel(target.label);
+        string selectedCoverMode = kneeThighTestOnly ? "SelfThighTest" : target.pushAway ? "PushAway" : "Cover";
 
-        DebugMessage("[HumanBodyAction] Cover target selected / source=" + source +
+        hbaLastBlock = selectedCoverMode + " selected: " + GetHandLabel(hand) + " -> " + target.label;
+        UpdateHbaStatus(true);
+        CoverSelectionMessage(hbaLastBlock);
+        DebugMessage("[HumanBodyAction] Cover selected detail" +
+            " / mode=" + selectedCoverMode +
+            " / source=" + source +
             " / hand=" + GetHandLabel(hand) +
             " / target=" + target.label +
             " / upper=" + (upperTarget ? "1" : "0") +
-            " / candidates=" + targets.Count);
+            " / pushAway=" + (target.pushAway ? "1" : "0") +
+            " / candidates=" + targets.Count +
+            " / targetPos=" + V3(target.position));
 
         CaptureHandCoverSnapshot(hand);
         RelaxHandCoverElbow(hand);
@@ -4220,7 +4233,7 @@ public class HumanBodyAction : MVRScript
         catch { }
         SetControllerRotation(hand, lockedRotation);
 
-        string coverMode = kneeThighTestOnly ? "SelfThighTest" : target.pushAway ? "PushAway" : "Cover";
+        string coverMode = selectedCoverMode;
         coverPosition = ClampHandCoverCommandPosition(startPosition, coverPosition, coverMode, target.label, kneeThighTestOnly);
         hbaLastBlock = coverMode + " hold: " + GetHandLabel(hand) + " -> " + target.label;
         UpdateHbaStatus(true);
@@ -5307,11 +5320,46 @@ public class HumanBodyAction : MVRScript
         // filtered out by PushAway Reach. Keep upper-body candidates available; final motion is
         // still clamped by HandCoverCommandMaxDistance, so this does not force an unreachable jump.
         AddControlPushAwayTargetAlways(targets, "Self Head", FindControllerByAliases("headControl", "head"), handStartPosition, bodyCenter);
-        AddControlPushAwayTargetAlways(targets, "Self Chest", chest, handStartPosition, bodyCenter);
+        AddSelfNipplePushAwayTargets(targets, chest, forward, right, handStartPosition, bodyCenter);
         AddControlPushAwayTarget(targets, "Self L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), handStartPosition, bodyCenter);
         AddControlPushAwayTarget(targets, "Self R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), handStartPosition, bodyCenter);
 
         return targets;
+    }
+
+    void AddSelfNipplePushAwayTargets(List<HandCoverTarget> targets, FreeControllerV3 chest, Vector3 forward, Vector3 right, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (targets == null) return;
+
+        FreeControllerV3 lNipple = FindControllerByAliases("lNippleControl", "leftNippleControl", "lNipple", "leftNipple");
+        FreeControllerV3 rNipple = FindControllerByAliases("rNippleControl", "rightNippleControl", "rNipple", "rightNipple");
+
+        Vector3 outDir = forward;
+        if (outDir.sqrMagnitude < 0.0001f) outDir = Vector3.forward;
+        outDir.Normalize();
+
+        if (lNipple != null || rNipple != null)
+        {
+            if (lNipple != null) AddPushAwayTargetNoReachLimit(targets, "Self L Nipple", GetControllerPosition(lNipple), outDir, handStartPosition, bodyCenter);
+            if (rNipple != null) AddPushAwayTargetNoReachLimit(targets, "Self R Nipple", GetControllerPosition(rNipple), outDir, handStartPosition, bodyCenter);
+            return;
+        }
+
+        if (chest == null) return;
+
+        Vector3 chestPos = GetControllerPosition(chest);
+        Vector3 rightDir = right;
+        if (rightDir.sqrMagnitude < 0.0001f) rightDir = Vector3.right;
+        rightDir.Normalize();
+
+        // Fallback estimate when explicit nipple controls are not available.
+        // Keep this as PushAway/no-reach-limit like the old Self Chest candidate.
+        Vector3 up = Vector3.up;
+        const float sideOffset = 0.115f;
+        const float forwardOffset = 0.055f;
+        const float downOffset = 0.045f;
+        AddPushAwayTargetNoReachLimit(targets, "Self L Nipple", chestPos - rightDir * sideOffset + outDir * forwardOffset - up * downOffset, outDir, handStartPosition, bodyCenter);
+        AddPushAwayTargetNoReachLimit(targets, "Self R Nipple", chestPos + rightDir * sideOffset + outDir * forwardOffset - up * downOffset, outDir, handStartPosition, bodyCenter);
     }
 
     void AddControlPushAwayTarget(List<HandCoverTarget> targets, string label, FreeControllerV3 control, Vector3 handStartPosition, Vector3 bodyCenter)
@@ -5396,15 +5444,19 @@ public class HumanBodyAction : MVRScript
         // v068: Keep upper-body targets visible in random selection again.
         // Lower-body targets are numerous and Hip Back is weighted, so give Head/Neck/Chest
         // one extra entry each without changing labels or UI.
-        AddControlCoverTarget(targets, "Head", FindControllerByAliases("headControl", "head"), forward);
-        AddControlCoverTarget(targets, "Head", FindControllerByAliases("headControl", "head"), forward);
-        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
-        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
-        AddControlCoverTarget(targets, "Chest", FindControllerByAliases("chestControl", "chest"), forward);
-        AddControlCoverTarget(targets, "Chest", FindControllerByAliases("chestControl", "chest"), forward);
-
-
+        FreeControllerV3 head = FindControllerByAliases("headControl", "head");
+        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
         FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
+
+        AddControlCoverTarget(targets, "Head", head, forward);
+        AddControlCoverTarget(targets, "Head", head, forward);
+        AddHeadSideCoverTargets(targets, head, right, up);
+        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
+        AddControlCoverTarget(targets, "Neck", FindControllerByAliases("neckControl", "neck"), forward);
+        AddControlCoverTarget(targets, "Chest", chest, forward);
+        AddControlCoverTarget(targets, "Chest", chest, forward);
+        AddBellyAndGCoverTargets(targets, hip, chest, forward, up);
+
         if (hip != null)
         {
             Vector3 back = -forward;
@@ -5430,6 +5482,51 @@ public class HumanBodyAction : MVRScript
     {
         if (targets == null || control == null) return;
         targets.Add(new HandCoverTarget(label, GetControllerPosition(control), outward));
+    }
+
+
+    void AddPointCoverTarget(List<HandCoverTarget> targets, string label, Vector3 position, Vector3 outward)
+    {
+        if (targets == null) return;
+        if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
+        outward.Normalize();
+        targets.Add(new HandCoverTarget(label, position, outward));
+    }
+
+    void AddBellyAndGCoverTargets(List<HandCoverTarget> targets, FreeControllerV3 hip, FreeControllerV3 chest, Vector3 forward, Vector3 up)
+    {
+        if (targets == null || hip == null) return;
+
+        Vector3 hipPos = GetControllerPosition(hip);
+        Vector3 chestPos = chest != null ? GetControllerPosition(chest) : hipPos + up * 0.42f;
+        Vector3 outDir = forward;
+        if (outDir.sqrMagnitude < 0.0001f) outDir = Vector3.forward;
+        outDir.Normalize();
+
+        // Computed cover points: no new UI/settings. Keep the existing position-only cover behavior.
+        // Belly is placed between hip and chest, slightly toward the body front.
+        Vector3 belly = Vector3.Lerp(hipPos, chestPos, 0.42f) + outDir * 0.045f;
+        AddPointCoverTarget(targets, "Belly", belly, outDir);
+
+        // G has no stable FreeControllerV3 on many scenes, so use a hip-based local estimate.
+        // This keeps RandomHandCover independent from TargetLinePerson/trigger setup.
+        Vector3 gPoint = hipPos + outDir * 0.095f - up * 0.105f;
+        AddPointCoverTarget(targets, "G", gPoint, outDir);
+    }
+
+    void AddHeadSideCoverTargets(List<HandCoverTarget> targets, FreeControllerV3 head, Vector3 right, Vector3 up)
+    {
+        if (targets == null || head == null) return;
+
+        Vector3 headPos = GetControllerPosition(head);
+        Vector3 rightDir = right;
+        if (rightDir.sqrMagnitude < 0.0001f) rightDir = Vector3.right;
+        rightDir.Normalize();
+
+        const float sideOffset = 0.180f;
+        const float downOffset = 0.100f;
+        AddPointCoverTarget(targets, "Head Side L", headPos - rightDir * sideOffset - up * downOffset, -rightDir);
+        AddPointCoverTarget(targets, "Head Side R", headPos + rightDir * sideOffset - up * downOffset, rightDir);
     }
 
 
@@ -6834,6 +6931,13 @@ public class HumanBodyAction : MVRScript
     float GetFloat(JSONStorableFloat storable, float fallback)
     {
         return storable != null ? storable.val : fallback;
+    }
+
+    void CoverSelectionMessage(string message)
+    {
+        // v049: The short selected Hand Cover point is useful for tuning, but it can still spam the VaM log.
+        // Keep the left-side HBA Status update always visible, and write the log line only when Debug is ON.
+        DebugMessage(message);
     }
 
     void DebugMessage(string message)

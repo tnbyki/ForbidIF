@@ -1,3 +1,5 @@
+// DEFAULT_IK_SELECT_HUG_BODY_BUILD 2026-06-26: IK Select defaults/falls back to Hug Body without auto-resetting to <none>, keeping HDU direct-route selection ownership.
+// TARGET_IK_DEFAULT_SNAP_CURRENT_BUILD 2026-06-26: Target IK Default now treats the current target IK pose as the new snap/release baseline by clearing target snap/restore caches without changing IK Select, avoiding HDU_Commander route conflicts.
 // FOOT_FRONTSIDE_PATH_FIX_BUILD 2026-06-26: Grab Foot now flips L/R path only on the target front-side route so the normal back-side foot direction remains unchanged.
 // LOAD_USER_DEFAULTS_POSE_RESYNC_BUILD 2026-06-26: After Self/Target Load User Defaults, clears/rebases TargetGrabber pose-dependent snap/restore caches so old pose snapshots are not reused.
 // TARGET_NONE_BODY_NUDGE_HIP_AXIS_BUILD 2026-06-25: None Body Nudge Pull/Push/Left/Right now use target hip/body visual horizontal axes; Atom transform root was often fixed to world +Z.
@@ -204,6 +206,7 @@ public class TargetGrabber : MVRScript
     private const string TC_CHEST_HOLD = "Chest Hold";
     private const string TC_HIP_HOLD = "Hip Hold";
     private const string TC_HUG_BODY = "Hug Body";
+    private const string DEFAULT_TARGET_CONTROLLER = TC_HUG_BODY;
     private const string TC_CROTCH = "Crotch";
     private const string TC_GROIN = "Groin";
     private const string TC_GEN = "Gen";
@@ -569,8 +572,8 @@ public class TargetGrabber : MVRScript
 
         targetPersonPartChooser = new JSONStorableStringChooser(
             "targetPersonController",
-            new List<string> { NONE },
-            NONE,
+            new List<string> { NONE, DEFAULT_TARGET_CONTROLLER },
+            DEFAULT_TARGET_CONTROLLER,
             "IK Select",
             (JSONStorableStringChooser.SetStringCallback)OnTargetPersonPartChanged
         );
@@ -734,7 +737,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v5bd_foot_frontside_path_fix / based-on-v5bc_load_defaults_pose_resync");
+        DebugLog("ready / v5bf_default_ik_select_hug_body / based-on-v5be_target_ik_default_snap_current");
     }
 
     private void RegisterExternalActions()
@@ -1219,7 +1222,7 @@ public class TargetGrabber : MVRScript
 
         string next = choices.Contains(current) && current != NONE
             ? current
-            : FirstExistingChoice(choices, TC_HUG_BODY, TC_CHEST_HOLD, TC_HIP_HOLD, TC_HAND, TC_FOOT, TC_KNEE, TC_GEN, TC_PENI_BASE, TC_PENI_MID, TC_PENI_TIP, TC_ANUS, TC_GROIN, TC_HEAD, TC_HEAD_TOP, TC_MOUTH, TC_NECK, TC_ABDOMEN, TC_HIP, TC_L_NIPPLE, TC_R_NIPPLE) ?? NONE;
+            : FirstExistingChoice(choices, DEFAULT_TARGET_CONTROLLER, TC_CHEST_HOLD, TC_HIP_HOLD, TC_HAND, TC_FOOT, TC_KNEE, TC_GEN, TC_PENI_BASE, TC_PENI_MID, TC_PENI_TIP, TC_ANUS, TC_GROIN, TC_HEAD, TC_HEAD_TOP, TC_MOUTH, TC_NECK, TC_ABDOMEN, TC_HIP, TC_L_NIPPLE, TC_R_NIPPLE) ?? NONE;
 
         targetPersonPartChooser.val = next;
         UpdateGrabHandUtilityButtons();
@@ -1825,6 +1828,12 @@ public class TargetGrabber : MVRScript
             if (autoGrabWidthJSON != null) autoGrabWidthJSON.val = true;
             if (followModeChooser != null) followModeChooser.val = FOLLOW_OFF;
             if (followTargetJSON != null) followTargetJSON.val = false;
+            if (targetPersonPartChooser != null)
+            {
+                UpdateTargetPersonControllerChoices();
+                if (targetPersonPartChooser.choices != null && targetPersonPartChooser.choices.Contains(DEFAULT_TARGET_CONTROLLER))
+                    targetPersonPartChooser.val = DEFAULT_TARGET_CONTROLLER;
+            }
             if (autoSnapPullOpenIKJSON != null) autoSnapPullOpenIKJSON.val = true;
             if (handWristAngleJSON != null) handWristAngleJSON.val = true;
             if (alignFootSoleJSON != null) alignFootSoleJSON.val = false;
@@ -1835,6 +1844,9 @@ public class TargetGrabber : MVRScript
         {
             suppressApply = false;
         }
+
+        if (targetPersonPartChooser != null && targetPersonPartChooser.val == DEFAULT_TARGET_CONTROLLER)
+            OnTargetPersonPartChanged(DEFAULT_TARGET_CONTROLLER);
 
         if (IsFollowTargetMode() && hasActiveGrab)
             ApplyGrab(false);
@@ -1934,7 +1946,13 @@ public class TargetGrabber : MVRScript
 
         InvalidateTargetPersonControlCache();
         int changed = ApplyPersonIKDefault(selectedTargetPerson, "TARGET IK DEFAULT");
-        SetStatus("Target IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture));
+
+        // v5be: Target IK Default is an explicit new baseline.
+        // Do not move IK Select to <none> here. HDU_Commander direct routes select the same IK Select
+        // immediately before running actions, so clearing the chooser here can race/conflict with HDU.
+        QueueTargetIKDefaultRuntimeSnapResync("target-ik-default");
+
+        SetStatus("Target IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture) + " / snap=current");
     }
 
     private void TargetLoadUserDefaults()
@@ -2113,6 +2131,59 @@ public class TargetGrabber : MVRScript
         return false;
     }
 
+
+    private void QueueTargetIKDefaultRuntimeSnapResync(string reason)
+    {
+        SnapTargetIKDefaultRuntimeStateToCurrent(reason + "/now");
+
+        if (poseLoadRuntimeResyncRoutine != null)
+        {
+            try { StopCoroutine(poseLoadRuntimeResyncRoutine); }
+            catch { }
+            poseLoadRuntimeResyncRoutine = null;
+        }
+
+        poseLoadRuntimeResyncRoutine = StartCoroutine(TargetIKDefaultRuntimeSnapResyncRoutine(reason));
+    }
+
+    private System.Collections.IEnumerator TargetIKDefaultRuntimeSnapResyncRoutine(string reason)
+    {
+        // Target IK Default may be applied while VaM/control state settles for a frame.
+        // Clear old TargetGrabber target-side snapshots again after a short delay so Release Target
+        // and AutoSnap do not reuse pre-default positions.
+        yield return null;
+        yield return null;
+
+        SnapTargetIKDefaultRuntimeStateToCurrent(reason + "/delayed");
+
+        InvalidateTargetPersonControlCache();
+        ResolveControls();
+        UpdateGrabHandUtilityButtons();
+
+        poseLoadRuntimeResyncRoutine = null;
+        DebugLog("[TARGET IK DEFAULT SNAP CURRENT] done / reason=" + reason);
+    }
+
+    private void SnapTargetIKDefaultRuntimeStateToCurrent(string reason)
+    {
+        // Target IK Default means the currently visible target pose/IK state is now the baseline.
+        // Clear old target-side restore/snap caches instead of restoring them.
+        // This intentionally does not change targetPersonPartChooser / IK Select; HDU_Commander
+        // direct route actions also use that chooser and should remain the owner of their selection.
+        ClearHeldTargetGrabState();
+        pendingAutoSnapIKControls.Clear();
+        hugBodyWristReferencePositions.Clear();
+        hugBodyHandSnapAnchorPositions.Clear();
+
+        targetOriginalPositions.Clear();
+        targetOriginalRotations.Clear();
+        targetLockPositionStates.Clear();
+        targetLockRotationStates.Clear();
+        targetLockControls.Clear();
+
+        DebugLog("[TARGET IK DEFAULT SNAP CURRENT] clear target snapshots / reason=" + reason +
+            " / ikSelect=" + (targetPersonPartChooser != null ? targetPersonPartChooser.val : "<null>"));
+    }
 
     private void QueuePostPoseLoadRuntimeResync(bool selfSide, bool targetSide, string reason)
     {
