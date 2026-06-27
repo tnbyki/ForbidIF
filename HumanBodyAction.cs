@@ -1,3 +1,4 @@
+// HBA_COVER_AUTO_RESTORE_PROGRESS_ZERO_BUILD 2026-06-27: While a Hand Cover is active, automatically restores the covered hand when HBA_Progress returns to zero or HBA_Active becomes false after seeing an active HBA signal; defaults ON.
 // HBA_PUSHAWAY_STRETCH_LOG_OFF_FIX_BUILD 2026-06-27: Fix build; keeps PushAway stretch-to-reach behavior but defaults Log Cover Hand OFF so compact Cover/PushAway logs appear only when explicitly enabled.
 // HBA_PUSHAWAY_STRETCH_TO_REACH_BUILD 2026-06-27: PushAway Person targets no longer disappear when beyond reach; far Head/Chest/Hip/Thigh are converted into a reachable stretch point in the same direction, with Log Cover Hand diagnostics.
 // HBA_PUSHAWAY_HEAD_WEIGHT_EFFECTIVE_REACH_BUILD 2026-06-27: Forces effective PushAway reach to at least the 1.20 default even if an old scene value remains, and weights PushAway Person Head as 3 slots so Person#2 Head appears more often.
@@ -164,6 +165,7 @@ public class HumanBodyAction : MVRScript
     JSONStorableFloat handCoverPushAwayReach;
     JSONStorableFloat handCoverPushAwayOffset;
     JSONStorableBool handCoverComplyHold;
+    JSONStorableBool handCoverAutoRestoreOnProgressZero;
     JSONStorableFloat gParallelChestHeadAmount;
     JSONStorableBool gProgressChestHeadFollow;
     JSONStorableFloat gProgressChestHeadAmount;
@@ -214,6 +216,7 @@ public class HumanBodyAction : MVRScript
     int handBonusElbowRunSerial = 0;
     int handBonusElbowLastSide = 0; // -1=L, +1=R, 0=not chosen yet. Used only for the small RandomHand bonus elbow nudge.
     float suppressEventHandCoverUntil = -999.0f;
+    bool handCoverAutoRestoreArmed = false;
 
     FreeControllerV3 headControl;
     HeadControlSnapshot activeHeadSnapshot;
@@ -502,6 +505,7 @@ public class HumanBodyAction : MVRScript
     const float HandCoverPushAwayOffsetDefault = 0.075f;
     const float HandCoverPushAwayOffsetMin = 0.00f;
     const float HandCoverPushAwayOffsetMax = 0.25f;
+    const float HandCoverAutoRestoreProgressMin = 0.005f;
     const string HandCoverPushAwayPersonAuto = "Auto Other Person";
     const float GParallelChestHeadAmountDefault = 0.080f;
     const float GParallelChestHeadAmountMin = 0.000f;
@@ -1008,7 +1012,7 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v053 g parallel chest head / v052 cover comply default on log debug only fix / v050 comply hold / v049 cover chance50 / v046 head side down self nipple / v045 cover extra targets / v044 knee pair only / v032 classifier / HBA_BridgeVersion");
+            DebugMessage("[HumanBodyAction] Ready / v072 cover auto restore progress zero / v071 pushaway stretch log off fix / v053 g parallel chest head / v052 cover comply default on log debug only fix / v050 comply hold / v049 cover chance50 / v046 head side down self nipple / v045 cover extra targets / v044 knee pair only / v032 classifier / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -1184,6 +1188,9 @@ public class HumanBodyAction : MVRScript
         handCoverComplyHold = new JSONStorableBool("Hand Cover Comply Hold", true);
         RegisterBool(handCoverComplyHold);
 
+        handCoverAutoRestoreOnProgressZero = new JSONStorableBool("Cover Auto Restore On Progress Zero", true);
+        RegisterBool(handCoverAutoRestoreOnProgressZero);
+
         logCoverHand = new JSONStorableBool("Log Cover Hand", false);
         RegisterBool(logCoverHand);
 
@@ -1345,6 +1352,7 @@ public class HumanBodyAction : MVRScript
         CreateScrollablePopup(handCoverScope, false);
         CreateSlider(handCoverChance, false);
         CreateToggle(handCoverComplyHold, false);
+        CreateToggle(handCoverAutoRestoreOnProgressZero, false);
         CreateToggle(logCoverHand, false);
         CreateSlider(gParallelChestHeadAmount, false);
         CreateToggle(gProgressChestHeadFollow, false);
@@ -1760,7 +1768,58 @@ public class HumanBodyAction : MVRScript
         UpdateActionLabelFireFlash();
         UpdateTgLabelFireFlash();
         UpdateGProgressChestHeadFollow();
+        UpdateHandCoverAutoRestoreOnProgressZero();
         UpdateHbaStatus(false);
+    }
+
+    bool IsHandCoverAutoRestoreOnProgressZeroEnabled()
+    {
+        return handCoverAutoRestoreOnProgressZero == null || handCoverAutoRestoreOnProgressZero.val;
+    }
+
+    bool HasHandCoverAutoRestoreSignal()
+    {
+        if (!IsHbaEnabled()) return false;
+        if (hbaActive == null || !hbaActive.val) return false;
+        float progress = hbaProgress != null ? hbaProgress.val : 0.0f;
+        return progress > HandCoverAutoRestoreProgressMin;
+    }
+
+    void UpdateHandCoverAutoRestoreOnProgressZero()
+    {
+        if (activeHandCoverSnapshot == null)
+        {
+            handCoverAutoRestoreArmed = false;
+            return;
+        }
+
+        if (!IsHandCoverAutoRestoreOnProgressZeroEnabled())
+        {
+            return;
+        }
+
+        if (HasHandCoverAutoRestoreSignal())
+        {
+            if (!handCoverAutoRestoreArmed)
+            {
+                handCoverAutoRestoreArmed = true;
+                DebugMessage("[HumanBodyAction] Cover auto restore armed / progress=" + F3(hbaProgress != null ? hbaProgress.val : 0.0f));
+            }
+            return;
+        }
+
+        if (!handCoverAutoRestoreArmed)
+        {
+            return;
+        }
+
+        string reason = (hbaActive != null && !hbaActive.val) ? "progress-zero:hba-inactive" : "progress-zero";
+        hbaLastBlock = "Cover auto restore: " + reason;
+        DebugMessage("[HumanBodyAction] Cover auto restore fire / reason=" + reason +
+            " / progress=" + F3(hbaProgress != null ? hbaProgress.val : 0.0f) +
+            " / active=" + ((hbaActive != null && hbaActive.val) ? "1" : "0"));
+        RequestHandCoverRestore(reason, true);
+        UpdateHbaStatus(true);
     }
 
     bool IsHbaEnabled()
@@ -5640,6 +5699,7 @@ public class HumanBodyAction : MVRScript
     void CaptureHandCoverSnapshot(FreeControllerV3 hand)
     {
         if (hand == null) return;
+        handCoverAutoRestoreArmed = HasHandCoverAutoRestoreSignal();
         activeHandCoverSnapshot = new HandCoverSnapshot();
         activeHandCoverSnapshot.hand = hand;
         activeHandCoverSnapshot.position = GetControllerPosition(hand);
@@ -5660,6 +5720,7 @@ public class HumanBodyAction : MVRScript
 
     void RequestHandCoverRestore(string reason, bool animate)
     {
+        handCoverAutoRestoreArmed = false;
         handCoverRunSerial++;
 
         if (directHandCoverRoutine != null)
@@ -5683,6 +5744,7 @@ public class HumanBodyAction : MVRScript
 
         HandCoverSnapshot snap = activeHandCoverSnapshot;
         activeHandCoverSnapshot = null;
+        handCoverAutoRestoreArmed = false;
 
         if (!animate || IsCriticalHandCoverRestoreReason(reason))
         {
@@ -5706,6 +5768,7 @@ public class HumanBodyAction : MVRScript
 
         HandCoverSnapshot snap = activeHandCoverSnapshot;
         activeHandCoverSnapshot = null;
+        handCoverAutoRestoreArmed = false;
         RestoreHandCoverSnapshotImmediate(snap, reason);
     }
 
@@ -7697,6 +7760,7 @@ public class HumanBodyAction : MVRScript
 
     void StopAllAndReset(string reason)
     {
+        handCoverAutoRestoreArmed = false;
         if (actionRoutine != null)
         {
             StopCoroutine(actionRoutine);
