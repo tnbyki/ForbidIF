@@ -1,3 +1,4 @@
+// LIE_YAW_LOCK_USES_DOCKING_DIR_BUILD 2026-06-27: Smart/Reverse genital docking uses thighLR+targetRoot.forward and Lie yaw lock preserves that captured docking side.
 // PFOLLOW_OWN_LIE_UNBLOCK_LOG_FIX_BUILD 2026-06-27: Fixes normal log noise after v235 by gating Auto Pose mode and Now Docking Auto Pose probe logs behind Debug Log while keeping the ownLie P Follow unblock fix.
 // PFOLLOW_OWN_LIE_UNBLOCK_FIX_BUILD 2026-06-27: Keeps Yellow P Follow active when only the user's current upper-body posture looks lie/flat; P Follow is blocked only by actual rideLieActive Auto Pose Lie state.
 // AUTO_POSE_SIT_FOOT_COMPLY_BUILD 2026-06-27: Moves Pose: Sit/Lie toggle under Reverse Smart Docking and sets L/R Foot PositionState to Comply after Auto Pose Sit to reduce knee collision while preserving foot rotation.
@@ -5104,66 +5105,74 @@ else
             return fallbackFlat;
         }
 
-        Vector3 pelvisRight = rThigh.transform.position - lThigh.transform.position;
-        pelvisRight.y = 0f;
-        if (pelvisRight.sqrMagnitude < 0.0001f)
+        Vector3 thighRight = rThigh.transform.position - lThigh.transform.position;
+        thighRight.y = 0f;
+        if (thighRight.sqrMagnitude < 0.0001f)
         {
             source = "LabiaTrigger.-up fallback:thigh-right-zero";
             return fallbackFlat;
         }
-        pelvisRight.Normalize();
+        thighRight.Normalize();
 
-        Vector3 pelvisUp = Vector3.up;
-        FreeControllerV3 hip = GetTargetHipController(targetAtom);
-        FreeControllerV3 chest = GetTargetChestController(targetAtom);
-        if (hip != null && chest != null)
+        // Normal/Reverse should be decided by the target body's stable front/back,
+        // while the L/R thigh pair supplies the lateral axis.  This avoids using a
+        // near-vertical Labia/G axis as the body placement direction.
+        Vector3 rootForward = GetTargetRootForward(targetAtom, fallbackFlat);
+        rootForward.y = 0f;
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            Vector3 hipToChest = chest.transform.position - hip.transform.position;
-            if (hipToChest.sqrMagnitude >= 0.0001f)
-            {
-                pelvisUp = hipToChest.normalized;
-            }
+            rootForward = fallbackFlat;
+            rootForward.y = 0f;
         }
-        else if (targetAtom != null && targetAtom.mainController != null)
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            Vector3 rootUp = targetAtom.mainController.transform.up;
-            if (rootUp.sqrMagnitude >= 0.0001f)
-            {
-                pelvisUp = rootUp.normalized;
-            }
+            rootForward = Vector3.Cross(thighRight, Vector3.up);
+            rootForward.y = 0f;
         }
-
-        Vector3 pelvisForward = Vector3.Cross(pelvisRight, pelvisUp);
-        pelvisForward.y = 0f;
-        if (pelvisForward.sqrMagnitude < 0.0001f)
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            pelvisForward = Vector3.Cross(pelvisRight, Vector3.up);
-            pelvisForward.y = 0f;
-        }
-        if (pelvisForward.sqrMagnitude < 0.0001f)
-        {
-            source = "LabiaTrigger.-up fallback:pelvis-forward-zero";
+            source = "LabiaTrigger.-up fallback:root-forward-zero";
             return fallbackFlat;
         }
-        pelvisForward.Normalize();
+        rootForward.Normalize();
 
-        Vector3 signReference = GetTargetRootForward(targetAtom, fallbackFlat);
-        signReference.y = 0f;
-        if (signReference.sqrMagnitude < 0.0001f)
+        Vector3 dockingForward = rootForward - thighRight * Vector3.Dot(rootForward, thighRight);
+        dockingForward.y = 0f;
+
+        if (dockingForward.sqrMagnitude < 0.0001f)
         {
-            signReference = fallbackFlat;
-        }
-        signReference.Normalize();
+            dockingForward = Vector3.Cross(thighRight, Vector3.up);
+            dockingForward.y = 0f;
 
-        if (Vector3.Dot(pelvisForward, signReference) < 0f)
+            if (dockingForward.sqrMagnitude < 0.0001f)
+            {
+                source = "LabiaTrigger.-up fallback:thigh-root-forward-zero";
+                return fallbackFlat;
+            }
+
+            if (Vector3.Dot(dockingForward, rootForward) < 0f)
+            {
+                dockingForward = -dockingForward;
+            }
+        }
+
+        dockingForward.Normalize();
+
+        float rootDot = Vector3.Dot(dockingForward, rootForward);
+        if (rootDot < 0f)
         {
-            pelvisForward = -pelvisForward;
+            dockingForward = -dockingForward;
+            rootDot = -rootDot;
         }
 
-        float labiaDot = Vector3.Dot(pelvisForward, fallbackFlat);
-        source = "pelvis-thigh-triangle" +
+        float thighDot = Vector3.Dot(dockingForward, thighRight);
+        float labiaDot = Vector3.Dot(dockingForward, fallbackFlat);
+
+        source = "thighLR+targetRoot.forward" +
+            " rootDot=" + rootDot.ToString("F3") +
+            " thighDot=" + thighDot.ToString("F3") +
             " dotLabia=" + labiaDot.ToString("F3");
-        return pelvisForward;
+        return dockingForward;
     }
 
     Vector3 GetAnusInsideDirection(Atom targetAtom, Transform anusLine)
@@ -8878,23 +8887,37 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         return;
     }
 
-    Vector3 targetForward = GetTargetRootForward(targetAtom, capturedDir);
+    // V238: Do not overwrite Smart/Reverse docking direction with targetRoot.forward.
+    // UpdateLine() already resolved capturedDir from the docking source
+    // (genital Smart now prefers thighLR+targetRoot.forward), and ReverseCapturedDirection()
+    // has already been applied by the caller when needed.  Lie yaw lock must use that
+    // final capturedDir for placement, then face the root back toward the target.
+    Vector3 dockingDir = capturedDir;
+    dockingDir.y = 0f;
+
+    if (dockingDir.sqrMagnitude < 0.0001f && capturedLineDir.sqrMagnitude >= 0.0001f)
+    {
+        dockingDir = capturedLineDir;
+        dockingDir.y = 0f;
+    }
+
+    Vector3 targetForward = GetTargetRootForward(targetAtom, dockingDir);
     targetForward.y = 0f;
 
-    if (targetForward.sqrMagnitude < 0.0001f && capturedDir.sqrMagnitude >= 0.0001f)
+    if (targetForward.sqrMagnitude < 0.0001f && dockingDir.sqrMagnitude >= 0.0001f)
     {
-        targetForward = capturedDir;
+        targetForward = dockingDir;
         targetForward.y = 0f;
     }
 
-    if (targetForward.sqrMagnitude < 0.0001f)
+    if (dockingDir.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
     {
         return;
     }
 
+    dockingDir.Normalize();
     targetForward.Normalize();
 
-    bool opposite = hardMode;
     float currentSideDot = 0f;
     string selectMode = hardMode ? "reverse-smart" : "smart";
 
@@ -8911,9 +8934,7 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
 
         if (toOwn.sqrMagnitude >= 0.0001f)
         {
-            currentSideDot = Vector3.Dot(toOwn.normalized, targetForward);
-            // Pick the opposite side when the owner is behind target root forward.
-            opposite = currentSideDot > 0f;
+            currentSideDot = Vector3.Dot(toOwn.normalized, dockingDir);
         }
         else if (containingAtom != null && containingAtom.mainController != null)
         {
@@ -8921,24 +8942,14 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
             ownForward.y = 0f;
             if (ownForward.sqrMagnitude >= 0.0001f)
             {
-                currentSideDot = Vector3.Dot(ownForward.normalized, targetForward);
-                opposite = currentSideDot < 0f;
+                currentSideDot = Vector3.Dot(ownForward.normalized, dockingDir);
             }
-        }
-
-        if (reverseCurrentSide)
-        {
-            opposite = !opposite;
         }
 
         selectMode = reverseCurrentSide ? "now-reverse-current-side" : "now-current-side";
     }
 
-    // Preference flip: keep the stable same/opposite 2-choice lock,
-    // but use the other front/back side for Lie docking.
-    opposite = !opposite;
-
-    Vector3 desiredRootForward = opposite ? -targetForward : targetForward;
+    Vector3 desiredRootForward = -dockingDir;
     desiredRootForward.y = 0f;
 
     if (desiredRootForward.sqrMagnitude < 0.0001f)
@@ -8948,14 +8959,15 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
 
     desiredRootForward.Normalize();
 
+    bool opposite = Vector3.Dot(desiredRootForward, targetForward) < 0f;
+
     lieDockingYawLockActive = true;
     lieDockingYawLockForward = desiredRootForward;
     lieDockingYawLockOpposite = opposite;
 
-    // In normal standing docking, capturedDir is the position direction from target to own hip,
-    // while root yaw faces back toward the target.  For Lie, keep that relationship stable:
-    // root yaw = same/opposite target root yaw, position line = the opposite side of that yaw.
-    capturedDir = -desiredRootForward;
+    // Preserve the final Smart/Reverse docking side.  For Lie, the root yaw faces back
+    // along the opposite vector, but the placement line must remain the selected docking side.
+    capturedDir = dockingDir;
 
     if (capturedLineDir.sqrMagnitude < 0.0001f)
     {
@@ -8990,12 +9002,13 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         "[TargetLinePerson] LIE DOCKING YAW LOCK" +
         " / mode=" + selectMode +
         " / yaw=" + (opposite ? "opposite" : "same") +
-        " / frontBackFlip=1" +
+        " / frontBackFlip=0" +
         " / currentSideDot=" + currentSideDot.ToString("F3") +
         " / targetForward=(" + FormatVector3(targetForward) + ")" +
         " / rootForward=(" + FormatVector3(lieDockingYawLockForward) + ")" +
         " / capturedDir=(" + FormatVector3(capturedDir) + ")" +
-        " / lineDir=(" + FormatVector3(capturedLineDir) + ")"
+        " / lineDir=(" + FormatVector3(capturedLineDir) + ")" +
+        " / source=capturedDir"
     );
 }
 

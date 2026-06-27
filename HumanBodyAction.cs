@@ -1,3 +1,11 @@
+// HBA_PUSHAWAY_STRETCH_LOG_OFF_FIX_BUILD 2026-06-27: Fix build; keeps PushAway stretch-to-reach behavior but defaults Log Cover Hand OFF so compact Cover/PushAway logs appear only when explicitly enabled.
+// HBA_PUSHAWAY_STRETCH_TO_REACH_BUILD 2026-06-27: PushAway Person targets no longer disappear when beyond reach; far Head/Chest/Hip/Thigh are converted into a reachable stretch point in the same direction, with Log Cover Hand diagnostics.
+// HBA_PUSHAWAY_HEAD_WEIGHT_EFFECTIVE_REACH_BUILD 2026-06-27: Forces effective PushAway reach to at least the 1.20 default even if an old scene value remains, and weights PushAway Person Head as 3 slots so Person#2 Head appears more often.
+// HBA_PUSHAWAY_PERSON_REACH_TUNE_BUILD 2026-06-27: Raises PushAway Person reach default/range for other-Person targets, logs per-target reach skips with Log Cover Hand, and logs fallback when PushAway branch has no reachable target.
+// HBA_PUSHAWAY_FORCE_BUTTON_LOG_PROBE_BUILD 2026-06-27: Adds HBA_Cover_RandomHand_PushAway / HBR_Cover_RandomHand_PushAway to force selected PushAway Person targets, and logs mix roll / empty PushAway candidates when Log Cover Hand is ON.
+// HBA_LOG_COVER_HAND_TOGGLE_BUILD 2026-06-27: Adds Log Cover Hand toggle; current fix defaults it OFF to control compact Cover selected / PushAway selected logs independently from Debug Log.
+// HBA_PUSHAWAY_PERSON_COMBO_BUILD 2026-06-27: Adds PushAway Person chooser; PushAway targets now use the selected non-self Person Head/Chest/Hip/nearest Thigh with reach filter ON. Defaults to the nearest other Person.
+// HBA_PUSHAWAY_SELF_REACH_NEAREST_THIGH_BUILD 2026-06-27: Changes Self PushAway targets to Self Head/Chest/Hip plus nearest reachable Self Thigh, with reach filter ON for all self PushAway targets. Keeps v063 Cover same-side filters and Debug-only Cover logs.
 // HBA_COVER_SAME_SIDE_LOG_DEBUG_ONLY_FIX_BUILD 2026-06-27: Fix build; keeps v062 Head3/Nipple and same-side Head Side/Thigh routing, but suppresses compact Cover selected logs unless Debug is ON.
 // HBA_COVER_NIPPLE_HEAD3_SAME_SIDE_BUILD 2026-06-27: Replaces normal Chest cover weight with Target L/R Nipple, raises Head cover weight to 3, and restricts Head Side/L/R Thigh cover targets to the same-side hand with (L)/(R) labels.
 // HBA_G_PROGRESS_CHEST_HUMAN_S_CURVE_BUILD 2026-06-27: Adds soft top wobble, S-curve side sway, and short random follow-miss windows so G Progress Chest Follow feels less linear/mechanical.
@@ -130,6 +138,7 @@ public class HumanBodyAction : MVRScript
     JSONStorableStringChooser hbaTgDeepMode;
     JSONStorableStringChooser hbaTgEndMode;
     JSONStorableBool debugLog;
+    JSONStorableBool logCoverHand;
     JSONStorableBool twitchBody;
     JSONStorableBool queueLastAction;
 
@@ -151,6 +160,7 @@ public class HumanBodyAction : MVRScript
     JSONStorableFloat handCoverChance;
     JSONStorableFloat randomKneeToThighChance;
     JSONStorableFloat handCoverPushAwayMix;
+    JSONStorableStringChooser handCoverPushAwayPerson;
     JSONStorableFloat handCoverPushAwayReach;
     JSONStorableFloat handCoverPushAwayOffset;
     JSONStorableBool handCoverComplyHold;
@@ -358,6 +368,8 @@ public class HumanBodyAction : MVRScript
     const string HbaActionTwitchStrong = "HBA_Twitch_Strong";
     const string HbaActionCoverRandomHand = "HBA_Cover_RandomHand";
     const string HbrActionCoverRandomHand = "HBR_Cover_RandomHand";
+    const string HbaActionCoverRandomHandPushAway = "HBA_Cover_RandomHand_PushAway";
+    const string HbrActionCoverRandomHandPushAway = "HBR_Cover_RandomHand_PushAway";
     const string HbaActionCoverRestore = "HBA_Cover_Restore";
     const string HbrActionCoverRestore = "HBR_Cover_Restore";
     // Hidden legacy aliases: older saved scenes may still store these in Start/Inside/Deep/End TG Atom.
@@ -484,12 +496,13 @@ public class HumanBodyAction : MVRScript
     const float HandCoverPushAwayMixDefault = 30.0f;
     const float HandCoverPushAwayMixMin = 0.0f;
     const float HandCoverPushAwayMixMax = 100.0f;
-    const float HandCoverPushAwayReachDefault = 0.58f;
+    const float HandCoverPushAwayReachDefault = 1.20f;
     const float HandCoverPushAwayReachMin = 0.05f;
-    const float HandCoverPushAwayReachMax = 1.50f;
+    const float HandCoverPushAwayReachMax = 2.50f;
     const float HandCoverPushAwayOffsetDefault = 0.075f;
     const float HandCoverPushAwayOffsetMin = 0.00f;
     const float HandCoverPushAwayOffsetMax = 0.25f;
+    const string HandCoverPushAwayPersonAuto = "Auto Other Person";
     const float GParallelChestHeadAmountDefault = 0.080f;
     const float GParallelChestHeadAmountMin = 0.000f;
     const float GParallelChestHeadAmountMax = 0.250f;
@@ -647,6 +660,7 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
         HbaActionCoverRandomHand,
+        HbaActionCoverRandomHandPushAway,
         HbaActionBonusKneeNudge,
         HbaActionGParallelChestHead,
         HbaActionCoverRestore,
@@ -675,6 +689,7 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
         HbaActionCoverRandomHand,
+        HbaActionCoverRandomHandPushAway,
         HbaActionBonusKneeNudge,
         HbaActionGParallelChestHead,
         HbaActionCoverRestore,
@@ -703,6 +718,7 @@ public class HumanBodyAction : MVRScript
         HbaActionTwitchNormal,
         HbaActionTwitchStrong,
         HbaActionCoverRandomHand,
+        HbaActionCoverRandomHandPushAway,
         HbaActionBonusKneeNudge,
         HbaActionGParallelChestHead,
         HbaActionCoverRestore,
@@ -723,6 +739,7 @@ public class HumanBodyAction : MVRScript
     };
 
     readonly List<string> hbaTgAtomChoices = new List<string>() { "" };
+    readonly List<string> handCoverPushAwayPersonChoices = new List<string>() { HandCoverPushAwayPersonAuto };
     readonly List<string> hbaTgModeChoices = new List<string>()
     {
         TgModeOff,
@@ -1149,6 +1166,15 @@ public class HumanBodyAction : MVRScript
         handCoverPushAwayMix = new JSONStorableFloat("Cover PushAway Mix %", HandCoverPushAwayMixDefault, HandCoverPushAwayMixMin, HandCoverPushAwayMixMax);
         RegisterFloat(handCoverPushAwayMix);
 
+        RefreshHandCoverPushAwayPersonChoices(false);
+        handCoverPushAwayPerson = new JSONStorableStringChooser(
+            "PushAway Person",
+            new List<string>(handCoverPushAwayPersonChoices),
+            GetDefaultHandCoverPushAwayPersonChoice(),
+            "PushAway Person"
+        );
+        RegisterStringChooser(handCoverPushAwayPerson);
+
         handCoverPushAwayReach = new JSONStorableFloat("Cover PushAway Reach", HandCoverPushAwayReachDefault, HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
         RegisterFloat(handCoverPushAwayReach);
 
@@ -1157,6 +1183,9 @@ public class HumanBodyAction : MVRScript
 
         handCoverComplyHold = new JSONStorableBool("Hand Cover Comply Hold", true);
         RegisterBool(handCoverComplyHold);
+
+        logCoverHand = new JSONStorableBool("Log Cover Hand", false);
+        RegisterBool(logCoverHand);
 
         gParallelChestHeadAmount = new JSONStorableFloat("G Parallel Chest/Head Amount", GParallelChestHeadAmountDefault, GParallelChestHeadAmountMin, GParallelChestHeadAmountMax);
         RegisterFloat(gParallelChestHeadAmount);
@@ -1308,6 +1337,7 @@ public class HumanBodyAction : MVRScript
         CreateButton("HBA_Twitch_Normal", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Normal", "Normal"); });
         CreateButton("HBA_Twitch_Strong", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Strong", "Strong"); });
         CreateButton("HBA_Cover_RandomHand", false).button.onClick.AddListener(delegate { RequestRandomHandCover("button:HBA_Cover_RandomHand"); });
+        CreateButton("HBA_Cover_RandomHand_PushAway", false).button.onClick.AddListener(delegate { RequestRandomHandCoverPushAway("button:HBA_Cover_RandomHand_PushAway"); });
         CreateButton("HBA_G_Parallel_ChestHead", false).button.onClick.AddListener(delegate { RequestGParallelChestHead("button:HBA_G_Parallel_ChestHead"); });
         CreateButton("HBA_Bonus_KneeNudge", false).button.onClick.AddListener(delegate { RequestHandBonusKneeNudge("button:HBA_Bonus_KneeNudge"); });
         CreateButton("HBA_Test_KneeNudge", false).button.onClick.AddListener(delegate { RequestHandFallbackKneeNudgeTest("button:HBA_Test_KneeNudge"); });
@@ -1315,6 +1345,7 @@ public class HumanBodyAction : MVRScript
         CreateScrollablePopup(handCoverScope, false);
         CreateSlider(handCoverChance, false);
         CreateToggle(handCoverComplyHold, false);
+        CreateToggle(logCoverHand, false);
         CreateSlider(gParallelChestHeadAmount, false);
         CreateToggle(gProgressChestHeadFollow, false);
         CreateSlider(gProgressChestHeadAmount, false);
@@ -1329,6 +1360,8 @@ public class HumanBodyAction : MVRScript
         CreateSlider(gProgressChestHeadMissChance, false);
         CreateSlider(randomKneeToThighChance, false);
         CreateSlider(handCoverPushAwayMix, false);
+        CreateScrollablePopup(handCoverPushAwayPerson, false);
+        CreateButton("Refresh PushAway Persons", false).button.onClick.AddListener(delegate { RefreshHandCoverPushAwayPersonChoices(true); });
         CreateSlider(handCoverPushAwayReach, false);
         CreateSlider(handCoverPushAwayOffset, false);
         CreateButton("HBA_Cover_Restore", false).button.onClick.AddListener(delegate { RequestHandCoverRestore("button:HBA_Cover_Restore", true); RestoreTargetKneeToSelfThighSnapshot("button:HBA_Cover_Restore"); UpdateHbaStatus(true); });
@@ -1664,6 +1697,8 @@ public class HumanBodyAction : MVRScript
         RegisterAction(new JSONStorableAction("HBA_Twitch_Strong", delegate { RequestPresetAction("action:HBA_Twitch_Strong", "Strong"); }));
         RegisterAction(new JSONStorableAction(HbaActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbaActionCoverRandomHand); }));
         RegisterAction(new JSONStorableAction(HbrActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbrActionCoverRandomHand); }));
+        RegisterAction(new JSONStorableAction(HbaActionCoverRandomHandPushAway, delegate { RequestRandomHandCoverPushAway("action:" + HbaActionCoverRandomHandPushAway); }));
+        RegisterAction(new JSONStorableAction(HbrActionCoverRandomHandPushAway, delegate { RequestRandomHandCoverPushAway("action:" + HbrActionCoverRandomHandPushAway); }));
         RegisterAction(new JSONStorableAction(HbaActionGParallelChestHead, delegate { RequestGParallelChestHead("action:" + HbaActionGParallelChestHead); }));
         RegisterAction(new JSONStorableAction(HbrActionGParallelChestHead, delegate { RequestGParallelChestHead("action:" + HbrActionGParallelChestHead); }));
         RegisterAction(new JSONStorableAction(HbaActionBonusKneeNudge, delegate { RequestHandBonusKneeNudge("action:" + HbaActionBonusKneeNudge); }));
@@ -2279,6 +2314,11 @@ public class HumanBodyAction : MVRScript
             RequestRandomHandCover(source + ":" + actionName);
             return true;
         }
+        if (actionName == HbaActionCoverRandomHandPushAway || actionName == HbrActionCoverRandomHandPushAway)
+        {
+            RequestRandomHandCoverPushAway(source + ":" + actionName);
+            return true;
+        }
         if (actionName == HbaActionGParallelChestHead || actionName == HbrActionGParallelChestHead)
         {
             RequestGParallelChestHead(source + ":" + actionName);
@@ -2617,6 +2657,7 @@ public class HumanBodyAction : MVRScript
         if (string.IsNullOrEmpty(actionName)) return false;
         if (actionName == HbaActionTwitchSlow || actionName == HbaActionTwitchWeak || actionName == HbaActionTwitchNormal || actionName == HbaActionTwitchStrong) return true;
         if (actionName == HbaActionCoverRandomHand || actionName == HbrActionCoverRandomHand) return true;
+        if (actionName == HbaActionCoverRandomHandPushAway || actionName == HbrActionCoverRandomHandPushAway) return true;
         if (actionName == HbaActionGParallelChestHead || actionName == HbrActionGParallelChestHead) return true;
         if (actionName == HbaActionBonusKneeNudge || actionName == HbrActionBonusKneeNudge) return true;
         if (actionName == HbaActionCoverRestore || actionName == HbrActionCoverRestore) return true;
@@ -3485,6 +3526,35 @@ public class HumanBodyAction : MVRScript
         directHandCoverRoutine = StartCoroutine(DirectRandomHandCoverRoutine(source));
     }
 
+    void RequestRandomHandCoverPushAway(string source)
+    {
+        if (!ShouldRunRandomHandCover(source))
+            return;
+
+        if (!IsHbaEnabled())
+        {
+            hbaLastBlock = "Disabled: push-away cover skipped";
+            DebugMessage("[HumanBodyAction] PushAway cover skipped because HBA Enable is OFF / source=" + source);
+            UpdateHbaStatus(true);
+            return;
+        }
+
+        handCoverRunSerial++;
+
+        if (directHandCoverRoutine != null)
+        {
+            StopCoroutine(directHandCoverRoutine);
+            directHandCoverRoutine = null;
+        }
+        if (handCoverRestoreRoutine != null)
+        {
+            StopCoroutine(handCoverRestoreRoutine);
+            handCoverRestoreRoutine = null;
+        }
+
+        directHandCoverRoutine = StartCoroutine(DirectRandomHandCoverPushAwayRoutine(source));
+    }
+
     IEnumerator DirectRandomHandCoverRoutine(string source)
     {
         hbaLastAction = source;
@@ -3495,6 +3565,19 @@ public class HumanBodyAction : MVRScript
         yield return StartCoroutine(RandomHandCoverRoutine(source));
 
         DebugMessage("[HumanBodyAction] ACTION DONE DIRECT / source=" + source + " / preset=CoverRandomHand");
+        directHandCoverRoutine = null;
+    }
+
+    IEnumerator DirectRandomHandCoverPushAwayRoutine(string source)
+    {
+        hbaLastAction = source;
+        hbaLastBlock = "PushAwayRandomHand direct";
+        UpdateHbaStatus(true);
+        DebugMessage("[HumanBodyAction] ACTION START DIRECT / source=" + source + " / preset=CoverRandomHand_PushAway / head=Off");
+
+        yield return StartCoroutine(RandomHandCoverRoutine(source, false, true));
+
+        DebugMessage("[HumanBodyAction] ACTION DONE DIRECT / source=" + source + " / preset=CoverRandomHand_PushAway");
         directHandCoverRoutine = null;
     }
 
@@ -4846,10 +4929,15 @@ public class HumanBodyAction : MVRScript
 
     IEnumerator RandomHandCoverRoutine(string source)
     {
-        return RandomHandCoverRoutine(source, false);
+        return RandomHandCoverRoutine(source, false, false);
     }
 
     IEnumerator RandomHandCoverRoutine(string source, bool kneeThighTestOnly)
+    {
+        return RandomHandCoverRoutine(source, kneeThighTestOnly, false);
+    }
+
+    IEnumerator RandomHandCoverRoutine(string source, bool kneeThighTestOnly, bool forcePushAwayOnly)
     {
         int runSerial = ++handCoverRunSerial;
         RefreshControllersNoReset();
@@ -4899,7 +4987,7 @@ public class HumanBodyAction : MVRScript
         HandCoverTarget target;
         string selectedCoverMode;
         int targetCandidateCount;
-        if (!TrySelectRandomHandCoverTarget(source, kneeThighTestOnly, freeHands, out hand, out target, out selectedCoverMode, out targetCandidateCount))
+        if (!TrySelectRandomHandCoverTarget(source, kneeThighTestOnly, forcePushAwayOnly, freeHands, out hand, out target, out selectedCoverMode, out targetCandidateCount))
         {
             hbaLastBlock = kneeThighTestOnly ? "Cover test: no Self Thigh target" : "Cover: no compatible target";
             UpdateHbaStatus(true);
@@ -5957,11 +6045,11 @@ public class HumanBodyAction : MVRScript
         catch { return "<error>"; }
     }
 
-    bool TrySelectRandomHandCoverTarget(string source, bool kneeThighTestOnly, List<FreeControllerV3> freeHands, out FreeControllerV3 selectedHand, out HandCoverTarget selectedTarget, out string selectedCoverMode, out int targetCandidateCount)
+    bool TrySelectRandomHandCoverTarget(string source, bool kneeThighTestOnly, bool forcePushAwayOnly, List<FreeControllerV3> freeHands, out FreeControllerV3 selectedHand, out HandCoverTarget selectedTarget, out string selectedCoverMode, out int targetCandidateCount)
     {
         selectedHand = null;
         selectedTarget = null;
-        selectedCoverMode = kneeThighTestOnly ? "SelfThighTest" : "Cover";
+        selectedCoverMode = kneeThighTestOnly ? "SelfThighTest" : forcePushAwayOnly ? "PushAway" : "Cover";
         targetCandidateCount = 0;
 
         if (freeHands == null || freeHands.Count == 0) return false;
@@ -5969,6 +6057,13 @@ public class HumanBodyAction : MVRScript
         if (kneeThighTestOnly)
         {
             return TrySelectPushAwayHandTarget(source, "SelfThighTest", freeHands, true, out selectedHand, out selectedTarget, out selectedCoverMode, out targetCandidateCount);
+        }
+
+        if (forcePushAwayOnly)
+        {
+            bool ok = TrySelectPushAwayHandTarget(source, "PushAway", freeHands, false, out selectedHand, out selectedTarget, out selectedCoverMode, out targetCandidateCount);
+            if (!ok) CoverHandLogMessage("[HumanBodyAction] PushAway force skipped / reason=no reachable PushAway target / person=" + GetPushAwayPersonLabelForLog() + " / reach=" + F3(GetEffectivePushAwayReach()));
+            return ok;
         }
 
         string scope = GetHandCoverScope();
@@ -5994,13 +6089,14 @@ public class HumanBodyAction : MVRScript
         {
             float roll = UnityEngine.Random.Range(0.0f, 100.0f);
             preferPushAway = roll <= mix;
-            DebugMessage("[HumanBodyAction] Cover mix roll / scope=All / roll=" + F1(roll) + " / mix=" + F1(mix) + "% / preferPushAway=" + (preferPushAway ? "1" : "0"));
+            CoverHandLogMessage("[HumanBodyAction] Cover mix roll / scope=All / roll=" + F1(roll) + " / mix=" + F1(mix) + "% / preferPushAway=" + (preferPushAway ? "1" : "0") + " / person=" + GetPushAwayPersonLabelForLog());
         }
 
         if (preferPushAway)
         {
             if (TrySelectPushAwayHandTarget(source, "PushAway", freeHands, false, out selectedHand, out selectedTarget, out selectedCoverMode, out targetCandidateCount))
                 return true;
+            CoverHandLogMessage("[HumanBodyAction] PushAway fallback to Cover / reason=no reachable PushAway target / person=" + GetPushAwayPersonLabelForLog() + " / reach=" + F3(GetEffectivePushAwayReach()));
             return TrySelectCoverHandTarget(source, freeHands, out selectedHand, out selectedTarget, out selectedCoverMode, out targetCandidateCount);
         }
 
@@ -6057,7 +6153,11 @@ public class HumanBodyAction : MVRScript
                 ? BuildHandCoverSelfThighTestTargets(handStart)
                 : BuildHandCoverPushAwayTargets(handStart);
 
-            if (targets.Count == 0) continue;
+            if (targets.Count == 0)
+            {
+                CoverHandLogMessage("[HumanBodyAction] PushAway candidates empty / hand=" + GetHandLabel(hand) + " / person=" + GetPushAwayPersonLabelForLog() + " / reach=" + F3(GetEffectivePushAwayReach()));
+                continue;
+            }
 
             selectedHand = hand;
             selectedTarget = targets[UnityEngine.Random.Range(0, targets.Count)];
@@ -6206,23 +6306,90 @@ public class HumanBodyAction : MVRScript
     {
         List<HandCoverTarget> targets = new List<HandCoverTarget>();
 
+        Atom pushAwayAtom = ResolveHandCoverPushAwayAtom();
+        if (pushAwayAtom == null)
+        {
+            CoverHandLogMessage("[HumanBodyAction] PushAway target missing / chooser=" + (handCoverPushAwayPerson != null ? handCoverPushAwayPerson.val : "<null>") + " / reason=no-other-person");
+            return targets;
+        }
+
         Vector3 forward;
         Vector3 right;
-        GetCoverBodyAxes(out forward, out right);
+        GetCoverBodyAxesOnAtom(pushAwayAtom, out forward, out right);
 
-        FreeControllerV3 hip = FindControllerByAliases("hipControl", "hip");
-        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
-        Vector3 bodyCenter = hip != null ? GetControllerPosition(hip) : chest != null ? GetControllerPosition(chest) : (containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(pushAwayAtom, "hipControl", "hip");
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(pushAwayAtom, "chestControl", "chest");
+        FreeControllerV3 head = FindControllerByAliasesOnAtom(pushAwayAtom, "headControl", "head");
+        Vector3 bodyCenter = hip != null ? GetControllerPosition(hip) : chest != null ? GetControllerPosition(chest) : (pushAwayAtom.transform != null ? pushAwayAtom.transform.position : Vector3.zero);
 
-        // v068: RandomHand was becoming lower-body heavy because Self Head/Chest could be
-        // filtered out by PushAway Reach. Keep upper-body candidates available; final motion is
-        // still clamped by HandCoverCommandMaxDistance, so this does not force an unreachable jump.
-        AddControlPushAwayTargetAlways(targets, "Self Head", FindControllerByAliases("headControl", "head"), handStartPosition, bodyCenter);
-        AddSelfNipplePushAwayTargets(targets, chest, forward, right, handStartPosition, bodyCenter);
-        AddControlPushAwayTarget(targets, "Self L Thigh", FindControllerByAliases("lThighControl", "leftThighControl", "lThigh", "leftThigh"), handStartPosition, bodyCenter);
-        AddControlPushAwayTarget(targets, "Self R Thigh", FindControllerByAliases("rThighControl", "rightThighControl", "rThigh", "rightThigh"), handStartPosition, bodyCenter);
+        // v065: PushAway no longer means Self. It uses the selected non-self Person by default.
+        // The moving hand remains the Person that owns this HumanBodyAction, but the target anchors
+        // are on PushAway Person: Head/Chest/Hip/nearest reachable Thigh. All obey PushAway Reach.
+        // v069: Weight PushAway Head as 3 slots so the selected other-Person head is not buried by
+        // Chest/Hip/Thigh when PushAway finally wins the mix roll.
+        AddControlPushAwayTarget(targets, "PushAway Head", head, handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "PushAway Head", head, handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "PushAway Head", head, handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "PushAway Chest", chest, handStartPosition, bodyCenter);
+        AddControlPushAwayTarget(targets, "PushAway Hip", hip, handStartPosition, bodyCenter);
+        AddNearestPushAwayPersonThighTarget(targets, pushAwayAtom, handStartPosition, bodyCenter);
 
+        CoverHandLogMessage("[HumanBodyAction] PushAway person targets / atom=" + SafeAtomUid(pushAwayAtom) + " / targets=" + targets.Count + " / effectiveReach=" + F3(GetEffectivePushAwayReachForLog()));
         return targets;
+    }
+
+    void AddNearestPushAwayPersonThighTarget(List<HandCoverTarget> targets, Atom pushAwayAtom, Vector3 handStartPosition, Vector3 bodyCenter)
+    {
+        if (targets == null || pushAwayAtom == null) return;
+
+        FreeControllerV3 lThigh = FindControllerByAliasesOnAtom(pushAwayAtom, "lThighControl", "leftThighControl", "lThigh", "leftThigh");
+        FreeControllerV3 rThigh = FindControllerByAliasesOnAtom(pushAwayAtom, "rThighControl", "rightThighControl", "rThigh", "rightThigh");
+
+        if (lThigh == null && rThigh == null) return;
+
+        FreeControllerV3 first = null;
+        string firstLabel = "";
+        FreeControllerV3 second = null;
+        string secondLabel = "";
+
+        if (lThigh != null && rThigh != null)
+        {
+            float lDist = Vector3.Distance(handStartPosition, GetControllerPosition(lThigh));
+            float rDist = Vector3.Distance(handStartPosition, GetControllerPosition(rThigh));
+            if (lDist <= rDist)
+            {
+                first = lThigh;
+                firstLabel = "PushAway L Thigh";
+                second = rThigh;
+                secondLabel = "PushAway R Thigh";
+            }
+            else
+            {
+                first = rThigh;
+                firstLabel = "PushAway R Thigh";
+                second = lThigh;
+                secondLabel = "PushAway L Thigh";
+            }
+        }
+        else if (lThigh != null)
+        {
+            first = lThigh;
+            firstLabel = "PushAway L Thigh";
+        }
+        else
+        {
+            first = rThigh;
+            firstLabel = "PushAway R Thigh";
+        }
+
+        int before = targets.Count;
+        AddControlPushAwayTarget(targets, firstLabel, first, handStartPosition, bodyCenter);
+        if (targets.Count > before) return;
+
+        if (second != null)
+        {
+            AddControlPushAwayTarget(targets, secondLabel, second, handStartPosition, bodyCenter);
+        }
     }
 
     void AddSelfNipplePushAwayTargets(List<HandCoverTarget> targets, FreeControllerV3 chest, Vector3 forward, Vector3 right, Vector3 handStartPosition, Vector3 bodyCenter)
@@ -6297,17 +6464,51 @@ public class HumanBodyAction : MVRScript
         targets.Add(new HandCoverTarget(label, position, outward, true));
     }
 
+    float GetEffectivePushAwayReach()
+    {
+        float sliderReach = handCoverPushAwayReach != null ? handCoverPushAwayReach.val : HandCoverPushAwayReachDefault;
+        // v069: Old scenes can keep the former 0.58 value after the script update. For PushAway Person
+        // targets this made Person#2 Head/Chest/Hip unreachable and silently fell back to normal Cover.
+        // Treat the 1.20 default as the effective minimum while still respecting the expanded max range.
+        return Mathf.Clamp(Mathf.Max(sliderReach, HandCoverPushAwayReachDefault), HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
+    }
+
+    float GetEffectivePushAwayReachForLog()
+    {
+        return GetEffectivePushAwayReach();
+    }
+
     void AddPushAwayTargetIfReachable(List<HandCoverTarget> targets, string label, Vector3 position, Vector3 preferredOutward, Vector3 handStartPosition, Vector3 bodyCenter)
     {
         if (targets == null) return;
 
-        float reach = handCoverPushAwayReach != null ? handCoverPushAwayReach.val : HandCoverPushAwayReachDefault;
-        reach = Mathf.Clamp(reach, HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
+        float reach = GetEffectivePushAwayReach();
         float distance = Vector3.Distance(handStartPosition, position);
+        Vector3 commandPosition = position;
+        bool stretchOnly = false;
+
+        // v070: PushAway Person targets should still produce a useful motion even when the selected
+        // Person#2 anchor is beyond the reach filter. Instead of dropping the target and falling back
+        // to normal Cover, keep the same direction and place the command at a reachable stretch point.
         if (distance > reach)
         {
-            DebugMessage("[HumanBodyAction] PushAway skip reach / target=" + label + " / dist=" + F3(distance) + " / reach=" + F3(reach));
-            return;
+            Vector3 toTarget = position - handStartPosition;
+            if (toTarget.sqrMagnitude < 0.0001f)
+            {
+                toTarget = position - bodyCenter;
+                toTarget.y *= 0.35f;
+            }
+            if (toTarget.sqrMagnitude < 0.0001f) toTarget = Vector3.forward;
+            toTarget.Normalize();
+
+            float stretchDistance = GetPushAwayStretchDistanceForLabel(label, reach);
+            commandPosition = handStartPosition + toTarget * stretchDistance;
+            stretchOnly = true;
+            CoverHandLogMessage("[HumanBodyAction] PushAway stretch to reach / target=" + label +
+                " / dist=" + F3(distance) +
+                " / reach=" + F3(reach) +
+                " / stretch=" + F3(stretchDistance) +
+                " / person=" + GetPushAwayPersonLabelForLog());
         }
 
         Vector3 outward = preferredOutward;
@@ -6326,7 +6527,20 @@ public class HumanBodyAction : MVRScript
         if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
         outward.Normalize();
 
-        targets.Add(new HandCoverTarget(label, position, outward, true));
+        targets.Add(new HandCoverTarget(stretchOnly ? label + " Reach" : label, commandPosition, outward, true));
+    }
+
+    float GetPushAwayStretchDistanceForLabel(string label, float reach)
+    {
+        float commandMax = HandCoverCommandMaxDistance;
+        if (IsUpperHandCoverTargetLabel(label)) commandMax = HandCoverUpperCommandMaxDistance;
+        float usableReach = Mathf.Clamp(reach, HandCoverPushAwayReachMin, HandCoverPushAwayReachMax);
+        float distance = Mathf.Min(usableReach, commandMax);
+        // Keep a tiny bit of room for the PushAway outward offset that is added later, so far targets
+        // do not immediately trip the far-too-far IK-Off path before the normal command clamp runs.
+        float offset = Mathf.Clamp(handCoverPushAwayOffset != null ? handCoverPushAwayOffset.val : HandCoverPushAwayOffsetDefault, HandCoverPushAwayOffsetMin, HandCoverPushAwayOffsetMax);
+        distance = Mathf.Max(0.05f, distance - offset * 0.50f);
+        return distance;
     }
 
 
@@ -6468,6 +6682,108 @@ public class HumanBodyAction : MVRScript
         AddPointCoverTarget(targets, "Head Side R", headPos + rightDir * sideOffset - up * downOffset, rightDir, 1);
     }
 
+
+    void RefreshHandCoverPushAwayPersonChoices(bool keepCurrent)
+    {
+        string current = keepCurrent && handCoverPushAwayPerson != null ? handCoverPushAwayPerson.val : "";
+        handCoverPushAwayPersonChoices.Clear();
+        handCoverPushAwayPersonChoices.Add(HandCoverPushAwayPersonAuto);
+
+        Atom nearestOther = FindNearestOtherPersonAtom();
+        string nearestUid = nearestOther != null ? nearestOther.uid : "";
+
+        if (SuperController.singleton != null)
+        {
+            List<Atom> atoms = SuperController.singleton.GetAtoms();
+            if (atoms != null)
+            {
+                for (int i = 0; i < atoms.Count; i++)
+                {
+                    Atom atom = atoms[i];
+                    if (atom == null || atom == containingAtom || atom.type != "Person" || string.IsNullOrEmpty(atom.uid)) continue;
+                    if (!handCoverPushAwayPersonChoices.Contains(atom.uid)) handCoverPushAwayPersonChoices.Add(atom.uid);
+                }
+            }
+        }
+
+        if (handCoverPushAwayPersonChoices.Count > 2)
+        {
+            string auto = handCoverPushAwayPersonChoices[0];
+            handCoverPushAwayPersonChoices.RemoveAt(0);
+            handCoverPushAwayPersonChoices.Sort(StringComparer.OrdinalIgnoreCase);
+            handCoverPushAwayPersonChoices.Insert(0, auto);
+        }
+
+        if (handCoverPushAwayPerson != null)
+        {
+            handCoverPushAwayPerson.choices = new List<string>(handCoverPushAwayPersonChoices);
+            if (!string.IsNullOrEmpty(current) && handCoverPushAwayPersonChoices.Contains(current))
+            {
+                handCoverPushAwayPerson.val = current;
+            }
+            else if (!string.IsNullOrEmpty(nearestUid) && handCoverPushAwayPersonChoices.Contains(nearestUid))
+            {
+                handCoverPushAwayPerson.val = nearestUid;
+            }
+            else
+            {
+                handCoverPushAwayPerson.val = HandCoverPushAwayPersonAuto;
+            }
+        }
+    }
+
+    string GetDefaultHandCoverPushAwayPersonChoice()
+    {
+        Atom nearestOther = FindNearestOtherPersonAtom();
+        if (nearestOther != null && !string.IsNullOrEmpty(nearestOther.uid)) return nearestOther.uid;
+        return HandCoverPushAwayPersonAuto;
+    }
+
+    Atom ResolveHandCoverPushAwayAtom()
+    {
+        if (handCoverPushAwayPerson != null)
+        {
+            string uid = handCoverPushAwayPerson.val;
+            if (!string.IsNullOrEmpty(uid) && uid != HandCoverPushAwayPersonAuto && SuperController.singleton != null)
+            {
+                Atom selected = SuperController.singleton.GetAtomByUid(uid);
+                if (selected != null && selected != containingAtom && selected.type == "Person") return selected;
+            }
+        }
+        return FindNearestOtherPersonAtom();
+    }
+
+    string SafeAtomUid(Atom atom)
+    {
+        if (atom == null) return "<none>";
+        return string.IsNullOrEmpty(atom.uid) ? "<no-uid>" : atom.uid;
+    }
+
+    void GetCoverBodyAxesOnAtom(Atom atom, out Vector3 forward, out Vector3 right)
+    {
+        Quaternion rot = Quaternion.identity;
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest");
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip");
+        if (chest != null) rot = GetControllerRotation(chest);
+        else if (hip != null) rot = GetControllerRotation(hip);
+        else if (atom != null && atom.transform != null) rot = atom.transform.rotation;
+
+        forward = rot * Vector3.forward;
+        forward.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            forward = atom != null && atom.transform != null ? atom.transform.forward : Vector3.forward;
+            forward.y = 0.0f;
+        }
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+
+        right = rot * Vector3.right;
+        right.y = 0.0f;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.Cross(Vector3.up, forward);
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        right.Normalize();
+    }
 
     void GetCoverBodyAxes(out Vector3 forward, out Vector3 right)
     {
@@ -7905,8 +8221,27 @@ public class HumanBodyAction : MVRScript
 
     void CoverSelectionMessage(string message)
     {
-        // v063: Fix build. Keep compact Cover selection logs Debug-only; status text still updates.
-        DebugMessage(message);
+        // v066: Compact Cover selection logs are controlled by Log Cover Hand, independent from Debug Log.
+        if ((logCoverHand != null && logCoverHand.val) || IsDebug())
+        {
+            SuperController.LogMessage(message);
+        }
+    }
+
+    void CoverHandLogMessage(string message)
+    {
+        if ((logCoverHand != null && logCoverHand.val) || IsDebug())
+        {
+            SuperController.LogMessage(message);
+        }
+    }
+
+    string GetPushAwayPersonLabelForLog()
+    {
+        Atom atom = ResolveHandCoverPushAwayAtom();
+        if (atom != null && !string.IsNullOrEmpty(atom.uid)) return atom.uid;
+        if (handCoverPushAwayPerson != null && !string.IsNullOrEmpty(handCoverPushAwayPerson.val)) return handCoverPushAwayPerson.val;
+        return "<none>";
     }
 
     void DebugMessage(string message)
