@@ -1,3 +1,10 @@
+// ANUS_THIGH_LR_ROOT_FORWARD_DOCKING_BUILD 2026-06-27: Anus Smart/Reverse docking now uses the same thighLR+targetRoot.forward body placement direction as genital, while preserving the anus inside line for depth/P-follow.
+// LIE_YAW_LOCK_USES_DOCKING_DIR_BUILD 2026-06-27: Smart/Reverse genital docking uses thighLR+targetRoot.forward and Lie yaw lock preserves that captured docking side.
+// PFOLLOW_OWN_LIE_UNBLOCK_LOG_FIX_BUILD 2026-06-27: Fixes normal log noise after v235 by gating Auto Pose mode and Now Docking Auto Pose probe logs behind Debug Log while keeping the ownLie P Follow unblock fix.
+// PFOLLOW_OWN_LIE_UNBLOCK_FIX_BUILD 2026-06-27: Keeps Yellow P Follow active when only the user's current upper-body posture looks lie/flat; P Follow is blocked only by actual rideLieActive Auto Pose Lie state.
+// AUTO_POSE_SIT_FOOT_COMPLY_BUILD 2026-06-27: Moves Pose: Sit/Lie toggle under Reverse Smart Docking and sets L/R Foot PositionState to Comply after Auto Pose Sit to reduce knee collision while preserving foot rotation.
+// AUTO_POSE_LIE_BUTTON_V227_BASE_BUILD 2026-06-27: v227 base; Auto Pose now uses a manual Pose: Sit/Lie button instead of G-down auto selection. NoAutoPose clears stale Lie yaw lock.
+// NOW_DOCKING_AUTO_POSE_PROBE_LOG_BUILD 2026-06-27: Now Docking logs the Auto Pose/Lie decision inputs: ride-like metrics, G/Labia position, inside direction, and downward dot.
 // NOW_DOCKING_AXIS_HEIGHT_FINISH_BUILD 2026-06-27: Now Docking finalizes body yaw to the selected docking axis and re-aligns P Base height after Auto Pose/line snap.
 // AUTO_POSE_LIE_G_DOWN_ELSE_SIT_BUILD 2026-06-27: Auto Pose now applies Lie On Back only when ride-like target has G/inside direction facing down; otherwise applies Sit Ground for ride-like targets.
 // AUTO_POSE_SIT_GROUND_BUILD 2026-06-27: Renames Auto Lie On Ride Pose to Auto Pose and applies Sit Ground Pose instead of Lie On Back when ride-like+G-down conditions match.
@@ -260,6 +267,7 @@ public class TargetLinePerson : MVRScript
     bool lowTargetActionReached;
     float lowTargetActionHipDrop;
     JSONStorableBool autoPose;
+    JSONStorableBool autoPoseLieMode;
 
     JSONStorableFloat sitGroundYThreshold;
 
@@ -292,6 +300,7 @@ public class TargetLinePerson : MVRScript
     UIDynamicSlider yellowDipAngleMinSlider;
     UIDynamicSlider yellowDipAngleMaxSlider;
     UIDynamicButton pushButton;
+    UIDynamicButton autoPoseLieButton;
 
     readonly Dictionary<string, FreeControllerV3.PositionState> upperBodyLowerBasePositionStates = new Dictionary<string, FreeControllerV3.PositionState>();
     bool upperBodyLowerBaseCaptured;
@@ -1042,6 +1051,9 @@ public class TargetLinePerson : MVRScript
             ActionReverseSmartDocking();
         });
 
+        // v231: Keep the manual Auto Pose Sit/Lie selector directly under Docking Rev.
+        CreateAutoPoseLieButtonUi();
+
         targetPersonChooser = new JSONStorableStringChooser(
             "Target Person",
             personChoices,
@@ -1320,6 +1332,14 @@ public class TargetLinePerson : MVRScript
         );
         RegisterBool(autoPose);
         CreateToggle(autoPose, true);
+
+        autoPoseLieMode = new JSONStorableBool(
+            "Auto Pose Lie Mode",
+            false
+        );
+        RegisterBool(autoPoseLieMode);
+        CreateAutoPoseLieButtonUi();
+        UpdateAutoPoseLieButtonUi();
 
         autoUpperTilt = new JSONStorableBool(
             "Auto Upper Tilt",
@@ -1657,6 +1677,9 @@ public class TargetLinePerson : MVRScript
         RegisterAction(new JSONStorableAction("Sit Ground Pose", ActionSitGroundPose));
         RegisterAction(new JSONStorableAction("Lie On Back", ActionLieOnBack));
         RegisterAction(new JSONStorableAction("Lie On Front", ActionLieOnFront));
+        RegisterAction(new JSONStorableAction("Toggle Auto Pose Lie", ActionToggleAutoPoseLieMode));
+        RegisterAction(new JSONStorableAction("Auto Pose Lie", ActionSetAutoPoseLie));
+        RegisterAction(new JSONStorableAction("Auto Pose Sit", ActionSetAutoPoseSit));
         RegisterAction(new JSONStorableAction("HUD FX Test", ActionHudFxTest));
     }
 
@@ -1708,6 +1731,8 @@ public class TargetLinePerson : MVRScript
 
         nowDockingNegativeDistancePullbackRequested = distance != null && distance.val < 0.0f;
         nowDockingNegativeDistancePullbackOriginal = distance != null ? distance.val : 0.0f;
+
+        LogNowDockingAutoPoseProbe();
 
         try
         {
@@ -1780,6 +1805,65 @@ public class TargetLinePerson : MVRScript
     void ActionLieOnFront()
     {
         ApplyLieOnFrontPresetPose();
+    }
+
+    void ActionToggleAutoPoseLieMode()
+    {
+        SetAutoPoseLieMode(!IsAutoPoseLieMode(), "button");
+    }
+
+    void ActionSetAutoPoseLie()
+    {
+        SetAutoPoseLieMode(true, "action");
+    }
+
+    void ActionSetAutoPoseSit()
+    {
+        SetAutoPoseLieMode(false, "action");
+    }
+
+    bool IsAutoPoseLieMode()
+    {
+        return autoPoseLieMode != null && autoPoseLieMode.val;
+    }
+
+    void SetAutoPoseLieMode(bool lie, string reason)
+    {
+        if (autoPoseLieMode != null)
+        {
+            autoPoseLieMode.val = lie;
+        }
+
+        UpdateAutoPoseLieButtonUi();
+        LogMessageIfDebug("[TargetLinePerson] Auto Pose mode: " + (lie ? "Lie" : "Sit") + " / reason=" + reason);
+    }
+
+    void CreateAutoPoseLieButtonUi()
+    {
+        if (autoPoseLieButton != null)
+        {
+            return;
+        }
+
+        autoPoseLieButton = CreateButton("Pose: Sit", true);
+        autoPoseLieButton.button.onClick.AddListener(delegate
+        {
+            ActionToggleAutoPoseLieMode();
+        });
+    }
+
+    void UpdateAutoPoseLieButtonUi()
+    {
+        if (autoPoseLieButton == null || autoPoseLieButton.button == null)
+        {
+            return;
+        }
+
+        Text text = autoPoseLieButton.button.GetComponentInChildren<Text>();
+        if (text != null)
+        {
+            text.text = IsAutoPoseLieMode() ? "Pose: Lie" : "Pose: Sit";
+        }
     }
 
     void CreateGenTgUi()
@@ -2123,6 +2207,7 @@ public class TargetLinePerson : MVRScript
     void Update()
     {
         // v215: Target Pelvis Auto is one-shot only; do not hold pelvis in Update.
+        UpdateAutoPoseLieButtonUi();
 
         if (!captured)
         {
@@ -4653,8 +4738,24 @@ else
         }
         else if (anusLine != null)
         {
-            forward = -GetAnusInsideDirection(targetAtom, anusLine);
-            dockingDirSource = "anus targetRoot.-forward";
+            // v239: Anus should use the same stable body placement direction as genital.
+            // Keep lineDir as the anus inside/red-line axis for depth/P-follow, but use
+            // target L/R thighs + targetRoot.forward for Smart/Reverse body placement.
+            string anusDockingSource;
+            Vector3 anusDockingDir = GetTargetPelvisDockingDirection(targetAtom, lineDir, out anusDockingSource);
+            Vector3 flatAnusDocking = anusDockingDir;
+            flatAnusDocking.y = 0f;
+
+            if (flatAnusDocking.sqrMagnitude >= 0.0001f)
+            {
+                forward = flatAnusDocking;
+                dockingDirSource = anusDockingSource.Replace("LabiaTrigger.-up", "Anus axis").Replace("dotLabia", "dotAnus");
+            }
+            else
+            {
+                forward = -GetAnusInsideDirection(targetAtom, anusLine);
+                dockingDirSource = "anus axis fallback";
+            }
         }
         forward.y = 0f;
 
@@ -5021,66 +5122,74 @@ else
             return fallbackFlat;
         }
 
-        Vector3 pelvisRight = rThigh.transform.position - lThigh.transform.position;
-        pelvisRight.y = 0f;
-        if (pelvisRight.sqrMagnitude < 0.0001f)
+        Vector3 thighRight = rThigh.transform.position - lThigh.transform.position;
+        thighRight.y = 0f;
+        if (thighRight.sqrMagnitude < 0.0001f)
         {
             source = "LabiaTrigger.-up fallback:thigh-right-zero";
             return fallbackFlat;
         }
-        pelvisRight.Normalize();
+        thighRight.Normalize();
 
-        Vector3 pelvisUp = Vector3.up;
-        FreeControllerV3 hip = GetTargetHipController(targetAtom);
-        FreeControllerV3 chest = GetTargetChestController(targetAtom);
-        if (hip != null && chest != null)
+        // Normal/Reverse should be decided by the target body's stable front/back,
+        // while the L/R thigh pair supplies the lateral axis.  This avoids using a
+        // near-vertical Labia/G axis as the body placement direction.
+        Vector3 rootForward = GetTargetRootForward(targetAtom, fallbackFlat);
+        rootForward.y = 0f;
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            Vector3 hipToChest = chest.transform.position - hip.transform.position;
-            if (hipToChest.sqrMagnitude >= 0.0001f)
-            {
-                pelvisUp = hipToChest.normalized;
-            }
+            rootForward = fallbackFlat;
+            rootForward.y = 0f;
         }
-        else if (targetAtom != null && targetAtom.mainController != null)
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            Vector3 rootUp = targetAtom.mainController.transform.up;
-            if (rootUp.sqrMagnitude >= 0.0001f)
-            {
-                pelvisUp = rootUp.normalized;
-            }
+            rootForward = Vector3.Cross(thighRight, Vector3.up);
+            rootForward.y = 0f;
         }
-
-        Vector3 pelvisForward = Vector3.Cross(pelvisRight, pelvisUp);
-        pelvisForward.y = 0f;
-        if (pelvisForward.sqrMagnitude < 0.0001f)
+        if (rootForward.sqrMagnitude < 0.0001f)
         {
-            pelvisForward = Vector3.Cross(pelvisRight, Vector3.up);
-            pelvisForward.y = 0f;
-        }
-        if (pelvisForward.sqrMagnitude < 0.0001f)
-        {
-            source = "LabiaTrigger.-up fallback:pelvis-forward-zero";
+            source = "LabiaTrigger.-up fallback:root-forward-zero";
             return fallbackFlat;
         }
-        pelvisForward.Normalize();
+        rootForward.Normalize();
 
-        Vector3 signReference = GetTargetRootForward(targetAtom, fallbackFlat);
-        signReference.y = 0f;
-        if (signReference.sqrMagnitude < 0.0001f)
+        Vector3 dockingForward = rootForward - thighRight * Vector3.Dot(rootForward, thighRight);
+        dockingForward.y = 0f;
+
+        if (dockingForward.sqrMagnitude < 0.0001f)
         {
-            signReference = fallbackFlat;
-        }
-        signReference.Normalize();
+            dockingForward = Vector3.Cross(thighRight, Vector3.up);
+            dockingForward.y = 0f;
 
-        if (Vector3.Dot(pelvisForward, signReference) < 0f)
+            if (dockingForward.sqrMagnitude < 0.0001f)
+            {
+                source = "LabiaTrigger.-up fallback:thigh-root-forward-zero";
+                return fallbackFlat;
+            }
+
+            if (Vector3.Dot(dockingForward, rootForward) < 0f)
+            {
+                dockingForward = -dockingForward;
+            }
+        }
+
+        dockingForward.Normalize();
+
+        float rootDot = Vector3.Dot(dockingForward, rootForward);
+        if (rootDot < 0f)
         {
-            pelvisForward = -pelvisForward;
+            dockingForward = -dockingForward;
+            rootDot = -rootDot;
         }
 
-        float labiaDot = Vector3.Dot(pelvisForward, fallbackFlat);
-        source = "pelvis-thigh-triangle" +
+        float thighDot = Vector3.Dot(dockingForward, thighRight);
+        float labiaDot = Vector3.Dot(dockingForward, fallbackFlat);
+
+        source = "thighLR+targetRoot.forward" +
+            " rootDot=" + rootDot.ToString("F3") +
+            " thighDot=" + thighDot.ToString("F3") +
             " dotLabia=" + labiaDot.ToString("F3");
-        return pelvisForward;
+        return dockingForward;
     }
 
     Vector3 GetAnusInsideDirection(Atom targetAtom, Transform anusLine)
@@ -8649,38 +8758,49 @@ bool ApplyAutoPoseIfNeeded()
     // Ride-like poses keep the current horizontal direction.
     OverrideCapturedDirectionForRidePose();
 
-    float genitalDownDot;
-    bool genitalFacingDown = IsGenitalInsideLineFacingDownForAutoPose(out genitalDownDot);
-
-    // Auto Pose is intentionally simple: On/Off only.
-    // G/inside direction facing down => Lie On Back.
-    // Other ride-like cases => Sit Ground.
-    if (genitalFacingDown)
+    // v230: Lie/Sit selection is manual. G direction is no longer used for Auto Pose branching.
+    if (IsAutoPoseLieMode())
     {
         ApplyLieOnBackPresetPose();
         rideLieActive = true;
-        EnsureLieDockingSafeDistance("auto-pose-g-down-lie");
+        EnsureLieDockingSafeDistance("auto-pose-manual-lie");
         DebugLog(
             "[TargetLinePerson] Auto Pose applied: Lie On Back" +
-            " / reason=genital-down" +
-            " / gDownDot=" + genitalDownDot.ToString("F3") +
-            " / threshold=" + AutoPoseGenitalDownDotMin.ToString("F2")
+            " / reason=manual-lie-mode"
         );
     }
     else
     {
-        ApplySitGroundPresetPose();
+        ClearLieDockingYawLock("auto-pose-manual-sit");
         rideLieActive = false;
+        ApplySitGroundPresetPose();
+        SetOwnFootPositionComplyForAutoSit();
         DebugLog(
             "[TargetLinePerson] Auto Pose applied: Sit Ground" +
-            " / reason=genital-not-down" +
-            " / target=" + GetTargetModeName() +
-            " / gDownDot=" + genitalDownDot.ToString("F3") +
-            " / threshold=" + AutoPoseGenitalDownDotMin.ToString("F2")
+            " / reason=manual-sit-mode" +
+            " / footPosition=Comply"
         );
     }
 
     return true;
+}
+
+void SetOwnFootPositionComplyForAutoSit()
+{
+    // v231: Sit mode should not pin both feet in position, otherwise knees can be pulled inward.
+    // Keep foot rotation as applied by the Sit pose, but relax only position IK.
+    SetControllerPositionComply(FindControllerExact(containingAtom, "rFootControl"));
+    SetControllerPositionComply(FindControllerExact(containingAtom, "lFootControl"));
+}
+
+void SetControllerPositionComply(FreeControllerV3 fc)
+{
+    if (fc == null)
+    {
+        return;
+    }
+
+    fc.currentPositionState = FreeControllerV3.PositionState.Comply;
 }
 
 void EnsureLieDockingSafeDistance(string reason)
@@ -8708,16 +8828,37 @@ void EnsureLieDockingSafeDistance(string reason)
 
 void ReleaseRideLieIfNeeded()
 {
-    if (!rideLieActive)
+    bool hadRideLie = rideLieActive;
+    bool hadYawLock = lieDockingYawLockActive;
+
+    if (!hadRideLie && !hadYawLock)
     {
         return;
     }
 
     rideLieActive = false;
+    ClearLieDockingYawLock("release-ride-lie");
 
-    // Ride邵ｺ・ｧ騾包ｽｷ隲､・ｧ陋幢ｽｴ郢ｧ魍・e On Back邵ｺ・ｫ邵ｺ蜉ｱ笳・募ｾ個竏ｵ・ｬ・｡邵ｺ・ｮCapture邵ｺ・ｧRide隴夲ｽ｡闔会ｽｶ邵ｺ謔滂ｽ､謔ｶ・檎ｸｺ貅假ｽ・    // Re-apply upper body direction after ride lie is released.
+    // Re-apply upper body direction after ride lie is released.
     ApplyUpperBodyDirection();
-    DebugLog("[TargetLinePerson] Ride Lie released: Upper Body Direction + head aligned applied.");
+    DebugLog(
+        "[TargetLinePerson] Ride Lie released: Upper Body Direction + head aligned applied." +
+        " / hadRideLie=" + (hadRideLie ? "1" : "0") +
+        " / hadYawLock=" + (hadYawLock ? "1" : "0")
+    );
+}
+
+void ClearLieDockingYawLock(string reason)
+{
+    if (!lieDockingYawLockActive && lieDockingYawLockForward.sqrMagnitude < 0.0001f)
+    {
+        return;
+    }
+
+    lieDockingYawLockActive = false;
+    lieDockingYawLockForward = Vector3.zero;
+    lieDockingYawLockOpposite = false;
+    DebugLog("[TargetLinePerson] Lie yaw lock cleared / reason=" + reason);
 }
 
 void OverrideCapturedDirectionForRidePose()
@@ -8763,23 +8904,37 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         return;
     }
 
-    Vector3 targetForward = GetTargetRootForward(targetAtom, capturedDir);
+    // V238: Do not overwrite Smart/Reverse docking direction with targetRoot.forward.
+    // UpdateLine() already resolved capturedDir from the docking source
+    // (genital Smart now prefers thighLR+targetRoot.forward), and ReverseCapturedDirection()
+    // has already been applied by the caller when needed.  Lie yaw lock must use that
+    // final capturedDir for placement, then face the root back toward the target.
+    Vector3 dockingDir = capturedDir;
+    dockingDir.y = 0f;
+
+    if (dockingDir.sqrMagnitude < 0.0001f && capturedLineDir.sqrMagnitude >= 0.0001f)
+    {
+        dockingDir = capturedLineDir;
+        dockingDir.y = 0f;
+    }
+
+    Vector3 targetForward = GetTargetRootForward(targetAtom, dockingDir);
     targetForward.y = 0f;
 
-    if (targetForward.sqrMagnitude < 0.0001f && capturedDir.sqrMagnitude >= 0.0001f)
+    if (targetForward.sqrMagnitude < 0.0001f && dockingDir.sqrMagnitude >= 0.0001f)
     {
-        targetForward = capturedDir;
+        targetForward = dockingDir;
         targetForward.y = 0f;
     }
 
-    if (targetForward.sqrMagnitude < 0.0001f)
+    if (dockingDir.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
     {
         return;
     }
 
+    dockingDir.Normalize();
     targetForward.Normalize();
 
-    bool opposite = hardMode;
     float currentSideDot = 0f;
     string selectMode = hardMode ? "reverse-smart" : "smart";
 
@@ -8796,9 +8951,7 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
 
         if (toOwn.sqrMagnitude >= 0.0001f)
         {
-            currentSideDot = Vector3.Dot(toOwn.normalized, targetForward);
-            // Pick the opposite side when the owner is behind target root forward.
-            opposite = currentSideDot > 0f;
+            currentSideDot = Vector3.Dot(toOwn.normalized, dockingDir);
         }
         else if (containingAtom != null && containingAtom.mainController != null)
         {
@@ -8806,24 +8959,14 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
             ownForward.y = 0f;
             if (ownForward.sqrMagnitude >= 0.0001f)
             {
-                currentSideDot = Vector3.Dot(ownForward.normalized, targetForward);
-                opposite = currentSideDot < 0f;
+                currentSideDot = Vector3.Dot(ownForward.normalized, dockingDir);
             }
-        }
-
-        if (reverseCurrentSide)
-        {
-            opposite = !opposite;
         }
 
         selectMode = reverseCurrentSide ? "now-reverse-current-side" : "now-current-side";
     }
 
-    // Preference flip: keep the stable same/opposite 2-choice lock,
-    // but use the other front/back side for Lie docking.
-    opposite = !opposite;
-
-    Vector3 desiredRootForward = opposite ? -targetForward : targetForward;
+    Vector3 desiredRootForward = -dockingDir;
     desiredRootForward.y = 0f;
 
     if (desiredRootForward.sqrMagnitude < 0.0001f)
@@ -8833,14 +8976,15 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
 
     desiredRootForward.Normalize();
 
+    bool opposite = Vector3.Dot(desiredRootForward, targetForward) < 0f;
+
     lieDockingYawLockActive = true;
     lieDockingYawLockForward = desiredRootForward;
     lieDockingYawLockOpposite = opposite;
 
-    // In normal standing docking, capturedDir is the position direction from target to own hip,
-    // while root yaw faces back toward the target.  For Lie, keep that relationship stable:
-    // root yaw = same/opposite target root yaw, position line = the opposite side of that yaw.
-    capturedDir = -desiredRootForward;
+    // Preserve the final Smart/Reverse docking side.  For Lie, the root yaw faces back
+    // along the opposite vector, but the placement line must remain the selected docking side.
+    capturedDir = dockingDir;
 
     if (capturedLineDir.sqrMagnitude < 0.0001f)
     {
@@ -8875,20 +9019,48 @@ void ApplyLieDockingYawLockIfNeeded(bool hardMode, bool chooseCurrentSide, bool 
         "[TargetLinePerson] LIE DOCKING YAW LOCK" +
         " / mode=" + selectMode +
         " / yaw=" + (opposite ? "opposite" : "same") +
-        " / frontBackFlip=1" +
+        " / frontBackFlip=0" +
         " / currentSideDot=" + currentSideDot.ToString("F3") +
         " / targetForward=(" + FormatVector3(targetForward) + ")" +
         " / rootForward=(" + FormatVector3(lieDockingYawLockForward) + ")" +
         " / capturedDir=(" + FormatVector3(capturedDir) + ")" +
-        " / lineDir=(" + FormatVector3(capturedLineDir) + ")"
+        " / lineDir=(" + FormatVector3(capturedLineDir) + ")" +
+        " / source=capturedDir"
     );
 }
 
-bool IsTargetRideLikePose()
+bool TryGetTargetRideLikePoseMetrics(
+    out float upperVerticalDot,
+    out float hipY,
+    out float kneeY,
+    out float hipKneeDiff,
+    out bool upperAlmostVertical,
+    out bool hipLow,
+    out bool hipNearKneeHeight,
+    out bool ridePoseBasic,
+    out string reason
+)
 {
+    upperVerticalDot = -1.0f;
+    hipY = -1.0f;
+    kneeY = -1.0f;
+    hipKneeDiff = -1.0f;
+    upperAlmostVertical = false;
+    hipLow = false;
+    hipNearKneeHeight = false;
+    ridePoseBasic = false;
+    reason = "unknown";
+
+    if (targetPersonChooser == null)
+    {
+        reason = "no-target-chooser";
+        return false;
+    }
+
     Atom targetAtom = FindAtom(targetPersonChooser.val);
     if (targetAtom == null)
     {
+        reason = "target-missing";
         return false;
     }
 
@@ -8902,6 +9074,12 @@ bool IsTargetRideLikePose()
 
     if (hip == null || chest == null || rKnee == null || lKnee == null)
     {
+        reason =
+            "missing-controller" +
+            " hip=" + (hip != null ? "1" : "0") +
+            " chest=" + (chest != null ? "1" : "0") +
+            " rKnee=" + (rKnee != null ? "1" : "0") +
+            " lKnee=" + (lKnee != null ? "1" : "0");
         return false;
     }
 
@@ -8913,24 +9091,54 @@ bool IsTargetRideLikePose()
     Vector3 upper = chestPos - hipPos;
     if (upper.sqrMagnitude < 0.0001f)
     {
+        reason = "bad-upper-vector";
         return false;
     }
 
-    // 1. 闕ｳ髮∵ｿ髴・ｽｫ邵ｺ蠕娯括邵ｺ・ｼ陜吶ｉ蟲ｩ
     // 1. Upper body verticality.
-    float upperVerticalDot = Mathf.Abs(Vector3.Dot(upper.normalized, Vector3.up));
+    upperVerticalDot = Mathf.Abs(Vector3.Dot(upper.normalized, Vector3.up));
 
     // 2. Hip height.
-    float hipY = hipPos.y;
+    hipY = hipPos.y;
 
     // 3. Knee height.
-    float kneeY = (rKneePos.y + lKneePos.y) * 0.5f;
-    float hipKneeDiff = Mathf.Abs(hipY - kneeY);
+    kneeY = (rKneePos.y + lKneePos.y) * 0.5f;
+    hipKneeDiff = Mathf.Abs(hipY - kneeY);
 
-    bool upperAlmostVertical = upperVerticalDot >= 0.80f;
-    bool hipLow = hipY <= 0.65f;
-    bool hipNearKneeHeight = hipKneeDiff <= 0.20f;
-    bool ridePoseBasic = upperAlmostVertical && hipLow && hipNearKneeHeight;
+    upperAlmostVertical = upperVerticalDot >= 0.80f;
+    hipLow = hipY <= 0.65f;
+    hipNearKneeHeight = hipKneeDiff <= 0.20f;
+    ridePoseBasic = upperAlmostVertical && hipLow && hipNearKneeHeight;
+    reason = ridePoseBasic ? "ride-like" : "not-ride-like";
+    return true;
+}
+
+bool IsTargetRideLikePose()
+{
+    float upperVerticalDot;
+    float hipY;
+    float kneeY;
+    float hipKneeDiff;
+    bool upperAlmostVertical;
+    bool hipLow;
+    bool hipNearKneeHeight;
+    bool ridePoseBasic;
+    string reason;
+
+    if (!TryGetTargetRideLikePoseMetrics(
+        out upperVerticalDot,
+        out hipY,
+        out kneeY,
+        out hipKneeDiff,
+        out upperAlmostVertical,
+        out hipLow,
+        out hipNearKneeHeight,
+        out ridePoseBasic,
+        out reason
+    ))
+    {
+        return false;
+    }
 
     if (ridePoseBasic)
     {
@@ -8945,6 +9153,95 @@ bool IsTargetRideLikePose()
 
     return ridePoseBasic;
 }
+
+void LogNowDockingAutoPoseProbe()
+{
+    bool autoPoseOn = autoPose != null && autoPose.val;
+    bool lieMode = IsAutoPoseLieMode();
+    string targetMode = GetTargetModeName();
+
+    float upperVerticalDot;
+    float hipY;
+    float kneeY;
+    float hipKneeDiff;
+    bool upperAlmostVertical;
+    bool hipLow;
+    bool hipNearKneeHeight;
+    bool ridePoseBasic;
+    string rideReason;
+    bool hasRideMetrics = TryGetTargetRideLikePoseMetrics(
+        out upperVerticalDot,
+        out hipY,
+        out kneeY,
+        out hipKneeDiff,
+        out upperAlmostVertical,
+        out hipLow,
+        out hipNearKneeHeight,
+        out ridePoseBasic,
+        out rideReason
+    );
+
+    // G data is kept as a probe only. v230 does not use it to choose Lie/Sit.
+    Vector3 gOrigin = Vector3.zero;
+    Vector3 gDir = Vector3.zero;
+    float gLength = 0.0f;
+    bool gFound = false;
+    float gDownDot = -1.0f;
+    bool gDown = false;
+
+    if (targetMode == "genital")
+    {
+        gFound = TryGetLiveGenitalInsideLine(out gOrigin, out gDir, out gLength);
+        if (gFound && gDir.sqrMagnitude >= 0.0001f)
+        {
+            gDownDot = Vector3.Dot(gDir.normalized, Vector3.down);
+            gDown = gDownDot >= AutoPoseGenitalDownDotMin;
+        }
+    }
+
+    string result;
+    if (!autoPoseOn)
+    {
+        result = "AutoPoseOff";
+    }
+    else if (!hasRideMetrics)
+    {
+        result = "NoPoseData";
+    }
+    else if (!ridePoseBasic)
+    {
+        result = "NoAutoPose";
+    }
+    else
+    {
+        result = lieMode ? "Lie On Back" : "Sit Ground";
+    }
+
+    LogMessageIfDebug(
+        "[TargetLinePerson] Now Docking Auto Pose check" +
+        " / autoPose=" + (autoPoseOn ? "1" : "0") +
+        " / poseMode=" + (lieMode ? "Lie" : "Sit") +
+        " / target=" + targetMode +
+        " / rideData=" + (hasRideMetrics ? "1" : "0") +
+        " / rideLike=" + (ridePoseBasic ? "1" : "0") +
+        " / rideReason=" + rideReason +
+        " / upperDot=" + (hasRideMetrics ? upperVerticalDot.ToString("F3") : "n/a") +
+        " / upperOK=" + (upperAlmostVertical ? "1" : "0") +
+        " / hipY=" + (hasRideMetrics ? hipY.ToString("F3") : "n/a") +
+        " / hipOK=" + (hipLow ? "1" : "0") +
+        " / kneeY=" + (hasRideMetrics ? kneeY.ToString("F3") : "n/a") +
+        " / hipKneeDiff=" + (hasRideMetrics ? hipKneeDiff.ToString("F3") : "n/a") +
+        " / hipKneeOK=" + (hipNearKneeHeight ? "1" : "0") +
+        " / gRefOnly=1" +
+        " / gFound=" + (gFound ? "1" : "0") +
+        " / gPos=" + (gFound ? "(" + FormatVector3(gOrigin) + ")" : "n/a") +
+        " / gDir=" + (gFound ? "(" + FormatVector3(gDir) + ")" : "n/a") +
+        " / gDownDot=" + (gFound ? gDownDot.ToString("F3") : "n/a") +
+        " / gDown=" + (gDown ? "1" : "0") +
+        " / result=" + result
+    );
+}
+
     void ApplyLieOnBackPresetPose()
     {
         ResetPFollowForLiePose("lie on back preset");
@@ -13169,7 +13466,9 @@ bool IsTargetRideLikePose()
 
     bool IsPControlBlockedByLiePose()
     {
-        return rideLieActive || IsOwnLiePoseForYellowGuide();
+        // v235: Own flat/lie-looking posture alone must not block Yellow P Follow.
+        // Only the actual Auto Pose Lie state should stop P controller follow.
+        return rideLieActive;
     }
 
     void ResetPFollowForLiePose(string reason)

@@ -1,3 +1,8 @@
+// TARGET_RELEASE_UNBLOCK_HBA_HLA_HAND_COVER_BUILD 2026-06-28: Target Release/Target reset now restores held target-hand IK locks before clearing held state and forces TG Held Target Hand/L/R flags false early, so HBA/HLA hand cover unblocks on target-side release.
+// HELD_TARGET_HAND_TARGET_UID_EXPORT_BUILD 2026-06-28: Exports TG Held Target Person UID so HBA/HLA on the target Person can find TargetGrabber even when TargetGrabber is installed on the grabbing/self Person.
+// HELD_TARGET_HAND_FLAG_AGGREGATE_BUILD 2026-06-27: Adds hidden aggregate TG Held Target Hand flag and keeps L/R flags updated for HBA/HLA linkage diagnostics.
+// HELD_TARGET_HAND_FOLLOW_LOCK_BUILD 2026-06-27: Target L/R Hand and Hand Hold grabs now keep the target hand IK locked as a self-hand-follow target. Utility moves may move the target hand, but AutoSnap/restore paths no longer drop or resnap the held target hand lock until Release/Target reset/defaults.
+// TARGET_RUNTIME_RESET_ON_TARGET_RELEASE_DEFAULTS_BUILD 2026-06-27: Target Release, Target IK Default, and Target Load User Defaults now clear TargetGrabber target-side runtime lock/snap/held state before/after applying the requested reset.
 // DEFAULT_IK_SELECT_HUG_BODY_BUILD 2026-06-26: IK Select defaults/falls back to Hug Body without auto-resetting to <none>, keeping HDU direct-route selection ownership.
 // TARGET_IK_DEFAULT_SNAP_CURRENT_BUILD 2026-06-26: Target IK Default now treats the current target IK pose as the new snap/release baseline by clearing target snap/restore caches without changing IK Select, avoiding HDU_Commander route conflicts.
 // FOOT_FRONTSIDE_PATH_FIX_BUILD 2026-06-26: Grab Foot now flips L/R path only on the target front-side route so the normal back-side foot direction remains unchanged.
@@ -400,6 +405,14 @@ public class TargetGrabber : MVRScript
     private bool heldTargetGrabRightHand = false;
     private bool heldTargetGrabLeftFoot = false;
     private bool heldTargetGrabRightFoot = false;
+    private bool heldTargetHandFollowLockLeft = false;
+    private bool heldTargetHandFollowLockRight = false;
+    private FreeControllerV3 heldTargetHandFollowLockLeftControl = null;
+    private FreeControllerV3 heldTargetHandFollowLockRightControl = null;
+    private JSONStorableBool tgHeldTargetHandJSON;
+    private JSONStorableBool tgHeldTargetLHandJSON;
+    private JSONStorableBool tgHeldTargetRHandJSON;
+    private JSONStorableString tgHeldTargetPersonUidJSON;
     private bool suppressApply = false;
 
     // v1.8: Grab motion state.
@@ -625,6 +638,15 @@ public class TargetGrabber : MVRScript
         CreatePopup(followModeChooser, false);
 
         debugLogJSON = CreateBool("Debug Log", false, false);
+
+        tgHeldTargetHandJSON = new JSONStorableBool("TG Held Target Hand", false);
+        RegisterBool(tgHeldTargetHandJSON);
+        tgHeldTargetLHandJSON = new JSONStorableBool("TG Held Target L Hand", false);
+        RegisterBool(tgHeldTargetLHandJSON);
+        tgHeldTargetRHandJSON = new JSONStorableBool("TG Held Target R Hand", false);
+        RegisterBool(tgHeldTargetRHandJSON);
+        tgHeldTargetPersonUidJSON = new JSONStorableString("TG Held Target Person UID", "");
+        RegisterString(tgHeldTargetPersonUidJSON);
 
         CreateButton("Refresh", false).button.onClick.AddListener(RefreshAll);
         CreateButton("Default", false).button.onClick.AddListener(ApplyDefaultSettings);
@@ -1856,6 +1878,7 @@ public class TargetGrabber : MVRScript
 
     private void LoadUserDefaults()
     {
+        RestoreHeldTargetHandFollowLocks("self-load-user-defaults");
         ClearPendingWristHandLocks();
 
         string[] actionNames =
@@ -1890,6 +1913,7 @@ public class TargetGrabber : MVRScript
         }
 
         hasActiveGrab = false;
+        RestoreHeldTargetHandFollowLocks("self-ik-default");
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
@@ -1934,13 +1958,11 @@ public class TargetGrabber : MVRScript
 
     private void TargetIKDefault()
     {
-        ClearHeldTargetGrabState();
-        RestoreTargetNoneBodyRelaxIK();
-        StopSwoonDrop(true, "target-ik-default");
+        string resetSummary = ResetTargetGrabberRuntimeState("target-ik-default", true);
 
         if (selectedTargetPerson == null)
         {
-            SetStatus("Target IK Default / no Target Person");
+            SetStatus("Target IK Default / no Target Person / reset " + resetSummary);
             return;
         }
 
@@ -1952,18 +1974,17 @@ public class TargetGrabber : MVRScript
         // immediately before running actions, so clearing the chooser here can race/conflict with HDU.
         QueueTargetIKDefaultRuntimeSnapResync("target-ik-default");
 
-        SetStatus("Target IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture) + " / snap=current");
+        SetStatus("Target IK Default / controls=" + changed.ToString(CultureInfo.InvariantCulture) +
+            " / snap=current / reset " + resetSummary);
     }
 
     private void TargetLoadUserDefaults()
     {
-        ClearHeldTargetGrabState();
-        RestoreTargetNoneBodyRelaxIK();
-        StopSwoonDrop(true, "target-load-user-defaults");
+        string resetSummary = ResetTargetGrabberRuntimeState("target-load-user-defaults", true);
 
         if (selectedTargetPerson == null)
         {
-            SetStatus("Target Load User Defaults / no Target Person");
+            SetStatus("Target Load User Defaults / no Target Person / reset " + resetSummary);
             return;
         }
 
@@ -1986,6 +2007,64 @@ public class TargetGrabber : MVRScript
 
         SetStatus("Target Load User Defaults action not found");
         SuperController.LogMessage("[TargetGrabber] TARGET LOAD DEFAULTS: PosePresets action not found on target person.");
+    }
+
+    private string ResetTargetGrabberRuntimeState(string reason, bool clearTargetSnapshots)
+    {
+        // Target Release / Target IK Default / Target Load User Defaults are explicit target-side reset points.
+        // Clear every TargetGrabber runtime marker that can make a later route believe target hands/body are still held,
+        // locked, pending snap, or waiting for delayed restore.  Do not change IK Select here; HDU direct routes own it.
+        ResetHugBodyHdcHipUpperState(reason);
+        hasActiveGrab = false;
+        // v5bj: release target-side held-hand IK/state before clearing the flags/refs.
+        // This avoids a state where HBA/HLA still treat the target hand as held or the target hand stays locked after Target Release.
+        int restoredHeldHandLocks = RestoreHeldTargetHandFollowLocks(reason + "-held-target-hand");
+        ClearHeldTargetGrabState();
+        ClearPendingWristHandLocks();
+        grabElapsed = 0.0f;
+        activeMoveTimeMultiplier = 1.0f;
+        activeIncludeHead = false;
+        pufupufuActive = false;
+
+        if (jobActive)
+            RestoreJobHandPositions();
+        jobActive = false;
+
+        RestoreSelfFollowParentLinks();
+        RestoreTemporaryRelaxLinkedIK();
+        RestoreTemporaryHandRotationOffStates();
+        StopSwoonDrop(true, reason);
+
+        int restoredLocks = RestoreTargetLocks();
+        int restoredComply = RestoreTargetNoneBodyRelaxIK();
+
+        pendingAutoSnapIKControls.Clear();
+        pendingSelfFollowTargets.Clear();
+        hugBodyWristReferencePositions.Clear();
+        hugBodyHandSnapAnchorPositions.Clear();
+
+        releaseRestorePositionControls.Clear();
+        releaseRestoreRotationControls.Clear();
+        releaseRestoreIKPending = false;
+
+        if (clearTargetSnapshots)
+        {
+            targetOriginalPositions.Clear();
+            targetOriginalRotations.Clear();
+            targetLockPositionStates.Clear();
+            targetLockRotationStates.Clear();
+            targetLockControls.Clear();
+        }
+
+        DebugLog("[TARGET RUNTIME RESET] reason=" + reason +
+            " / heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+            " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
+            " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture) +
+            " / clearSnapshots=" + Bool01(clearTargetSnapshots));
+
+        return "heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+            " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
+            " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture);
     }
 
     private int ApplyPersonIKDefault(Atom person, string logPrefix)
@@ -4036,6 +4115,12 @@ public class TargetGrabber : MVRScript
         if (fc == null)
             return false;
 
+        if (IsHeldTargetHandFollowLockControl(fc))
+        {
+            DebugLog("[TARGET SNAP SKIP] reason=held-target-hand-follow-lock target=" + fc.name);
+            return true;
+        }
+
         if (ShouldSkipTargetNeckHeadForHugBody(fc))
             return true;
 
@@ -4765,6 +4850,8 @@ public class TargetGrabber : MVRScript
         CaptureTargetOriginal(fc);
         Quaternion rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
         MoveControl(fc, position, rot, false, true);
+        if (IsHeldTargetHandFollowLockControl(fc))
+            ReapplyHeldTargetHandFollowLocks("move-target-to-position");
     }
 
     private bool TryGetGrabPullOffset(out Vector3 pullOffset, out float maxShortage)
@@ -5078,6 +5165,8 @@ public class TargetGrabber : MVRScript
         Vector3 pos = fc.control != null ? fc.control.position : fc.transform.position;
         Quaternion rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
         MoveControl(fc, pos + offset, rot, false, true);
+        if (IsHeldTargetHandFollowLockControl(fc))
+            ReapplyHeldTargetHandFollowLocks("move-target-by-offset");
     }
 
     private void CaptureTargetOriginal(FreeControllerV3 fc)
@@ -5092,42 +5181,49 @@ public class TargetGrabber : MVRScript
     private void ReleaseTarget()
     {
         RestoreSelfFollowParentLinks();
+        // v5bj: Target-side release must also unblock HBA/HLA immediately.
+        // Do this before restoring saved target positions, then ResetTargetGrabberRuntimeState cleans any remaining runtime state.
+        int preRestoredHeldHandLocks = RestoreHeldTargetHandFollowLocks("target-release-pre");
+        ClearHeldTargetGrabState();
 
-        if (!HasTargetReleaseState())
+        bool hadTargetReleaseState = HasTargetReleaseState();
+        int restored = 0;
+
+        if (hadTargetReleaseState)
         {
-            SetStatus("Release Target / no saved target");
-            UpdateGrabHandUtilityButtons();
+            List<FreeControllerV3> controls = targetOriginalPositions.Keys.ToList();
+
+            foreach (FreeControllerV3 fc in controls)
+            {
+                if (fc == null)
+                    continue;
+
+                Vector3 pos;
+                Quaternion rot;
+                if (!targetOriginalPositions.TryGetValue(fc, out pos))
+                    continue;
+                if (!targetOriginalRotations.TryGetValue(fc, out rot))
+                    rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
+
+                MoveControl(fc, pos, rot, false, true);
+                restored++;
+            }
+        }
+
+        string resetSummary = ResetTargetGrabberRuntimeState("target-release", true);
+        string hcReapplyStatus = TryReapplyTargetHumanPoseControllerAfterRelease();
+        UpdateGrabHandUtilityButtons();
+
+        if (!hadTargetReleaseState)
+        {
+            SetStatus("Release Target / no saved target / heldHandLocks=" + preRestoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+                " / reset " + resetSummary + " / hc=" + hcReapplyStatus);
             return;
         }
 
-        List<FreeControllerV3> controls = targetOriginalPositions.Keys.ToList();
-        int restored = 0;
-
-        foreach (FreeControllerV3 fc in controls)
-        {
-            if (fc == null)
-                continue;
-
-            Vector3 pos;
-            Quaternion rot;
-            if (!targetOriginalPositions.TryGetValue(fc, out pos))
-                continue;
-            if (!targetOriginalRotations.TryGetValue(fc, out rot))
-                rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
-
-            MoveControl(fc, pos, rot, false, true);
-            restored++;
-        }
-
-        targetOriginalPositions.Clear();
-        targetOriginalRotations.Clear();
-        int restoredLocks = RestoreTargetLocks();
-        int restoredComply = RestoreTargetNoneBodyRelaxIK();
-        string hcReapplyStatus = TryReapplyTargetHumanPoseControllerAfterRelease();
-        UpdateGrabHandUtilityButtons();
         SetStatus("Release Target / restored=" + restored.ToString(CultureInfo.InvariantCulture) +
-            " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
-            " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture) +
+            " / heldHandLocks=" + preRestoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+            " / reset " + resetSummary +
             " / hc=" + hcReapplyStatus);
     }
 
@@ -5493,6 +5589,8 @@ public class TargetGrabber : MVRScript
         heldTargetGrabRightHand = heldTargetGrabIncludeHands && rightHandJSON != null && rightHandJSON.val;
         heldTargetGrabLeftFoot = heldTargetGrabIncludeFeet && leftFootJSON != null && leftFootJSON.val;
         heldTargetGrabRightFoot = heldTargetGrabIncludeFeet && rightFootJSON != null && rightFootJSON.val;
+
+        CaptureHeldTargetHandFollowLockState(choice, includeHands);
     }
 
     private void ClearHeldTargetGrabState()
@@ -5506,6 +5604,125 @@ public class TargetGrabber : MVRScript
         heldTargetGrabRightHand = false;
         heldTargetGrabLeftFoot = false;
         heldTargetGrabRightFoot = false;
+        ClearHeldTargetHandFollowLockState("held-grab-clear");
+    }
+
+    private void CaptureHeldTargetHandFollowLockState(string choice, bool includeHands)
+    {
+        heldTargetHandFollowLockLeft = false;
+        heldTargetHandFollowLockRight = false;
+        heldTargetHandFollowLockLeftControl = null;
+        heldTargetHandFollowLockRightControl = null;
+
+        if (includeHands && IsTargetPersonMode() && selectedTargetPerson != null && !string.IsNullOrEmpty(choice) && choice != NONE)
+        {
+            if (choice == TC_HAND || choice == TC_L_HAND)
+            {
+                heldTargetHandFollowLockLeftControl = GetTargetPersonControlByAliases("lHandControl", "leftHandControl", "lHand", "leftHand");
+                heldTargetHandFollowLockLeft = heldTargetHandFollowLockLeftControl != null;
+                if (heldTargetHandFollowLockLeft)
+                    LockTargetIKControl(heldTargetHandFollowLockLeftControl);
+            }
+
+            if (choice == TC_HAND || choice == TC_R_HAND)
+            {
+                heldTargetHandFollowLockRightControl = GetTargetPersonControlByAliases("rHandControl", "rightHandControl", "rHand", "rightHand");
+                heldTargetHandFollowLockRight = heldTargetHandFollowLockRightControl != null;
+                if (heldTargetHandFollowLockRight)
+                    LockTargetIKControl(heldTargetHandFollowLockRightControl);
+            }
+        }
+
+        UpdateHeldTargetHandFollowLockStorables();
+
+        if ((heldTargetHandFollowLockLeft || heldTargetHandFollowLockRight) && IsDebugEnabled())
+        {
+            DebugLog("[HELD TARGET HAND LOCK] capture / choice=" + choice +
+                " / L=" + Bool01(heldTargetHandFollowLockLeft) +
+                " / R=" + Bool01(heldTargetHandFollowLockRight));
+        }
+    }
+
+    private void ClearHeldTargetHandFollowLockState(string reason)
+    {
+        bool had = heldTargetHandFollowLockLeft || heldTargetHandFollowLockRight;
+        heldTargetHandFollowLockLeft = false;
+        heldTargetHandFollowLockRight = false;
+        heldTargetHandFollowLockLeftControl = null;
+        heldTargetHandFollowLockRightControl = null;
+        UpdateHeldTargetHandFollowLockStorables();
+        if (had && IsDebugEnabled())
+            DebugLog("[HELD TARGET HAND LOCK] clear / reason=" + reason);
+    }
+
+    private void UpdateHeldTargetHandFollowLockStorables()
+    {
+        bool anyHeldTargetHand = heldTargetHandFollowLockLeft || heldTargetHandFollowLockRight;
+        if (tgHeldTargetHandJSON != null) tgHeldTargetHandJSON.val = anyHeldTargetHand;
+        if (tgHeldTargetLHandJSON != null) tgHeldTargetLHandJSON.val = heldTargetHandFollowLockLeft;
+        if (tgHeldTargetRHandJSON != null) tgHeldTargetRHandJSON.val = heldTargetHandFollowLockRight;
+        if (tgHeldTargetPersonUidJSON != null) tgHeldTargetPersonUidJSON.val = anyHeldTargetHand && selectedTargetPerson != null ? selectedTargetPerson.uid : "";
+    }
+
+    private bool IsHeldTargetHandFollowLockControl(FreeControllerV3 fc)
+    {
+        if (fc == null) return false;
+        return (heldTargetHandFollowLockLeft && fc == heldTargetHandFollowLockLeftControl) ||
+               (heldTargetHandFollowLockRight && fc == heldTargetHandFollowLockRightControl);
+    }
+
+    private void ReapplyHeldTargetHandFollowLocks(string reason)
+    {
+        int kept = 0;
+        if (heldTargetHandFollowLockLeft && heldTargetHandFollowLockLeftControl != null)
+        {
+            LockTargetIKControl(heldTargetHandFollowLockLeftControl);
+            kept++;
+        }
+        if (heldTargetHandFollowLockRight && heldTargetHandFollowLockRightControl != null)
+        {
+            LockTargetIKControl(heldTargetHandFollowLockRightControl);
+            kept++;
+        }
+        UpdateHeldTargetHandFollowLockStorables();
+        if (kept > 0 && IsDebugEnabled())
+            DebugLog("[HELD TARGET HAND LOCK] kept / reason=" + reason + " / count=" + kept.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private int RestoreHeldTargetHandFollowLocks(string reason)
+    {
+        int restored = 0;
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        if (heldTargetHandFollowLockLeft && heldTargetHandFollowLockLeftControl != null) controls.Add(heldTargetHandFollowLockLeftControl);
+        if (heldTargetHandFollowLockRight && heldTargetHandFollowLockRightControl != null && heldTargetHandFollowLockRightControl != heldTargetHandFollowLockLeftControl) controls.Add(heldTargetHandFollowLockRightControl);
+
+        foreach (FreeControllerV3 fc in controls)
+        {
+            if (fc == null) continue;
+
+            FreeControllerV3.PositionState positionState;
+            if (targetLockPositionStates.TryGetValue(fc, out positionState))
+            {
+                try { fc.currentPositionState = positionState; } catch { }
+                targetLockPositionStates.Remove(fc);
+            }
+
+            FreeControllerV3.RotationState rotationState;
+            if (targetLockRotationStates.TryGetValue(fc, out rotationState))
+            {
+                try { fc.currentRotationState = rotationState; } catch { }
+                targetLockRotationStates.Remove(fc);
+            }
+
+            targetLockControls.Remove(fc);
+            restored++;
+        }
+
+        if (restored > 0 && IsDebugEnabled())
+            DebugLog("[HELD TARGET HAND LOCK] restored / reason=" + reason + " / count=" + restored.ToString(CultureInfo.InvariantCulture));
+
+        ClearHeldTargetHandFollowLockState(reason);
+        return restored;
     }
 
     private bool HasSwoonDropHeldGrabState()
@@ -5819,6 +6036,8 @@ public class TargetGrabber : MVRScript
                 AddPendingAutoSnapIK(selectedTargetPerson, fc);
             }
         }
+
+        ReapplyHeldTargetHandFollowLocks("queue-auto-snap");
     }
 
     private void AddPendingAutoSnapIK(Atom atom, FreeControllerV3 fc)
@@ -11369,6 +11588,7 @@ public class TargetGrabber : MVRScript
     {
         ResetHugBodyHdcHipUpperState("release");
         hasActiveGrab = false;
+        RestoreHeldTargetHandFollowLocks("release");
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
         grabElapsed = 0.0f;
