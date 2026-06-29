@@ -1,9 +1,16 @@
+// HBA_V089_TARGET_UPPER_BEHIND_GUARD_BUILD 2026-06-29: When the selected/nearest other Person is behind this Person, normal Cover upper-body targets (Head/Head Side/Neck/Chest/Nipple) are filtered out before selection so hands do not try to reach target-side upper body behind the back. Keeps v088 HBA->HLA delegation diagnostics and PushAway back-stretch limit.
+// HBA_V087_HLA_DELEGATE_DIAGNOSTICS_READY_LOG_BUILD 2026-06-29: Adds always-visible READY and HBA->HLA CHECK diagnostics so it is obvious whether this HBA build is loaded and whether Head/Hip Back selections match delegation; keeps v086 matching and v085 PushAway back stretch limit.
+// HBA_V083_DELEGATE_SELF_HEAD_HIP_TO_HLA_BUILD 2026-06-29: RandomHandCover delegates completed self Head/Head Side and Hip Back cover targets to same-Person HumanLifeAction external actions when present; adds direct HBA buttons/actions for HLA Self Head/Hip delegation and falls back to old HBA cover when HLA is absent.
+// HBA_SELF_FACE_BREAST_SIZE_AVOID_BUILD 2026-06-28: Self Head/Head Side/Neck hand cover now measures self L/R nipple protrusion from chestControl; flat/small chest keeps the normal path, while large breast + chest-crossing line uses outward/up avoid path.
+// HBA_HEAD_COVER_REACH_FIX_BUILD 2026-06-28: Raises upper/head hand-cover command and too-far limits so selected Self Head/Head Side/Neck cover can actually reach instead of stopping around shoulder distance. Keeps TG held-target-hand UID strict guard and self-face chest avoid path.
+// HBA_SELF_FACE_CHEST_AVOID_PATH_BUILD 2026-06-28: Self Head/Head Side/Neck hand cover uses a chest-proximity line test and only routes outward/up when the hand-to-face path would cross the chest area.
 // HBA_HAND_COVER_IGNORE_HAND_IK_ON_FIX_BUILD 2026-06-28: RandomHandCover no longer treats Hand IK PositionState.On as unavailable; hand cover can run from normal IK-on poses while TG-held target hand guard remains active.
 // HBA_TG_HELD_HAND_TARGET_UID_STRICT_BUILD 2026-06-28: Uses TargetGrabber exported TG Held Target Person UID to block only the matching target Person's held L/R hand; legacy same-atom only, no cross-person fallback.
 // HBA_TG_HELD_HAND_GLOBAL_TARGET_UID_SCAN_BUILD 2026-06-28: Scans all scene TargetGrabber instances and matches TG Held Target Person UID, so held target-hand flags are read even when TargetGrabber is installed on the grabbing/self Person, not on the target Person.
 // HBA_TG_HELD_HAND_SIDE_ONLY_BLOCK_BUILD 2026-06-28: TargetGrabber L/R held-target-hand flags now block only the matching HBA hand/twitch part instead of disabling all Hand Cover.
 // HBA_TG_HELD_HAND_METHOD_ALIAS_FIX_BUILD 2026-06-28: Fixes v074 compile error by adding the missing IsTargetGrabberHeldTargetHandActive wrapper used by hand twitch gating.
 // HBA_TG_HELD_HAND_SKIP_HAND_MOTION_BUILD 2026-06-27: Extends TG held-target-hand guard to HBA body twitch hand parts, and links TargetGrabber held flags by bool-param scan instead of storable-id name only.
+// HBA_PUSHAWAY_BACK_STRETCH_LIMIT_BUILD 2026-06-28: Limits only backward PushAway stretch; when a far PushAway target pulls the hand too far behind the body, it stops at a capped rear position and releases IK instead of over-reaching.
 // HBA_TG_HELD_HAND_SKIP_COVER_BUILD 2026-06-27: Reads TargetGrabber hidden held-target-hand flags and skips/restores HBA Hand Cover/PushAway while TG is holding target L/R Hand, preventing HBA self-hand motion from dragging the TG-held target hand.
 // HBA_COVER_AUTO_RESTORE_PROGRESS_ZERO_BUILD 2026-06-27: While a Hand Cover is active, automatically restores the covered hand when HBA_Progress returns to zero or HBA_Active becomes false after seeing an active HBA signal; defaults ON.
 // HBA_PUSHAWAY_STRETCH_LOG_OFF_FIX_BUILD 2026-06-27: Fix build; keeps PushAway stretch-to-reach behavior but defaults Log Cover Hand OFF so compact Cover/PushAway logs appear only when explicitly enabled.
@@ -385,6 +392,8 @@ public class HumanBodyAction : MVRScript
     const string HbaActionTwitchStrong = "HBA_Twitch_Strong";
     const string HbaActionCoverRandomHand = "HBA_Cover_RandomHand";
     const string HbrActionCoverRandomHand = "HBR_Cover_RandomHand";
+    const string HbaActionHlaSelfHead = "HBA_HLA_SelfHead";
+    const string HbaActionHlaSelfHip = "HBA_HLA_SelfHip";
     const string HbaActionCoverRandomHandPushAway = "HBA_Cover_RandomHand_PushAway";
     const string HbrActionCoverRandomHandPushAway = "HBR_Cover_RandomHand_PushAway";
     const string HbaActionCoverRestore = "HBA_Cover_Restore";
@@ -414,10 +423,10 @@ public class HumanBodyAction : MVRScript
     const float HandCoverSoftSnapMinDistance = 0.004f;
     const float HandCoverManualSuppressEventSeconds = 3.00f;
     const float HandCoverCommandMaxDistance = 0.46f;
-    const float HandCoverUpperCommandMaxDistance = 0.82f;
+    const float HandCoverUpperCommandMaxDistance = 1.05f;
     const float HandCoverKneeThighCommandMaxDistance = 0.42f;
     const float HandCoverTooFarDistance = 0.85f;
-    const float HandCoverUpperTooFarDistance = 1.10f;
+    const float HandCoverUpperTooFarDistance = 1.35f;
     const float HandCoverKneeThighTooFarDistance = 0.80f;
     const float HandCoverTooFarIkOffDelay = 0.12f;
     const float TargetKneeToSelfThighMoveSeconds = 0.32f;
@@ -501,6 +510,15 @@ public class HumanBodyAction : MVRScript
     const float HandBonusElbowNudgeArcUpMax = 0.020f;
     const float HandBonusElbowNudgeOvershoot = 0.055f;
     const float HandCoverSurfaceOffset = 0.055f;
+    const float SelfFaceChestAvoidRadius = 0.20f;
+    const float SelfFaceChestAvoidChestForwardOffset = 0.08f;
+    const float SelfFaceChestAvoidSideOffset = 0.18f;
+    const float SelfFaceChestAvoidUpOffset = 0.16f;
+    const float SelfFaceChestAvoidForwardOffset = 0.05f;
+    const float SelfFaceBreastAvoidProtrusionStart = 0.095f;
+    const float SelfFaceBreastAvoidProtrusionFull = 0.180f;
+    const float SelfFaceBreastAvoidFallbackRadius = 0.155f;
+    const float SelfFaceBreastAvoidMaxRadius = 0.320f;
     const float HandCoverHipBackOffset = 0.18f;
     const int HandCoverHipBackWeight = 2;
     const string HandCoverScopeAll = "All";
@@ -519,6 +537,7 @@ public class HumanBodyAction : MVRScript
     const float HandCoverPushAwayOffsetDefault = 0.075f;
     const float HandCoverPushAwayOffsetMin = 0.00f;
     const float HandCoverPushAwayOffsetMax = 0.25f;
+    const float HandCoverPushAwayBackStretchLimit = 0.32f;
     const float HandCoverAutoRestoreProgressMin = 0.005f;
     const string HandCoverPushAwayPersonAuto = "Auto Other Person";
     const float GParallelChestHeadAmountDefault = 0.080f;
@@ -1026,7 +1045,8 @@ public class HumanBodyAction : MVRScript
             RefreshControllers();
             RefreshFaceMorphs();
             RefreshHbaTgAtomList();
-            DebugMessage("[HumanBodyAction] Ready / v072 cover auto restore progress zero / v071 pushaway stretch log off fix / v053 g parallel chest head / v052 cover comply default on log debug only fix / v050 comply hold / v049 cover chance50 / v046 head side down self nipple / v045 cover extra targets / v044 knee pair only / v032 classifier / HBA_BridgeVersion");
+            SuperController.LogMessage("[HumanBodyAction] READY / build=v089 / HBA->HLA delegate diagnostics ON / loadedFile=HumanBodyAction_v089_target_upper_behind_guard.cs");
+            DebugMessage("[HumanBodyAction] Ready / build=v089 hla delegate diagnostics / v086 force HLA delegate logs / v085 pushaway back stretch limit / HBA_BridgeVersion");
         }
         catch (Exception e)
         {
@@ -1358,6 +1378,8 @@ public class HumanBodyAction : MVRScript
         CreateButton("HBA_Twitch_Normal", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Normal", "Normal"); });
         CreateButton("HBA_Twitch_Strong", false).button.onClick.AddListener(delegate { RequestPresetAction("button:HBA_Twitch_Strong", "Strong"); });
         CreateButton("HBA_Cover_RandomHand", false).button.onClick.AddListener(delegate { RequestRandomHandCover("button:HBA_Cover_RandomHand"); });
+        CreateButton("HBA HLA Self Head", false).button.onClick.AddListener(delegate { RequestHumanLifeActionCover("HLA_Cover_SelfHead", "button:" + HbaActionHlaSelfHead); });
+        CreateButton("HBA HLA Self Hip", false).button.onClick.AddListener(delegate { RequestHumanLifeActionCover("HLA_Cover_SelfHip", "button:" + HbaActionHlaSelfHip); });
         CreateButton("HBA_Cover_RandomHand_PushAway", false).button.onClick.AddListener(delegate { RequestRandomHandCoverPushAway("button:HBA_Cover_RandomHand_PushAway"); });
         CreateButton("HBA_G_Parallel_ChestHead", false).button.onClick.AddListener(delegate { RequestGParallelChestHead("button:HBA_G_Parallel_ChestHead"); });
         CreateButton("HBA_Bonus_KneeNudge", false).button.onClick.AddListener(delegate { RequestHandBonusKneeNudge("button:HBA_Bonus_KneeNudge"); });
@@ -1719,6 +1741,8 @@ public class HumanBodyAction : MVRScript
         RegisterAction(new JSONStorableAction("HBA_Twitch_Strong", delegate { RequestPresetAction("action:HBA_Twitch_Strong", "Strong"); }));
         RegisterAction(new JSONStorableAction(HbaActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbaActionCoverRandomHand); }));
         RegisterAction(new JSONStorableAction(HbrActionCoverRandomHand, delegate { RequestRandomHandCover("action:" + HbrActionCoverRandomHand); }));
+        RegisterAction(new JSONStorableAction(HbaActionHlaSelfHead, delegate { RequestHumanLifeActionCover("HLA_Cover_SelfHead", "action:" + HbaActionHlaSelfHead); }));
+        RegisterAction(new JSONStorableAction(HbaActionHlaSelfHip, delegate { RequestHumanLifeActionCover("HLA_Cover_SelfHip", "action:" + HbaActionHlaSelfHip); }));
         RegisterAction(new JSONStorableAction(HbaActionCoverRandomHandPushAway, delegate { RequestRandomHandCoverPushAway("action:" + HbaActionCoverRandomHandPushAway); }));
         RegisterAction(new JSONStorableAction(HbrActionCoverRandomHandPushAway, delegate { RequestRandomHandCoverPushAway("action:" + HbrActionCoverRandomHandPushAway); }));
         RegisterAction(new JSONStorableAction(HbaActionGParallelChestHead, delegate { RequestGParallelChestHead("action:" + HbaActionGParallelChestHead); }));
@@ -3723,6 +3747,127 @@ public class HumanBodyAction : MVRScript
         return true;
     }
 
+    void HbaHlaLog(string message)
+    {
+        SuperController.LogMessage(message);
+    }
+
+    bool RequestHumanLifeActionCover(string hlaActionName, string source)
+    {
+        HbaHlaLog("[HumanBodyAction] HBA->HLA REQUEST / build=v089 / caller=HumanBodyAction / route=button-or-action / hlaAction=" + hlaActionName + " / source=" + source);
+
+        if (TryInvokeHumanLifeAction(hlaActionName, source))
+        {
+            hbaLastBlock = "HBA->HLA OK: " + hlaActionName;
+            UpdateHbaStatus(true);
+            CoverSelectionMessage("HBA->HLA OK: " + hlaActionName);
+            return true;
+        }
+
+        hbaLastBlock = "HBA->HLA missing: " + hlaActionName;
+        UpdateHbaStatus(true);
+        HbaHlaLog("[HumanBodyAction] HBA->HLA FALLBACK / build=v089 / caller=HumanBodyAction / hlaAction=" + hlaActionName + " / reason=no-HumanLifeAction-action / source=" + source);
+        return false;
+    }
+
+    bool TryInvokeHumanLifeAction(string actionName, string source)
+    {
+        if (containingAtom == null || string.IsNullOrEmpty(actionName))
+        {
+            HbaHlaLog("[HumanBodyAction] HBA->HLA SKIP / build=v089 / caller=HumanBodyAction / hlaAction=" + actionName + " / reason=no-containingAtom-or-empty-action / source=" + source);
+            return false;
+        }
+
+        List<string> ids = null;
+        try { ids = containingAtom.GetStorableIDs(); } catch { ids = null; }
+        if (ids == null)
+        {
+            HbaHlaLog("[HumanBodyAction] HBA->HLA SKIP / build=v089 / caller=HumanBodyAction / hlaAction=" + actionName + " / reason=no-storable-ids / source=" + source);
+            return false;
+        }
+
+        bool foundHlaStorable = false;
+
+        for (int i = 0; i < ids.Count; i++)
+        {
+            string sid = ids[i];
+            if (string.IsNullOrEmpty(sid)) continue;
+            if (sid.IndexOf("HumanLifeAction", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+            foundHlaStorable = true;
+
+            JSONStorable st = null;
+            try { st = containingAtom.GetStorableByID(sid); } catch { st = null; }
+            if (st == null) continue;
+
+            JSONStorableAction action = null;
+            try { action = st.GetAction(actionName); } catch { action = null; }
+            if (action == null)
+            {
+                HbaHlaLog("[HumanBodyAction] HBA->HLA MISS / build=v089 / caller=HumanBodyAction / hlaStorable=" + sid + " / hlaAction=" + actionName + " / reason=action-not-found / source=" + source);
+                continue;
+            }
+
+            try
+            {
+                HbaHlaLog("[HumanBodyAction] HBA->HLA CALL / build=v089 / caller=HumanBodyAction / hlaStorable=" + sid + " / hlaAction=" + actionName + " / source=" + source);
+                action.actionCallback.Invoke();
+                HbaHlaLog("[HumanBodyAction] HBA->HLA OK / build=v089 / caller=HumanBodyAction / hlaStorable=" + sid + " / hlaAction=" + actionName + " / source=" + source);
+                return true;
+            }
+            catch (Exception e)
+            {
+                SuperController.LogMessage("[HumanBodyAction] HBA->HLA ERROR / build=v089 / caller=HumanBodyAction / hlaStorable=" + sid + " / hlaAction=" + actionName + " / error=" + e.Message + " / source=" + source);
+                return false;
+            }
+        }
+
+        HbaHlaLog("[HumanBodyAction] HBA->HLA MISS / build=v089 / caller=HumanBodyAction / hlaAction=" + actionName + " / reason=" + (foundHlaStorable ? "action-not-found-on-HLA" : "no-HumanLifeAction-storable") + " / source=" + source);
+        return false;
+    }
+
+    bool IsHlaDelegateLabelMatch(string label, string displayLabel, string match)
+    {
+        if (!string.IsNullOrEmpty(label) && label.IndexOf(match, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        if (!string.IsNullOrEmpty(displayLabel) && displayLabel.IndexOf(match, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+        return false;
+    }
+
+    bool TryGetHumanLifeActionCoverDelegate(HandCoverTarget target, out string hlaActionName, out string reason)
+    {
+        hlaActionName = "";
+        reason = "";
+        if (target == null) return false;
+
+        string label = target.label ?? "";
+        string displayLabel = "";
+        try { displayLabel = GetHandCoverTargetDisplayLabel(target); } catch { displayLabel = ""; }
+
+        // HBA logs show the display label, while the internal raw label can be different.
+        // Match both so visible selections such as "Head" and "Hip Back" actually delegate.
+        if (IsHlaDelegateLabelMatch(label, displayLabel, "Hip Back") ||
+            label.Equals("Self Hip", StringComparison.OrdinalIgnoreCase) ||
+            displayLabel.Equals("Self Hip", StringComparison.OrdinalIgnoreCase))
+        {
+            hlaActionName = "HLA_Cover_SelfHip";
+            reason = "self-hip/raw=" + label + "/display=" + displayLabel;
+            return true;
+        }
+
+        if (label.Equals("Head", StringComparison.OrdinalIgnoreCase) ||
+            displayLabel.Equals("Head", StringComparison.OrdinalIgnoreCase) ||
+            IsHlaDelegateLabelMatch(label, displayLabel, "Head Side") ||
+            label.Equals("Self Head", StringComparison.OrdinalIgnoreCase) ||
+            displayLabel.Equals("Self Head", StringComparison.OrdinalIgnoreCase))
+        {
+            hlaActionName = "HLA_Cover_SelfHead";
+            reason = "self-head/raw=" + label + "/display=" + displayLabel;
+            return true;
+        }
+
+        return false;
+    }
+
     void RequestRandomHandCover(string source)
     {
         if (!ShouldRunRandomHandCover(source))
@@ -5260,6 +5405,41 @@ public class HumanBodyAction : MVRScript
             " / candidates=" + targetCandidateCount +
             " / targetPos=" + V3(target.position));
 
+        string hlaActionName = "";
+        string hlaDelegateReason = "";
+        bool hlaDelegateCandidate = !target.pushAway && TryGetHumanLifeActionCoverDelegate(target, out hlaActionName, out hlaDelegateReason);
+        if (!target.pushAway && (hlaDelegateCandidate ||
+            targetDisplayLabel.IndexOf("Head", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            targetDisplayLabel.IndexOf("Hip", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            (!string.IsNullOrEmpty(target.label) && target.label.IndexOf("Head", StringComparison.OrdinalIgnoreCase) >= 0) ||
+            (!string.IsNullOrEmpty(target.label) && target.label.IndexOf("Hip", StringComparison.OrdinalIgnoreCase) >= 0)))
+        {
+            HbaHlaLog("[HumanBodyAction] HBA->HLA CHECK / build=v089 / caller=HumanBodyAction / route=RandomHandCover / match=" + (hlaDelegateCandidate ? "1" : "0") +
+                " / target=" + targetDisplayLabel +
+                " / rawTarget=" + target.label +
+                " / pushAway=" + (target.pushAway ? "1" : "0") +
+                " / hlaAction=" + hlaActionName +
+                " / reason=" + hlaDelegateReason +
+                " / source=" + source);
+        }
+
+
+        if (hlaDelegateCandidate)
+        {
+            string delegateSource = source + ":random-hand:" + hlaDelegateReason;
+            HbaHlaLog("[HumanBodyAction] HBA->HLA SELECTED / build=v089 / caller=HumanBodyAction / route=RandomHandCover / target=" + targetDisplayLabel + " / rawTarget=" + target.label + " / reason=" + hlaDelegateReason + " / hlaAction=" + hlaActionName + " / source=" + source);
+
+            if (TryInvokeHumanLifeAction(hlaActionName, delegateSource))
+            {
+                hbaLastBlock = "HBA->HLA delegated: " + targetDisplayLabel + " -> " + hlaActionName;
+                UpdateHbaStatus(true);
+                CoverSelectionMessage("HBA->HLA delegated: " + targetDisplayLabel + " -> " + hlaActionName);
+                yield break;
+            }
+
+            HbaHlaLog("[HumanBodyAction] HBA->HLA FALLBACK -> HBA cover / build=v089 / caller=HumanBodyAction / target=" + target.label + " / hlaAction=" + hlaActionName + " / reason=delegate-not-available / source=" + source);
+        }
+
         CaptureHandCoverSnapshot(hand);
         RelaxHandCoverElbow(hand);
 
@@ -5297,7 +5477,14 @@ public class HumanBodyAction : MVRScript
         UpdateHbaStatus(true);
         DebugMessage("[HumanBodyAction] Cover start / mode=" + coverMode + " / source=" + source + " / hand=" + GetHandLabel(hand) + " / target=" + targetDisplayLabel + " / start=" + V3(startPosition) + " / requested=" + V3(requestedCoverPosition) + " / cover=" + V3(coverPosition) + " / requestDist=" + F3(requestedCoverDistance) + " / tooFar=" + (handFarTooFar ? "1" : "0") + " / tooFarLimit=" + F3(handTooFarThreshold) + " / offset=" + F3(targetOffset) + " / rot=off-fixed / return=manual");
 
-        yield return StartCoroutine(MoveHandCoverPosition(hand, startPosition, coverPosition, HandCoverMoveSeconds, lockedRotation, true));
+        if (ShouldUseSelfFaceChestAvoidPath(hand, startPosition, coverPosition, target.label))
+        {
+            yield return StartCoroutine(MoveHandCoverPositionChestAvoid(hand, startPosition, coverPosition, HandCoverMoveSeconds, lockedRotation, true, target.label));
+        }
+        else
+        {
+            yield return StartCoroutine(MoveHandCoverPosition(hand, startPosition, coverPosition, HandCoverMoveSeconds, lockedRotation, true));
+        }
         if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
 
         // v045: Hidden fixed soft snap. Give VaM/body collision a short moment to settle while the hand is
@@ -5305,6 +5492,20 @@ public class HumanBodyAction : MVRScript
         // This reduces the strong "push through the body" feeling without exposing more tuning UI.
         yield return StartCoroutine(HoldHandCoverPosition(hand, coverPosition, Mathf.Max(0.01f, handFarTooFar ? HandCoverTooFarIkOffDelay : HandCoverSoftSnapDelay), lockedRotation, true));
         if (!IsHandCoverRunStillCurrent(runSerial)) yield break;
+
+        if (target.pushAway && IsPushAwayBackLimitedTargetLabel(target.label))
+        {
+            SetHandCoverIkOffAfterFarReach(hand, lockedRotation, source, coverMode, target.label, requestedCoverPosition, coverPosition, requestedCoverDistance, HandCoverPushAwayBackStretchLimit);
+            DebugMessage("[HumanBodyAction] PushAway back stretch give up / source=" + source +
+                " / hand=" + GetHandLabel(hand) +
+                " / target=" + target.label +
+                " / reached=" + V3(coverPosition) +
+                " / backLimit=" + F3(HandCoverPushAwayBackStretchLimit) +
+                " / positionState=Off / rotationState=Off");
+            DebugMessage("[HumanBodyAction] Hand bonus knee local disabled / source=" + source + " / reason=pushaway-back-limit:" + target.label);
+            yield return StartCoroutine(MaybeRandomHandElbowNudgeRoutine(source, "pushaway-back-limit:" + target.label));
+            yield break;
+        }
 
         if (handFarTooFar)
         {
@@ -5769,6 +5970,206 @@ public class HumanBodyAction : MVRScript
         SetControllerPosition(hand, to);
         if (lockRotation) SetControllerRotation(hand, lockedRotation);
     }
+
+    IEnumerator MoveHandCoverPositionChestAvoid(FreeControllerV3 hand, Vector3 from, Vector3 to, float seconds, Quaternion lockedRotation, bool lockRotation, string targetLabel)
+    {
+        if (hand == null) yield break;
+
+        Vector3 avoidArc;
+        if (!TryBuildSelfFaceChestAvoidArc(hand, from, to, targetLabel, out avoidArc))
+        {
+            yield return StartCoroutine(MoveHandCoverPosition(hand, from, to, seconds, lockedRotation, lockRotation));
+            yield break;
+        }
+
+        Vector3 delta = to - from;
+        Vector3 c1 = from + delta * 0.28f + avoidArc;
+        Vector3 c2 = to - delta * 0.22f + avoidArc * 0.62f;
+        float dur = Mathf.Max(0.01f, seconds);
+        float start = Time.time;
+        DebugMessage("[HumanBodyAction] Cover chest avoid path / hand=" + GetHandLabel(hand) + " / target=" + targetLabel + " / arc=" + V3(avoidArc));
+
+        while (Time.time - start < dur)
+        {
+            float t = Mathf.Clamp01((Time.time - start) / dur);
+            float e = Smooth01(t);
+            SetControllerPosition(hand, CubicBezier(from, c1, c2, to, e));
+            if (lockRotation) SetControllerRotation(hand, lockedRotation);
+            yield return null;
+        }
+        SetControllerPosition(hand, to);
+        if (lockRotation) SetControllerRotation(hand, lockedRotation);
+    }
+
+    bool ShouldUseSelfFaceChestAvoidPath(FreeControllerV3 hand, Vector3 from, Vector3 to, string targetLabel)
+    {
+        Vector3 avoidArc;
+        return TryBuildSelfFaceChestAvoidArc(hand, from, to, targetLabel, out avoidArc);
+    }
+
+    bool IsSelfFaceChestAvoidTargetLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return false;
+        return string.Equals(label, "Head", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(label, "Neck", StringComparison.OrdinalIgnoreCase)
+            || label.IndexOf("Head Side", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Head", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Face", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Mouth", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    bool TryBuildSelfFaceChestAvoidArc(FreeControllerV3 hand, Vector3 from, Vector3 to, string targetLabel, out Vector3 avoidArc)
+    {
+        avoidArc = Vector3.zero;
+        if (!IsSelfFaceChestAvoidTargetLabel(targetLabel)) return false;
+        if (hand == null) return false;
+
+        FreeControllerV3 chest = FindControllerByAliases("chestControl", "chest");
+        if (chest == null) return false;
+
+        Vector3 delta = to - from;
+        if (delta.sqrMagnitude < 0.0025f) return false;
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+        forward.y = 0.0f;
+        right.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        forward.Normalize();
+        right.Normalize();
+
+        Vector3 chestPos = GetControllerPosition(chest);
+        float breastProtrusion;
+        float breastHalfWidth;
+        float breastSign;
+        Vector3 breastCenter;
+        bool breastMeasured = TryMeasureSelfBreastForCover(forward, chestPos, out breastProtrusion, out breastHalfWidth, out breastSign, out breastCenter);
+
+        Vector3 breastForward = forward;
+        float avoidRadius;
+        Vector3 chestProbe;
+        float breastStrength = 0.0f;
+
+        if (breastMeasured)
+        {
+            if (breastProtrusion < SelfFaceBreastAvoidProtrusionStart)
+            {
+                // Flat/small chest: keep the normal direct face-cover path.
+                return false;
+            }
+
+            breastStrength = Mathf.Clamp01((breastProtrusion - SelfFaceBreastAvoidProtrusionStart) / Mathf.Max(0.001f, SelfFaceBreastAvoidProtrusionFull - SelfFaceBreastAvoidProtrusionStart));
+            breastForward = forward * (breastSign >= 0.0f ? 1.0f : -1.0f);
+            float probeForward = Mathf.Clamp(SelfFaceChestAvoidChestForwardOffset + breastProtrusion * 0.72f, 0.070f, 0.230f);
+            avoidRadius = Mathf.Clamp(SelfFaceChestAvoidRadius + (breastProtrusion - SelfFaceBreastAvoidProtrusionStart) * 0.95f + breastHalfWidth * 0.05f, 0.150f, SelfFaceBreastAvoidMaxRadius);
+            chestProbe = chestPos + breastForward * probeForward + Vector3.up * 0.025f;
+        }
+        else
+        {
+            // No nipple controls found. Keep a conservative path-crossing fallback so old scenes do not lose avoidance completely.
+            breastForward = forward;
+            avoidRadius = SelfFaceBreastAvoidFallbackRadius;
+            chestProbe = chestPos + breastForward * SelfFaceChestAvoidChestForwardOffset + Vector3.up * 0.025f;
+        }
+
+        float along;
+        float dist = DistancePointToSegment(chestProbe, from, to, out along);
+        if (along < 0.08f || along > 0.92f) return false;
+        if (dist > avoidRadius) return false;
+
+        float closeness = Mathf.Clamp01((avoidRadius - dist) / Mathf.Max(0.001f, avoidRadius));
+        float strength = breastMeasured
+            ? Mathf.Lerp(0.55f, 1.20f, Mathf.Max(closeness, breastStrength))
+            : Mathf.Lerp(0.45f, 0.80f, closeness);
+        int side = GetHandSide(hand);
+        if (side == 0) side = 1;
+        avoidArc = right * side * SelfFaceChestAvoidSideOffset * strength
+            + Vector3.up * SelfFaceChestAvoidUpOffset * strength
+            + breastForward * SelfFaceChestAvoidForwardOffset * strength;
+
+        DebugMessage("[HumanBodyAction] Cover chest avoid path"
+            + " / hand=" + GetHandLabel(hand)
+            + " / target=" + targetLabel
+            + " / measured=" + (breastMeasured ? "1" : "0")
+            + " / protrusion=" + F3(breastProtrusion)
+            + " / halfWidth=" + F3(breastHalfWidth)
+            + " / radius=" + F3(avoidRadius)
+            + " / dist=" + F3(dist)
+            + " / arc=" + V3(avoidArc));
+        return avoidArc.sqrMagnitude > 0.0001f;
+    }
+
+    bool TryMeasureSelfBreastForCover(Vector3 bodyForward, Vector3 chestPos, out float protrusion, out float halfWidth, out float sign, out Vector3 breastCenter)
+    {
+        protrusion = 0.0f;
+        halfWidth = 0.0f;
+        sign = 1.0f;
+        breastCenter = Vector3.zero;
+
+        Vector3 left;
+        Vector3 right;
+        if (!TryGetSelfNipplePositions(out left, out right)) return false;
+
+        Vector3 f = bodyForward;
+        f.y = 0.0f;
+        if (f.sqrMagnitude < 0.0001f) f = Vector3.forward;
+        f.Normalize();
+
+        breastCenter = (left + right) * 0.5f;
+        halfWidth = Vector3.Distance(left, right) * 0.5f;
+
+        float signedCenter = Vector3.Dot(breastCenter - chestPos, f);
+        float signedLeft = Vector3.Dot(left - chestPos, f);
+        float signedRight = Vector3.Dot(right - chestPos, f);
+        protrusion = Mathf.Max(Mathf.Abs(signedCenter), Mathf.Max(Mathf.Abs(signedLeft), Mathf.Abs(signedRight)));
+
+        if (Mathf.Abs(signedCenter) > 0.001f) sign = signedCenter >= 0.0f ? 1.0f : -1.0f;
+        else
+        {
+            float signedMax = Mathf.Abs(signedLeft) >= Mathf.Abs(signedRight) ? signedLeft : signedRight;
+            sign = signedMax >= 0.0f ? 1.0f : -1.0f;
+        }
+
+        return protrusion > 0.001f || halfWidth > 0.001f;
+    }
+
+    bool TryGetSelfNipplePositions(out Vector3 left, out Vector3 right)
+    {
+        left = Vector3.zero;
+        right = Vector3.zero;
+
+        FreeControllerV3 lNipple = FindControllerByAliases("lNippleControl", "leftNippleControl", "lNipple", "lnipple", "leftNipple", "LeftNipple", "nipple_l", "nippleL");
+        FreeControllerV3 rNipple = FindControllerByAliases("rNippleControl", "rightNippleControl", "rNipple", "rnipple", "rightNipple", "RightNipple", "nipple_r", "nippleR");
+        if (lNipple == null || rNipple == null) return false;
+
+        left = GetControllerPosition(lNipple);
+        right = GetControllerPosition(rNipple);
+        return true;
+    }
+
+    float DistancePointToSegment(Vector3 point, Vector3 a, Vector3 b, out float along01)
+    {
+        Vector3 ab = b - a;
+        float lenSq = ab.sqrMagnitude;
+        if (lenSq < 0.000001f)
+        {
+            along01 = 0.0f;
+            return Vector3.Distance(point, a);
+        }
+
+        along01 = Mathf.Clamp01(Vector3.Dot(point - a, ab) / lenSq);
+        Vector3 closest = a + ab * along01;
+        return Vector3.Distance(point, closest);
+    }
+
+    Vector3 CubicBezier(Vector3 a, Vector3 b, Vector3 c, Vector3 d, float t)
+    {
+        float u = 1.0f - t;
+        return u * u * u * a + 3.0f * u * u * t * b + 3.0f * u * t * t * c + t * t * t * d;
+    }
+
 
     IEnumerator HoldHandCoverPosition(FreeControllerV3 hand, Vector3 position, float seconds, Quaternion lockedRotation, bool lockRotation)
     {
@@ -6360,10 +6761,22 @@ public class HumanBodyAction : MVRScript
             if (HasCompatibleHandForCoverTarget(freeHands, t)) compatibleTargets.Add(t);
         }
 
+        Atom behindOtherAtom;
+        float behindDot;
+        int upperBehindRemoved = FilterTargetUpperCoverWhenOtherPersonBehind(compatibleTargets, out behindOtherAtom, out behindDot);
+        if (upperBehindRemoved > 0)
+        {
+            CoverHandLogMessage("[HumanBodyAction] Target upper cover blocked / build=v089 / reason=other-person-behind-self" +
+                " / blocked=" + upperBehindRemoved +
+                " / other=" + SafeAtomUid(behindOtherAtom) +
+                " / backDot=" + F3(behindDot) +
+                " / source=" + source);
+        }
+
         targetCandidateCount = compatibleTargets.Count;
         if (compatibleTargets.Count == 0)
         {
-            DebugMessage("[HumanBodyAction] Cover target filter / source=" + source + " / all=" + allTargets.Count + " / compatible=0 / lFree=" + (HasHandSide(freeHands, -1) ? "1" : "0") + " / rFree=" + (HasHandSide(freeHands, 1) ? "1" : "0"));
+            DebugMessage("[HumanBodyAction] Cover target filter / source=" + source + " / all=" + allTargets.Count + " / compatible=0 / upperBehindRemoved=" + upperBehindRemoved + " / behindOther=" + SafeAtomUid(behindOtherAtom) + " / backDot=" + F3(behindDot) + " / lFree=" + (HasHandSide(freeHands, -1) ? "1" : "0") + " / rFree=" + (HasHandSide(freeHands, 1) ? "1" : "0"));
             return false;
         }
 
@@ -6407,6 +6820,109 @@ public class HumanBodyAction : MVRScript
         }
 
         return false;
+    }
+
+    const float TargetUpperBehindBlockDot = -0.65f;
+
+    int FilterTargetUpperCoverWhenOtherPersonBehind(List<HandCoverTarget> targets, out Atom otherAtom, out float backDot)
+    {
+        otherAtom = null;
+        backDot = 1.0f;
+        if (targets == null || targets.Count == 0) return 0;
+
+        if (!IsOtherPersonBehindSelfForCover(out otherAtom, out backDot))
+            return 0;
+
+        int removed = 0;
+        for (int i = targets.Count - 1; i >= 0; i--)
+        {
+            HandCoverTarget t = targets[i];
+            if (t == null) continue;
+            if (!IsTargetUpperCoverBlockedWhenOtherBehind(t.label)) continue;
+            targets.RemoveAt(i);
+            removed++;
+        }
+        return removed;
+    }
+
+    bool IsOtherPersonBehindSelfForCover(out Atom otherAtom, out float backDot)
+    {
+        otherAtom = null;
+        backDot = 1.0f;
+        if (containingAtom == null) return false;
+
+        otherAtom = ResolveHandCoverPushAwayAtom();
+        if (otherAtom == null || otherAtom == containingAtom) return false;
+
+        Vector3 selfPos = Vector3.zero;
+        bool hasSelfPos = false;
+        FreeControllerV3 selfHip = FindControllerByAliases("hipControl", "hip");
+        FreeControllerV3 selfChest = FindControllerByAliases("chestControl", "chest");
+        if (selfHip != null)
+        {
+            selfPos = GetControllerPosition(selfHip);
+            hasSelfPos = true;
+        }
+        else if (selfChest != null)
+        {
+            selfPos = GetControllerPosition(selfChest);
+            hasSelfPos = true;
+        }
+        else if (containingAtom.transform != null)
+        {
+            selfPos = containingAtom.transform.position;
+            hasSelfPos = true;
+        }
+        if (!hasSelfPos) return false;
+
+        Vector3 otherPos = Vector3.zero;
+        bool hasOtherPos = false;
+        FreeControllerV3 otherHip = FindControllerByAliasesOnAtom(otherAtom, "hipControl", "hip");
+        FreeControllerV3 otherChest = FindControllerByAliasesOnAtom(otherAtom, "chestControl", "chest");
+        if (otherHip != null)
+        {
+            otherPos = GetControllerPosition(otherHip);
+            hasOtherPos = true;
+        }
+        else if (otherChest != null)
+        {
+            otherPos = GetControllerPosition(otherChest);
+            hasOtherPos = true;
+        }
+        else if (otherAtom.transform != null)
+        {
+            otherPos = otherAtom.transform.position;
+            hasOtherPos = true;
+        }
+        if (!hasOtherPos) return false;
+
+        Vector3 toOther = otherPos - selfPos;
+        toOther.y = 0.0f;
+        if (toOther.sqrMagnitude < 0.0001f) return false;
+        toOther.Normalize();
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+        forward.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = containingAtom.transform != null ? containingAtom.transform.forward : Vector3.forward;
+        forward.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+
+        backDot = Vector3.Dot(forward, toOther);
+        return backDot <= TargetUpperBehindBlockDot;
+    }
+
+    bool IsTargetUpperCoverBlockedWhenOtherBehind(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return false;
+        string n = label.ToLowerInvariant();
+        return n.Contains("head") ||
+            n.Contains("neck") ||
+            n.Contains("chest") ||
+            n.Contains("nipple");
     }
 
     bool HasCompatibleHandForCoverTarget(List<FreeControllerV3> hands, HandCoverTarget target)
@@ -6730,6 +7246,10 @@ public class HumanBodyAction : MVRScript
         // v070: PushAway Person targets should still produce a useful motion even when the selected
         // Person#2 anchor is beyond the reach filter. Instead of dropping the target and falling back
         // to normal Cover, keep the same direction and place the command at a reachable stretch point.
+        bool backLimited = false;
+        float backComponent = 0.0f;
+        float backLimit = HandCoverPushAwayBackStretchLimit;
+
         if (distance > reach)
         {
             Vector3 toTarget = position - handStartPosition;
@@ -6744,10 +7264,17 @@ public class HumanBodyAction : MVRScript
             float stretchDistance = GetPushAwayStretchDistanceForLabel(label, reach);
             commandPosition = handStartPosition + toTarget * stretchDistance;
             stretchOnly = true;
+            Vector3 beforeBackLimit = commandPosition;
+            backLimited = TryLimitPushAwayBackStretch(label, handStartPosition, ref commandPosition, out backComponent, out backLimit);
             CoverHandLogMessage("[HumanBodyAction] PushAway stretch to reach / target=" + label +
                 " / dist=" + F3(distance) +
                 " / reach=" + F3(reach) +
                 " / stretch=" + F3(stretchDistance) +
+                " / backLimited=" + (backLimited ? "1" : "0") +
+                " / back=" + F3(backComponent) +
+                " / backLimit=" + F3(backLimit) +
+                " / before=" + V3(beforeBackLimit) +
+                " / after=" + V3(commandPosition) +
                 " / person=" + GetPushAwayPersonLabelForLog());
         }
 
@@ -6767,7 +7294,40 @@ public class HumanBodyAction : MVRScript
         if (outward.sqrMagnitude < 0.0001f) outward = Vector3.forward;
         outward.Normalize();
 
-        targets.Add(new HandCoverTarget(stretchOnly ? label + " Reach" : label, commandPosition, outward, true));
+        string finalLabel = label;
+        if (stretchOnly) finalLabel += " Reach";
+        if (backLimited) finalLabel += " BackLimit";
+        targets.Add(new HandCoverTarget(finalLabel, commandPosition, outward, true));
+    }
+
+    bool TryLimitPushAwayBackStretch(string label, Vector3 handStartPosition, ref Vector3 commandPosition, out float backComponent, out float backLimit)
+    {
+        backComponent = 0.0f;
+        backLimit = HandCoverPushAwayBackStretchLimit;
+
+        Vector3 forward;
+        Vector3 right;
+        GetCoverBodyAxes(out forward, out right);
+
+        Vector3 back = -forward;
+        back.y = 0.0f;
+        if (back.sqrMagnitude < 0.0001f) return false;
+        back.Normalize();
+
+        Vector3 delta = commandPosition - handStartPosition;
+        Vector3 flatDelta = new Vector3(delta.x, 0.0f, delta.z);
+        if (flatDelta.sqrMagnitude < 0.0001f) return false;
+
+        backComponent = Vector3.Dot(flatDelta, back);
+        if (backComponent <= backLimit) return false;
+
+        commandPosition -= back * (backComponent - backLimit);
+        return true;
+    }
+
+    bool IsPushAwayBackLimitedTargetLabel(string label)
+    {
+        return !string.IsNullOrEmpty(label) && label.IndexOf("BackLimit", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     float GetPushAwayStretchDistanceForLabel(string label, float reach)

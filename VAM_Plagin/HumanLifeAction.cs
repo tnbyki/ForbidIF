@@ -1,3 +1,19 @@
+// HLA_V086_EXTERNAL_COVER_ACTIONS: Adds stable external Action aliases for HBA/HDU delegation: HLA_Cover_SelfHead and HLA_Cover_SelfHip, while keeping existing test/manual buttons.
+// HLA_V085_SELF_HEAD_ELBOW_LOOSE_FINAL: Self Head/Face/Mouth keeps larger chest avoidance, but after the outward bypass the same-side elbow becomes loose/Comply at the final head touch so large chest poses do not pull the elbow inward.
+// HLA_V084_HEAD_CHEST_AVOID_BIGGER_HEAD_FORWARD: Self Head/Face/Mouth chest avoidance is larger, tilted body poses get extra avoid boost, and Self Head cover point moves 0.040m forward.
+// HLA_THIGH_SIDE_HAND_TEST_BUILD 2026-06-29: Adds isolated test buttons to move L/R hands to the outside of their matching self L/R thigh using the current thigh pair positions; does not touch Hip/Butt cover routing or chest-avoid cover logic.
+// HLA_COVER_TEST_HEAD_HIP_BUTTONS_BUILD 2026-06-28: Adds direct test buttons/actions for Self Head, Self Hip, Target Head, and Target Hip cover routes so target point, snap, and visual reach can be verified without random selection.
+// HLA_V083_SELF_HIP_STEP7_BACK009_ELBOW_FREE: Step7 thigh-mid-back offset is 0.090m and Hip path temporarily releases same-side elbow IK during the hand route.
+// HLA_COVER_EXACT_TOUCH_SNAP_VERIFY_BUILD 2026-06-28: Non-free Cover targets now move and snap to the exact selected cover point instead of a loose/surface/near anchor, hold sway is reduced after snap, and verify logs show actual controller distance to the target point.
+// HLA_COVER_NO_GIVEUP_STRETCH_SNAP_BUILD 2026-06-28: Cover targets no longer clamp/stop short by reach; all non-free cover targets command the IK to the final surface goal, then do a short final snap before hold. Keeps head weight 8, independent cover roll, self75/target25, head touch, and breast-size chest avoid.
+// HLA_COVER_HEAD_WEIGHT8_BUILD 2026-06-28: Raises Life RandomCover Head target weight from 5 to 8 while keeping Self/Target split and independent Cover roll unchanged.
+// HLA_COVER_SELF75_TARGET25_BUILD 2026-06-28: Defaults Life Cover Self % to 75 so RandomCover selects Self targets about 75% and Target targets about 25%.
+// HLA_INDEPENDENT_COVER_ROLL_BUILD 2026-06-28: Makes Life Cover Frequency an independent percentage roll; Cover no longer shares one weighted pool with Look/None, and Look rolls only after Cover misses.
+// HLA_HEAD_COVER_STRETCH_THEN_SNAP_BUILD 2026-06-28: Head cover targets now stretch farther and then snap the hand IK target to the exact head touch goal after the move phase, so Head does not stop short.
+// HLA_HEAD_COVER_TOUCH_GOAL_BUILD 2026-06-28: Head cover targets use a much smaller head surface offset, exact head hold anchor, and reduced head hold sway so the selected hand actually reaches the head instead of hovering short.
+// HLA_SELF_FACE_BREAST_SIZE_AVOID_BUILD 2026-06-28: Self Head RandomCover now measures self L/R nipple protrusion from chestControl; small/flat chest keeps the normal path, while large breast + chest-crossing hand-to-face line uses the outward/up avoid path.
+// HLA_HEAD_COVER_REACH_FIX_BUILD 2026-06-28: Head cover targets now use a larger head-specific reach and exact head reach ratio so selected Self/Target Head actually reaches instead of stopping at the generic 0.58m clamp.
+// HLA_SELF_FACE_CHEST_AVOID_PATH_BUILD 2026-06-28: Self Head RandomCover uses a chest-proximity line test and only routes hand outward/up when the hand-to-face path would cross the chest area.
 // HLA_HAND_COVER_IGNORE_HAND_IK_ON_FIX_BUILD 2026-06-28: Life RandomCover no longer treats Hand IK PositionState.On as unavailable; Respect Existing Hand IK is kept for save compatibility but no longer blocks hand selection.
 // HLA_TG_HELD_HAND_TARGET_UID_STRICT_BUILD 2026-06-28: Uses TargetGrabber exported TG Held Target Person UID to block only the matching target Person's held L/R hand; legacy same-atom only, no cross-person fallback.
 // HLA_TG_HELD_HAND_GLOBAL_TARGET_UID_SCAN_BUILD 2026-06-28: Scans all scene TargetGrabber instances and matches TG Held Target Person UID, so held target-hand flags are read even when TargetGrabber is installed on the grabbing/self Person, not on the target Person.
@@ -94,11 +110,22 @@ public class HumanLifeAction : MVRScript
     const float DefaultLegScale = 1.00f;
     const float DefaultCoverFrequency = 90.0f;
     const float DefaultLookFrequency = 50.0f;
-    const float DefaultCoverSelfPercent = 50.0f;
+    const float DefaultCoverSelfPercent = 75.0f;
     const float DefaultLookTargetPercent = 50.0f;
     const float DefaultLookAwayPercent = 20.0f;
     const float DefaultLookMaxAngle = 90.0f;
     const float DefaultCoverMaxDistance = 0.58f;
+    const float SelfHeadCoverMaxDistance = 1.25f;
+    const float TargetHeadCoverMaxDistance = 1.75f;
+    const float HeadCoverSnapSeconds = 0.12f;
+    const float CoverFinalSnapSeconds = 0.16f;
+    const float CoverTouchHoldSwayScale = 0.20f;
+    const float HeadCoverSurfaceOffset = 0.012f;
+    const float SelfHeadCoverPointForwardOffset = 0.040f;
+    const float HeadCoverHoldDrift = 0.002f;
+    const float HeadCoverSideDrift = 0.003f;
+    const float HeadCoverHoldSwayScale = 0.25f;
+    const float SelfHeadElbowFinalLooseBlend = 0.62f;
     const float GestureLegMotionWeight = 14.0f;
     const float HbaProgressPauseThreshold = 0.005f;
     const float HbaLegResumeDelaySeconds = 0.75f;
@@ -132,6 +159,34 @@ public class HumanLifeAction : MVRScript
     const float EyeTargetReturnLerp = 0.20f;
     const float CoverPrepareSeconds = 0.16f;
     const float CoverMoveSeconds = 0.92f;
+    const float ThighSideHandOffset = 0.100f;
+    const float ThighSideUpOffset = 0.100f;
+    const float ThighSideBackOffset = 0.100f;
+    const float ThighSidePreHandOffset = 0.105f;   // step1
+    const float ThighSidePreUpOffset = 0.300f;     // step1 / v078+
+    const float ThighSidePreBackOffset = -0.100f;  // step1
+    const float ThighSideStep2HandOffset = 0.100f; // step2
+    const float ThighSideStep2UpOffset = 0.100f;
+    const float ThighSideStep2BackOffset = 0.200f;
+    const float ThighSideStep3HandOffset = 0.000f; // step3
+    const float ThighSideStep3UpOffset = 0.100f;
+    const float ThighSideStep3BackOffset = 0.200f;
+    const float ThighSideStep4HandOffset = -0.100f; // step4
+    const float ThighSideStep4UpOffset = 0.000f;
+    const float ThighSideStep4BackOffset = 0.200f;
+    const float ThighSideStep5HandOffset = -0.100f; // step5
+    const float ThighSideStep5UpOffset = 0.100f;
+    const float ThighSideStep5BackOffset = 0.200f;
+    const float ThighSideStep6HandOffset = -0.200f; // step6
+    const float ThighSideStep6UpOffset = 0.100f;
+    const float ThighSideStep6BackOffset = 0.200f;
+    const float ThighSideStep7MidBackOffset = 0.090f; // step7: L/R thigh 中央後ろ / v083
+    const float ThighSideStep7MidUpOffset = 0.000f;
+    const float ThighSideMoveSeconds = 0.35f;
+    const float ThighSidePreMoveSeconds = 0.20f;
+    const float ThighSideFinalMoveSeconds = 0.25f;
+    const float ThighSideHoldSeconds = 0.80f;
+    const float ThighSideReturnSeconds = 0.55f;
     const float CoverHoldSecondsMin = 0.85f;
     const float CoverHoldSecondsMax = 2.10f;
     const float CoverReturnSeconds = 1.45f;
@@ -139,6 +194,15 @@ public class HumanLifeAction : MVRScript
     const float CoverSoftArcUp = 0.045f;
     const float CoverSoftArcSide = 0.030f;
     const float CoverSoftReturnArcScale = 0.55f;
+    const float SelfFaceChestAvoidRadius = 0.24f;
+    const float SelfFaceChestAvoidChestForwardOffset = 0.08f;
+    const float SelfFaceChestAvoidSideOffset = 0.24f;
+    const float SelfFaceChestAvoidUpOffset = 0.22f;
+    const float SelfFaceChestAvoidForwardOffset = 0.075f;
+    const float SelfFaceBreastAvoidProtrusionStart = 0.095f;
+    const float SelfFaceBreastAvoidProtrusionFull = 0.180f;
+    const float SelfFaceBreastAvoidFallbackRadius = 0.205f;
+    const float SelfFaceBreastAvoidMaxRadius = 0.420f;
     const float CoverPrepareBackScale = 0.070f;
     const float CoverPrepareArcScale = 0.28f;
     const float CoverHoldSwayAmount = 0.014f;
@@ -175,6 +239,8 @@ public class HumanLifeAction : MVRScript
     FreeControllerV3 rThighControl;
 
     Coroutine lifeGestureRoutine;
+
+    private bool hipSmoothPathAborted = false;
     Coroutine breathLoopRoutine;
     Coroutine legBaseLoopRoutine;
     JSONStorable hbaStorable;
@@ -393,7 +459,7 @@ public class HumanLifeAction : MVRScript
             RegisterFloat(lookMaxAngle);
             // v003 simple UI: keep registered/default but hide tuning slider.
 
-            coverMaxDistance = new JSONStorableFloat("Life Cover Max Distance", DefaultCoverMaxDistance, 0.05f, 0.80f, true);
+            coverMaxDistance = new JSONStorableFloat("Life Cover Max Distance", DefaultCoverMaxDistance, 0.05f, 1.50f, true);
             RegisterFloat(coverMaxDistance);
             // v003 simple UI: keep registered/default but hide tuning slider.
 
@@ -403,6 +469,15 @@ public class HumanLifeAction : MVRScript
             CreateButton("HLA_Force_LookCamera", false).button.onClick.AddListener(delegate { RequestLookCamera("button"); });
             CreateButton("HLA_Force_LookAway", false).button.onClick.AddListener(delegate { RequestLookAway("button"); });
             CreateButton("HLA_Force_RandomCover", false).button.onClick.AddListener(delegate { RequestRandomCover("button"); });
+            CreateButton("HLA Cover Self Head", false).button.onClick.AddListener(delegate { RequestExternalSelfHeadCover("button"); });
+            CreateButton("HLA Cover Self Hip", false).button.onClick.AddListener(delegate { RequestExternalSelfHipCover("button"); });
+            CreateButton("HLA_Test_SelfHead", false).button.onClick.AddListener(delegate { RequestTestSelfHeadCover("button"); });
+            CreateButton("HLA Hip Self", false).button.onClick.AddListener(delegate { RequestTestSelfHipCover("button"); });
+            CreateButton("HLA_Test_TargetHead", false).button.onClick.AddListener(delegate { RequestTestTargetHeadCover("button"); });
+            CreateButton("HLA_Test_TargetHip", false).button.onClick.AddListener(delegate { RequestTestTargetHipCover("button"); });
+            CreateButton("HLA Hip Left", false).button.onClick.AddListener(delegate { RequestTestLHandToLThigh("button"); });
+            CreateButton("HLA Hip Right", false).button.onClick.AddListener(delegate { RequestTestRHandToRThigh("button"); });
+            CreateButton("HLA Hip Both", false).button.onClick.AddListener(delegate { RequestTestBothHandsToThighs("button"); });
             CreateButton("HLA_Force_LegMotion", false).button.onClick.AddListener(delegate { RequestLegMotion("button"); });
             CreateButton("HLA_Stop_Restore", false).button.onClick.AddListener(delegate { StopAllLife("button"); });
 
@@ -411,6 +486,15 @@ public class HumanLifeAction : MVRScript
             RegisterAction(new JSONStorableAction("HLA_Force_LookCamera", delegate { RequestLookCamera("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Force_LookAway", delegate { RequestLookAway("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Force_RandomCover", delegate { RequestRandomCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Cover_SelfHead", delegate { RequestExternalSelfHeadCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Cover_SelfHip", delegate { RequestExternalSelfHipCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Test_SelfHead", delegate { RequestTestSelfHeadCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Hip_SelfCover", delegate { RequestExternalSelfHipCover("action-legacy"); }));
+            RegisterAction(new JSONStorableAction("HLA_Test_TargetHead", delegate { RequestTestTargetHeadCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Test_TargetHip", delegate { RequestTestTargetHipCover("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Hip_LeftPath", delegate { RequestTestLHandToLThigh("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Hip_RightPath", delegate { RequestTestRHandToRThigh("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Hip_BothPath", delegate { RequestTestBothHandsToThighs("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Force_LegMotion", delegate { RequestLegMotion("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Stop_Restore", delegate { StopAllLife("action"); }));
 
@@ -487,70 +571,87 @@ public class HumanLifeAction : MVRScript
             }
         }
 
-        // v009: when Cover Frequency is maxed, make the test intentionally obvious.
-        // This bypasses None/Look rolls so 100 means RandomCover every scheduled Life tick.
-        if (IsCover100Mode())
-        {
-            // v040: Do not suppress RandomCover globally just because TargetGrabber holds one target hand.
-            // PickHandForCover() will exclude only the held L/R side; the opposite hand can still move.
-            Log("Life roll / selected=RandomCover / mode=cover100");
-            RequestRandomCover("life-cover100");
-            return;
-        }
-
-        List<GestureChoice> choices = new List<GestureChoice>();
-        choices.Add(new GestureChoice("None", GestureNoneWeight, delegate { GestureNone(); }));
-        // v008: Breath is no longer a random gesture. It runs as the base Life layer while HLA Life Enable and Life Breath are ON.
-        if (IsHeadLookEnabled())
-        {
-            float lookTotalWeight = Mathf.Max(0.0f, SafeFloat(lookFrequency, DefaultLookFrequency));
-            float lookAwayWeight = lookTotalWeight * Mathf.Clamp01(SafeFloat(lookAwayPercent, DefaultLookAwayPercent) / 100.0f);
-            float lookRemainWeight = Mathf.Max(0.0f, lookTotalWeight - lookAwayWeight);
-            float lookTargetWeight = lookRemainWeight * Mathf.Clamp01(SafeFloat(lookTargetPercent, DefaultLookTargetPercent) / 100.0f);
-            float lookCameraWeight = Mathf.Max(0.0f, lookRemainWeight - lookTargetWeight);
-            if (lookTargetEnabled != null && lookTargetEnabled.val && lookTargetWeight > 0.001f)
-                choices.Add(new GestureChoice("LookTarget", lookTargetWeight, delegate { RequestLookTarget("life"); }));
-            if (lookCameraEnabled != null && lookCameraEnabled.val && lookCameraWeight > 0.001f)
-                choices.Add(new GestureChoice("LookCamera", lookCameraWeight, delegate { RequestLookCamera("life"); }));
-            if (lookTargetEnabled != null && lookTargetEnabled.val && lookAwayWeight > 0.001f)
-                choices.Add(new GestureChoice("LookAway", lookAwayWeight, delegate { RequestLookAway("life"); }));
-        }
+        // v046: Cover Frequency is now an independent percent roll.
+        // It is no longer mixed into the same weighted bucket as Look/None.
+        // Example default: Cover=90 means about 90% cover, then Look rolls only in the remaining 10%.
         if (randomCoverEnabled != null && randomCoverEnabled.val)
         {
-            // v040: RandomCover remains eligible; held TargetGrabber hand sides are filtered at hand selection.
-            float coverWeight = Mathf.Max(0.0f, SafeFloat(coverFrequency, DefaultCoverFrequency));
-            if (coverWeight > 0.001f) choices.Add(new GestureChoice("RandomCover", coverWeight, delegate { RequestRandomCover("life"); }));
-        }
-
-        // v026: Leg motion is now a continuous base layer like Breath, not a random gesture.
-
-        float total = 0.0f;
-        for (int i = 0; i < choices.Count; i++)
-        {
-            if (choices[i] != null && choices[i].weight > 0.0f) total += choices[i].weight;
-        }
-
-        if (total <= 0.001f)
-        {
-            ScheduleNextGesture("no-choices");
-            return;
-        }
-
-        float roll = UnityEngine.Random.Range(0.0f, total);
-        float acc = 0.0f;
-        for (int i = 0; i < choices.Count; i++)
-        {
-            GestureChoice c = choices[i];
-            if (c == null || c.weight <= 0.0f) continue;
-            acc += c.weight;
-            if (roll <= acc)
+            float coverPercent = Mathf.Clamp(SafeFloat(coverFrequency, DefaultCoverFrequency), 0.0f, 100.0f);
+            if (coverPercent > 0.001f)
             {
-                Log("Life roll / selected=" + c.name + " / roll=" + roll.ToString("F1", CultureInfo.InvariantCulture) + " / total=" + total.ToString("F1", CultureInfo.InvariantCulture));
-                c.action();
-                return;
+                float coverRoll = UnityEngine.Random.Range(0.0f, 100.0f);
+                if (coverRoll <= coverPercent)
+                {
+                    Log("Life roll / selected=RandomCover / coverRoll=" + coverRoll.ToString("F1", CultureInfo.InvariantCulture)
+                        + " / cover%=" + coverPercent.ToString("F1", CultureInfo.InvariantCulture)
+                        + " / mode=independent");
+                    RequestRandomCover(coverPercent >= 99.999f ? "life-cover100" : "life");
+                    return;
+                }
+
+                Log("Life roll / cover miss / coverRoll=" + coverRoll.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / cover%=" + coverPercent.ToString("F1", CultureInfo.InvariantCulture));
             }
         }
 
+        // v046: Look Frequency is also interpreted as a percent roll, but only after Cover misses.
+        if (IsHeadLookEnabled())
+        {
+            float lookPercent = Mathf.Clamp(SafeFloat(lookFrequency, DefaultLookFrequency), 0.0f, 100.0f);
+            if (lookPercent > 0.001f)
+            {
+                float lookRoll = UnityEngine.Random.Range(0.0f, 100.0f);
+                if (lookRoll <= lookPercent)
+                {
+                    List<GestureChoice> lookChoices = new List<GestureChoice>();
+                    float lookAwayWeight = Mathf.Clamp(SafeFloat(lookAwayPercent, DefaultLookAwayPercent), 0.0f, 100.0f);
+                    float lookRemainWeight = Mathf.Max(0.0f, 100.0f - lookAwayWeight);
+                    float lookTargetWeight = lookRemainWeight * Mathf.Clamp01(SafeFloat(lookTargetPercent, DefaultLookTargetPercent) / 100.0f);
+                    float lookCameraWeight = Mathf.Max(0.0f, lookRemainWeight - lookTargetWeight);
+
+                    if (lookTargetEnabled != null && lookTargetEnabled.val && lookTargetWeight > 0.001f)
+                        lookChoices.Add(new GestureChoice("LookTarget", lookTargetWeight, delegate { RequestLookTarget("life"); }));
+                    if (lookCameraEnabled != null && lookCameraEnabled.val && lookCameraWeight > 0.001f)
+                        lookChoices.Add(new GestureChoice("LookCamera", lookCameraWeight, delegate { RequestLookCamera("life"); }));
+                    if (lookTargetEnabled != null && lookTargetEnabled.val && lookAwayWeight > 0.001f)
+                        lookChoices.Add(new GestureChoice("LookAway", lookAwayWeight, delegate { RequestLookAway("life"); }));
+
+                    float lookTotal = 0.0f;
+                    for (int i = 0; i < lookChoices.Count; i++)
+                    {
+                        if (lookChoices[i] != null && lookChoices[i].weight > 0.0f) lookTotal += lookChoices[i].weight;
+                    }
+
+                    if (lookTotal > 0.001f)
+                    {
+                        float pickRoll = UnityEngine.Random.Range(0.0f, lookTotal);
+                        float acc = 0.0f;
+                        for (int i = 0; i < lookChoices.Count; i++)
+                        {
+                            GestureChoice c = lookChoices[i];
+                            if (c == null || c.weight <= 0.0f) continue;
+                            acc += c.weight;
+                            if (pickRoll <= acc)
+                            {
+                                Log("Life roll / selected=" + c.name
+                                    + " / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
+                                    + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
+                                    + " / pick=" + pickRoll.ToString("F1", CultureInfo.InvariantCulture)
+                                    + " / lookTotal=" + lookTotal.ToString("F1", CultureInfo.InvariantCulture)
+                                    + " / mode=independent");
+                                c.action();
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                Log("Life roll / look miss / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture));
+            }
+        }
+
+        Log("Life roll / selected=None / mode=independent");
         GestureNone();
     }
 
@@ -1576,7 +1677,7 @@ public class HumanLifeAction : MVRScript
         else
         {
             float selectedDist = Vector3.Distance(GetControllerPosition(hand), targetPos);
-            float selectedReach = EffectiveCoverMaxDistance();
+            float selectedReach = EffectiveCoverMaxDistanceForTarget(targetLabel);
             string selectedPlan = selectedDist > selectedReach ? "stretch-to-reach" : "direct";
             LogCover("Cover selected / hand=" + GetHandLabel(hand)
                 + " / target=" + targetLabel
@@ -1588,9 +1689,831 @@ public class HumanLifeAction : MVRScript
 
         StopLifeGesture(source + ":before-cover");
         if (IsFreeCoverLabel(targetLabel))
+        {
             lifeGestureRoutine = StartCoroutine(RandomFreeHandRoutine(hand, targetLabel, source));
+        }
+        else if (IsSelfHipCoverLabel(targetLabel))
+        {
+            // v081: Self Hip fully replaces the old generic targetPos cover. It uses the completed
+            // step1->step7 thigh-mid path, so pose changes follow l/r thigh midpoint.
+            lifeGestureRoutine = StartCoroutine(MoveHandToSelfThighSideRoutine(hand == lHandControl, "self-hip:" + source));
+        }
         else
+        {
             lifeGestureRoutine = StartCoroutine(RandomCoverRoutine(hand, targetPos, targetLabel, source));
+        }
+    }
+
+
+    void RequestExternalSelfHeadCover(string source)
+    {
+        RequestTestSelfHeadCover("external-self-head:" + source);
+    }
+
+    void RequestExternalSelfHipCover(string source)
+    {
+        RequestTestSelfHipCover("external-self-hip:" + source);
+    }
+
+    void RequestTestSelfHeadCover(string source)
+    {
+        ResolveControllers();
+        Vector3 targetPos;
+        if (!TryGetSelfHeadPoint(out targetPos))
+        {
+            UpdateStatus("Test Self Head skipped: no self head point");
+            LogCover("Cover test skipped / target=Self Head / reason=no-self-head / source=" + source);
+            return;
+        }
+        RequestFixedCoverTarget("Self Head", targetPos, "test-self-head:" + source);
+    }
+
+    void RequestTestSelfHipCover(string source)
+    {
+        ResolveControllers();
+        Vector3 targetPos;
+        if (!TryGetSelfHipPoint(out targetPos))
+        {
+            UpdateStatus("Test Self Hip skipped: no self hip point");
+            LogCover("Cover test skipped / target=Self Hip / reason=no-self-hip / source=" + source);
+            return;
+        }
+        RequestFixedCoverTarget("Self Hip", targetPos, "test-self-hip:" + source);
+    }
+
+    void RequestTestTargetHeadCover(string source)
+    {
+        ResolveControllers();
+        Atom target = GetSelectedTargetPerson();
+        Vector3 targetPos;
+        if (target == null || !TryGetControllerPoint(target, out targetPos, "headControl", "head"))
+        {
+            UpdateStatus("Test Target Head skipped: no target head point");
+            LogCover("Cover test skipped / target=Target Head / reason=no-target-head / source=" + source);
+            return;
+        }
+        RequestFixedCoverTarget("Target Head", targetPos, "test-target-head:" + source);
+    }
+
+    void RequestTestTargetHipCover(string source)
+    {
+        ResolveControllers();
+        Atom target = GetSelectedTargetPerson();
+        Vector3 targetPos;
+        if (target == null || !TryGetTargetHipPoint(target, out targetPos))
+        {
+            UpdateStatus("Test Target Hip skipped: no target hip point");
+            LogCover("Cover test skipped / target=Target Hip / reason=no-target-hip / source=" + source);
+            return;
+        }
+        RequestFixedCoverTarget("Target Hip", targetPos, "test-target-hip:" + source);
+    }
+
+    void RequestTestLHandToLThigh(string source)
+    {
+        RequestTestHandToSelfThighSide(true, source);
+    }
+
+    void RequestTestRHandToRThigh(string source)
+    {
+        RequestTestHandToSelfThighSide(false, source);
+    }
+
+    void RequestTestBothHandsToThighs(string source)
+    {
+        ResolveControllers();
+        Vector3 lThighPos;
+        Vector3 lTarget;
+        Vector3 lSide;
+        string lReason;
+        Vector3 rThighPos;
+        Vector3 rTarget;
+        Vector3 rSide;
+        string rReason;
+        bool hasL = TryGetSelfThighSideHandTarget(true, out lThighPos, out lTarget, out lSide, out lReason);
+        bool hasR = TryGetSelfThighSideHandTarget(false, out rThighPos, out rTarget, out rSide, out rReason);
+        if (lHandControl == null || rHandControl == null || !hasL || !hasR)
+        {
+            UpdateStatus("Thigh side test skipped: missing hand/thigh");
+            LogCover("Thigh side test skipped / mode=both / lHand=" + (lHandControl != null ? "1" : "0")
+                + " / rHand=" + (rHandControl != null ? "1" : "0")
+                + " / hasL=" + (hasL ? "1" : "0")
+                + " / hasR=" + (hasR ? "1" : "0")
+                + " / lReason=" + lReason
+                + " / rReason=" + rReason
+                + " / source=" + source);
+            return;
+        }
+
+        StopLifeGesture(source + ":before-both-thigh-side-test");
+        lifeGestureRoutine = StartCoroutine(MoveBothHandsToSelfThighSideRoutine(source));
+    }
+
+    void RequestTestHandToSelfThighSide(bool left, string source)
+    {
+        ResolveControllers();
+        FreeControllerV3 hand = left ? lHandControl : rHandControl;
+        Vector3 thighPos;
+        Vector3 targetPos;
+        Vector3 sideDir;
+        string reason = "hand-null";
+        if (hand == null || !TryGetSelfThighSideHandTarget(left, out thighPos, out targetPos, out sideDir, out reason))
+        {
+            string label = left ? "LHandToLThigh" : "RHandToRThigh";
+            UpdateStatus("Thigh side test skipped: " + label);
+            LogCover("Thigh side test skipped / mode=" + label
+                + " / hand=" + (hand != null ? "1" : "0")
+                + " / reason=" + reason
+                + " / source=" + source);
+            return;
+        }
+
+        StopLifeGesture(source + ":before-thigh-side-test");
+        lifeGestureRoutine = StartCoroutine(MoveHandToSelfThighSideRoutine(left, source));
+    }
+
+    Vector3 GetSelfThighBackDirection()
+    {
+        Vector3 backDir = Vector3.zero;
+
+        if (containingAtom != null && containingAtom.mainController != null)
+        {
+            backDir = -containingAtom.mainController.transform.forward;
+            backDir.y = 0.0f;
+            if (backDir.sqrMagnitude > 0.0001f)
+                return backDir.normalized;
+        }
+
+        if (hipControl != null && chestControl != null)
+        {
+            Vector3 hipPos = GetControllerPosition(hipControl);
+            Vector3 chestPos = GetControllerPosition(chestControl);
+            Vector3 upAxis = chestPos - hipPos;
+            upAxis.y = 0.0f;
+            if (upAxis.sqrMagnitude > 0.0001f)
+                return (-upAxis).normalized;
+        }
+
+        return Vector3.zero;
+    }
+
+    bool TryGetSelfThighSideHandTarget(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideHandOffset,
+            ThighSideUpOffset,
+            ThighSideBackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetV071(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSidePreHandOffset,
+            ThighSidePreUpOffset,
+            ThighSidePreBackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep2(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideStep2HandOffset,
+            ThighSideStep2UpOffset,
+            ThighSideStep2BackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep3(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideStep3HandOffset,
+            ThighSideStep3UpOffset,
+            ThighSideStep3BackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep4(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideStep4HandOffset,
+            ThighSideStep4UpOffset,
+            ThighSideStep4BackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep5(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideStep5HandOffset,
+            ThighSideStep5UpOffset,
+            ThighSideStep5BackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep6(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        return TryGetSelfThighSideHandTargetWithOffsets(
+            left,
+            ThighSideStep6HandOffset,
+            ThighSideStep6UpOffset,
+            ThighSideStep6BackOffset,
+            out thighPos,
+            out targetPos,
+            out sideDir,
+            out reason
+        );
+    }
+
+    bool TryGetSelfThighSideHandTargetStep7ThighMidBack(bool left, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        thighPos = Vector3.zero;
+        targetPos = Vector3.zero;
+        sideDir = Vector3.zero;
+        reason = "";
+
+        FreeControllerV3 thigh = left ? lThighControl : rThighControl;
+        if (thigh != null)
+            thighPos = GetControllerPosition(thigh);
+
+        Vector3 midPos;
+        string midReason;
+        if (!TryGetSelfThighMidBackPoint(out midPos, out targetPos, out midReason))
+        {
+            reason = midReason;
+            return false;
+        }
+
+        if (lThighControl != null && rThighControl != null)
+        {
+            Vector3 lPos = GetControllerPosition(lThighControl);
+            Vector3 rPos = GetControllerPosition(rThighControl);
+            Vector3 pairAxis = rPos - lPos;
+            pairAxis.y = 0.0f;
+            if (pairAxis.sqrMagnitude > 0.0001f)
+                sideDir = pairAxis.normalized * (left ? -1.0f : 1.0f);
+        }
+
+        reason = "thigh-mid-back/" + midReason;
+        return true;
+    }
+
+    bool TryGetSelfThighMidBackPoint(out Vector3 midPos, out Vector3 targetPos, out string reason)
+    {
+        midPos = Vector3.zero;
+        targetPos = Vector3.zero;
+        reason = "";
+
+        if (lThighControl == null || rThighControl == null)
+        {
+            reason = "missing-lr-thigh";
+            return false;
+        }
+
+        Vector3 lPos = GetControllerPosition(lThighControl);
+        Vector3 rPos = GetControllerPosition(rThighControl);
+        midPos = (lPos + rPos) * 0.5f;
+        reason = "thigh-pair-mid";
+
+        Vector3 backDir = GetSelfThighBackDirection();
+        if (backDir.sqrMagnitude <= 0.0001f)
+        {
+            reason += ":no-back-axis";
+            return false;
+        }
+
+        targetPos = midPos + backDir.normalized * ThighSideStep7MidBackOffset + Vector3.up * ThighSideStep7MidUpOffset;
+        return true;
+    }
+
+    bool TryGetSelfThighSideHandTargetWithOffsets(bool left, float sideOffset, float upOffset, float backOffset, out Vector3 thighPos, out Vector3 targetPos, out Vector3 sideDir, out string reason)
+    {
+        thighPos = Vector3.zero;
+        targetPos = Vector3.zero;
+        sideDir = Vector3.zero;
+        reason = "";
+
+        FreeControllerV3 thigh = left ? lThighControl : rThighControl;
+        if (thigh == null)
+        {
+            reason = left ? "missing-lThigh" : "missing-rThigh";
+            return false;
+        }
+
+        thighPos = GetControllerPosition(thigh);
+
+        if (lThighControl != null && rThighControl != null)
+        {
+            Vector3 lPos = GetControllerPosition(lThighControl);
+            Vector3 rPos = GetControllerPosition(rThighControl);
+            Vector3 pairAxis = rPos - lPos;
+            pairAxis.y = 0.0f;
+            if (pairAxis.sqrMagnitude > 0.0001f)
+            {
+                sideDir = pairAxis.normalized * (left ? -1.0f : 1.0f);
+                reason = "thigh-pair-axis";
+            }
+        }
+
+        if (sideDir.sqrMagnitude <= 0.0001f)
+        {
+            Vector3 origin = Vector3.zero;
+            bool hasOrigin = false;
+            if (hipControl != null)
+            {
+                origin = GetControllerPosition(hipControl);
+                hasOrigin = true;
+            }
+            else if (containingAtom != null && containingAtom.mainController != null)
+            {
+                origin = containingAtom.mainController.transform.position;
+                hasOrigin = true;
+            }
+            else if (containingAtom != null && containingAtom.transform != null)
+            {
+                origin = containingAtom.transform.position;
+                hasOrigin = true;
+            }
+
+            if (hasOrigin)
+            {
+                Vector3 fromCenter = thighPos - origin;
+                fromCenter.y = 0.0f;
+                if (fromCenter.sqrMagnitude > 0.0001f)
+                {
+                    sideDir = fromCenter.normalized;
+                    reason = "hip-to-thigh-axis";
+                }
+            }
+        }
+
+        if (sideDir.sqrMagnitude <= 0.0001f && containingAtom != null && containingAtom.mainController != null)
+        {
+            sideDir = containingAtom.mainController.transform.right * (left ? -1.0f : 1.0f);
+            reason = "root-right-fallback";
+        }
+
+        if (sideDir.sqrMagnitude <= 0.0001f)
+        {
+            reason = "no-side-axis";
+            return false;
+        }
+
+        sideDir.Normalize();
+        Vector3 backDir = GetSelfThighBackDirection();
+        targetPos = thighPos + sideDir * sideOffset + backDir * backOffset + Vector3.up * upOffset;
+        return true;
+    }
+
+
+    bool TryBuildSelfHipSmoothPath(bool left, Vector3 startPos, Vector3 originalPos, bool reverse, out Vector3[] path, out string reason)
+    {
+        path = null;
+        reason = "";
+
+        Vector3 thighPos;
+        Vector3 sideDir;
+        Vector3 step1;
+        Vector3 step2;
+        Vector3 step3;
+        Vector3 step4;
+        Vector3 step5;
+        Vector3 step6;
+        Vector3 step7;
+
+        if (!TryGetSelfThighSideHandTargetV071(left, out thighPos, out step1, out sideDir, out reason))
+            return false;
+
+        TryGetSelfThighSideHandTargetStep2(left, out thighPos, out step2, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep3(left, out thighPos, out step3, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep4(left, out thighPos, out step4, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep5(left, out thighPos, out step5, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep6(left, out thighPos, out step6, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep7ThighMidBack(left, out thighPos, out step7, out sideDir, out reason);
+
+        if (!reverse)
+        {
+            path = new Vector3[] { startPos, step1, step2, step3, step4, step5, step6, step7 };
+        }
+        else
+        {
+            path = new Vector3[] { startPos, step6, step5, step4, step3, step2, step1, originalPos };
+        }
+        return true;
+    }
+
+    Vector3 EvaluateSmoothPath(Vector3[] path, float normalized)
+    {
+        if (path == null || path.Length == 0)
+            return Vector3.zero;
+
+        if (path.Length == 1)
+            return path[0];
+
+        float u = Mathf.Clamp01(normalized);
+        int last = path.Length - 1;
+        if (u >= 1.0f)
+            return path[last];
+
+        float scaled = u * last;
+        int i = Mathf.Clamp(Mathf.FloorToInt(scaled), 0, last - 1);
+        float t = scaled - i;
+        float tt = t * t;
+        float ttt = tt * t;
+
+        Vector3 p0 = path[Mathf.Max(i - 1, 0)];
+        Vector3 p1 = path[i];
+        Vector3 p2 = path[i + 1];
+        Vector3 p3 = path[Mathf.Min(i + 2, last)];
+
+        return 0.5f * (
+            (2.0f * p1) +
+            (-p0 + p2) * t +
+            (2.0f * p0 - 5.0f * p1 + 4.0f * p2 - p3) * tt +
+            (-p0 + 3.0f * p1 - 3.0f * p2 + p3) * ttt
+        );
+    }
+
+    IEnumerator MoveHandAlongSelfHipSmoothPath(FreeControllerV3 hand, bool left, ControllerSnapshot snap, Vector3 startPos, bool reverse, string label, string phase)
+    {
+        float duration = reverse
+            ? (ThighSideFinalMoveSeconds * 6.0f + ThighSideReturnSeconds)
+            : (ThighSidePreMoveSeconds + ThighSideFinalMoveSeconds * 6.0f);
+        duration = Mathf.Max(0.03f, duration);
+
+        float t = 0.0f;
+        Vector3 lastApplied = startPos;
+        string reason = "";
+        while (t < duration)
+        {
+            if (IsPoseChangeSafeOn() && ControllerExternallyMovedPositionOnly(hand, lastApplied))
+            {
+                hipSmoothPathAborted = true;
+                AbortGestureForPoseChange(snap, activeCoverElbowSnapshot, "thigh-side:smooth-" + phase);
+                yield break;
+            }
+
+            t += Time.deltaTime;
+            Vector3[] path;
+            if (!TryBuildSelfHipSmoothPath(left, startPos, snap.position, reverse, out path, out reason))
+            {
+                hipSmoothPathAborted = true;
+                AbortGestureForPoseChange(snap, activeCoverElbowSnapshot, "thigh-side:smooth-no-path:" + reason);
+                yield break;
+            }
+
+            float e = Smoother01(t / duration);
+            Vector3 applyPos = EvaluateSmoothPath(path, e);
+            SetControllerPosition(hand, applyPos);
+            lastApplied = applyPos;
+            yield return null;
+        }
+
+        Vector3[] finalPath;
+        if (TryBuildSelfHipSmoothPath(left, startPos, snap.position, reverse, out finalPath, out reason))
+        {
+            Vector3 finalPos = EvaluateSmoothPath(finalPath, 1.0f);
+            SetControllerPosition(hand, finalPos);
+        }
+    }
+
+    IEnumerator MoveBothHandsAlongSelfHipSmoothPath(ControllerSnapshot lSnap, ControllerSnapshot rSnap, Vector3 lStartPos, Vector3 rStartPos, bool reverse, string phase)
+    {
+        float duration = reverse
+            ? (ThighSideFinalMoveSeconds * 6.0f + ThighSideReturnSeconds)
+            : (ThighSidePreMoveSeconds + ThighSideFinalMoveSeconds * 6.0f);
+        duration = Mathf.Max(0.03f, duration);
+
+        float t = 0.0f;
+        string lReason = "";
+        string rReason = "";
+        while (t < duration)
+        {
+            t += Time.deltaTime;
+            Vector3[] lPath;
+            Vector3[] rPath;
+            if (!TryBuildSelfHipSmoothPath(true, lStartPos, lSnap.position, reverse, out lPath, out lReason) ||
+                !TryBuildSelfHipSmoothPath(false, rStartPos, rSnap.position, reverse, out rPath, out rReason))
+            {
+                LogCover("Thigh side smooth path skipped / build=v083 / mode=BothHandsToThighs / phase=" + phase + " / lReason=" + lReason + " / rReason=" + rReason);
+                yield break;
+            }
+
+            float e = Smoother01(t / duration);
+            SetControllerPosition(lHandControl, EvaluateSmoothPath(lPath, e));
+            SetControllerPosition(rHandControl, EvaluateSmoothPath(rPath, e));
+            yield return null;
+        }
+
+        Vector3[] lf;
+        Vector3[] rf;
+        if (TryBuildSelfHipSmoothPath(true, lStartPos, lSnap.position, reverse, out lf, out lReason))
+            SetControllerPosition(lHandControl, EvaluateSmoothPath(lf, 1.0f));
+        if (TryBuildSelfHipSmoothPath(false, rStartPos, rSnap.position, reverse, out rf, out rReason))
+            SetControllerPosition(rHandControl, EvaluateSmoothPath(rf, 1.0f));
+    }
+    IEnumerator MoveHandToSelfThighSideRoutine(bool left, string source)
+    {
+        FreeControllerV3 hand = left ? lHandControl : rHandControl;
+        string label = left ? "LHandToLThigh" : "RHandToRThigh";
+        if (hand == null)
+        {
+            UpdateStatus("Thigh side test skipped: no hand / " + label);
+            lifeGestureRoutine = null;
+            ScheduleNextGesture("thigh-side-no-hand");
+            yield break;
+        }
+
+        ControllerSnapshot snap = CaptureController(hand);
+        activeCoverHandSnapshot = snap;
+        AcquireLifeLock(hand, true, label, snap);
+        try { hand.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        try { hand.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+
+        FreeControllerV3 elbow = left ? lElbowControl : rElbowControl;
+        ControllerSnapshot elbowSnap = CaptureController(elbow);
+        activeCoverElbowSnapshot = elbowSnap;
+        if (elbow != null && elbowSnap != null)
+        {
+            AcquireLifeLock(elbow, false, label + ":ElbowFree", elbowSnap);
+            try { elbow.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { elbow.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+            LogCover("Thigh side elbow release / build=v083 / mode=" + label + " / elbow=" + elbow.name + " / posState=Off / rotState=Off");
+        }
+
+        Vector3 start = GetControllerPosition(hand);
+        Vector3 thighPos;
+        Vector3 step1;
+        Vector3 step2;
+        Vector3 step3;
+        Vector3 step4;
+        Vector3 step5;
+        Vector3 step6;
+        Vector3 step7;
+        Vector3 sideDir;
+        string reason;
+        if (!TryGetSelfThighSideHandTargetV071(left, out thighPos, out step1, out sideDir, out reason))
+        {
+            RestoreController(snap);
+            RestoreController(elbowSnap);
+            ClearLifeLockForController(hand);
+            ClearLifeLockForController(elbow);
+            activeCoverHandSnapshot = null;
+            activeCoverElbowSnapshot = null;
+            lifeGestureRoutine = null;
+            UpdateStatus("Thigh side test skipped: " + label + " / " + reason);
+            ScheduleNextGesture("thigh-side-no-target");
+            yield break;
+        }
+        TryGetSelfThighSideHandTargetStep2(left, out thighPos, out step2, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep3(left, out thighPos, out step3, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep4(left, out thighPos, out step4, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep5(left, out thighPos, out step5, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep6(left, out thighPos, out step6, out sideDir, out reason);
+        TryGetSelfThighSideHandTargetStep7ThighMidBack(left, out thighPos, out step7, out sideDir, out reason);
+
+        LogCover("Thigh side test selected / build=v083 / mode=" + label
+            + " / hand=" + GetHandLabel(hand)
+            + " / thigh=" + thighPos.ToString("F3")
+            + " / step1=" + step1.ToString("F3")
+            + " / step2=" + step2.ToString("F3")
+            + " / step3=" + step3.ToString("F3")
+            + " / step4=" + step4.ToString("F3")
+            + " / step5=" + step5.ToString("F3")
+            + " / step6=" + step6.ToString("F3")
+            + " / step7=" + step7.ToString("F3")
+            + " / sideDir=" + sideDir.ToString("F3")
+            + " / axis=" + reason
+            + " / source=" + source);
+        UpdateStatus("Thigh side test running / " + label);
+
+        LogCover("Thigh side test route / build=v083 / mode=" + label
+            + " / order=step1-to-step7-hold-reverse-return"
+            + " / step1Offsets=" + ThighSidePreHandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSidePreUpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSidePreBackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step2Offsets=" + ThighSideStep2HandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep2UpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep2BackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step3Offsets=" + ThighSideStep3HandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep3UpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep3BackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step4Offsets=" + ThighSideStep4HandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep4UpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep4BackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step5Offsets=" + ThighSideStep5HandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep5UpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep5BackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step6Offsets=" + ThighSideStep6HandOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep6UpOffset.ToString("F3", CultureInfo.InvariantCulture) + "," + ThighSideStep6BackOffset.ToString("F3", CultureInfo.InvariantCulture)
+            + " / step7=thighMidBack"
+            + " / step7Offsets=back:" + ThighSideStep7MidBackOffset.ToString("F3", CultureInfo.InvariantCulture) + ",up:" + ThighSideStep7MidUpOffset.ToString("F3", CultureInfo.InvariantCulture));
+
+        hipSmoothPathAborted = false;
+        LogCover("Thigh side smooth path / build=v083 / mode=" + label + " / order=forward-step1-to-step7 / interpolation=catmull-rom");
+        yield return StartCoroutine(MoveHandAlongSelfHipSmoothPath(hand, left, snap, start, false, label, "forward"));
+        if (hipSmoothPathAborted) yield break;
+
+        float holdT = 0.0f;
+        Vector3 holdStep7 = step7;
+        Vector3 holdThigh;
+        Vector3 holdSide;
+        string holdReason;
+        while (holdT < ThighSideHoldSeconds)
+        {
+            if (IsPoseChangeSafeOn() && ControllerExternallyMovedPositionOnly(hand, holdStep7))
+            {
+                AbortGestureForPoseChange(snap, elbowSnap, "thigh-side:hold");
+                yield break;
+            }
+            holdT += Time.deltaTime;
+            TryGetSelfThighSideHandTargetStep7ThighMidBack(left, out holdThigh, out holdStep7, out holdSide, out holdReason);
+            SetControllerPosition(hand, holdStep7);
+            yield return null;
+        }
+
+        LogCover("Thigh side smooth return / build=v083 / mode=" + label + " / order=step7-to-step1-to-original / interpolation=catmull-rom");
+        hipSmoothPathAborted = false;
+        yield return StartCoroutine(MoveHandAlongSelfHipSmoothPath(hand, left, snap, GetControllerPosition(hand), true, label, "return"));
+        if (hipSmoothPathAborted) yield break;
+
+        RestoreController(snap);
+        RestoreController(elbowSnap);
+        ClearLifeLockForController(hand);
+        ClearLifeLockForController(elbow);
+        activeCoverHandSnapshot = null;
+        activeCoverElbowSnapshot = null;
+        lifeGestureRoutine = null;
+        UpdateStatus("Hip/Thigh side step route done / " + label);
+        ScheduleNextGesture("thigh-side-done");
+    }
+
+    IEnumerator MoveBothHandsToSelfThighSideRoutine(string source)
+    {
+        ControllerSnapshot lSnap = CaptureController(lHandControl);
+        ControllerSnapshot rSnap = CaptureController(rHandControl);
+        ControllerSnapshot lElbowSnap = CaptureController(lElbowControl);
+        ControllerSnapshot rElbowSnap = CaptureController(rElbowControl);
+        AcquireLifeLock(lHandControl, true, "BothHandsToThighs", lSnap);
+        AcquireLifeLock(rHandControl, true, "BothHandsToThighs", rSnap);
+        if (lElbowControl != null && lElbowSnap != null) AcquireLifeLock(lElbowControl, false, "BothHandsToThighs:ElbowFree", lElbowSnap);
+        if (rElbowControl != null && rElbowSnap != null) AcquireLifeLock(rElbowControl, false, "BothHandsToThighs:ElbowFree", rElbowSnap);
+        try { lHandControl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        try { lHandControl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        try { rHandControl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        try { rHandControl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        try { if (lElbowControl != null) lElbowControl.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+        try { if (lElbowControl != null) lElbowControl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        try { if (rElbowControl != null) rElbowControl.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+        try { if (rElbowControl != null) rElbowControl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        LogCover("Thigh side elbow release / build=v083 / mode=BothHandsToThighs / elbows=both / posState=Off / rotState=Off");
+
+        Vector3 lStart = GetControllerPosition(lHandControl);
+        Vector3 rStart = GetControllerPosition(rHandControl);
+        Vector3 lThigh;
+        Vector3 lStep1;
+        Vector3 lStep2;
+        Vector3 lStep3;
+        Vector3 lStep4;
+        Vector3 lStep5;
+        Vector3 lStep6;
+        Vector3 lStep7;
+        Vector3 lSide;
+        string lAxis;
+        Vector3 rThigh;
+        Vector3 rStep1;
+        Vector3 rStep2;
+        Vector3 rStep3;
+        Vector3 rStep4;
+        Vector3 rStep5;
+        Vector3 rStep6;
+        Vector3 rStep7;
+        Vector3 rSide;
+        string rAxis;
+        TryGetSelfThighSideHandTargetV071(true, out lThigh, out lStep1, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep2(true, out lThigh, out lStep2, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep3(true, out lThigh, out lStep3, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep4(true, out lThigh, out lStep4, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep5(true, out lThigh, out lStep5, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep6(true, out lThigh, out lStep6, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetStep7ThighMidBack(true, out lThigh, out lStep7, out lSide, out lAxis);
+        TryGetSelfThighSideHandTargetV071(false, out rThigh, out rStep1, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep2(false, out rThigh, out rStep2, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep3(false, out rThigh, out rStep3, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep4(false, out rThigh, out rStep4, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep5(false, out rThigh, out rStep5, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep6(false, out rThigh, out rStep6, out rSide, out rAxis);
+        TryGetSelfThighSideHandTargetStep7ThighMidBack(false, out rThigh, out rStep7, out rSide, out rAxis);
+
+        LogCover("Thigh side test selected / build=v083 / mode=BothHandsToThighs"
+            + " / order=step1-to-step7-hold-reverse-return"
+            + " / lStep1=" + lStep1.ToString("F3")
+            + " / lStep2=" + lStep2.ToString("F3")
+            + " / lStep3=" + lStep3.ToString("F3")
+            + " / lStep4=" + lStep4.ToString("F3")
+            + " / lStep5=" + lStep5.ToString("F3")
+            + " / lStep6=" + lStep6.ToString("F3")
+            + " / lStep7=" + lStep7.ToString("F3")
+            + " / rStep1=" + rStep1.ToString("F3")
+            + " / rStep2=" + rStep2.ToString("F3")
+            + " / rStep3=" + rStep3.ToString("F3")
+            + " / rStep4=" + rStep4.ToString("F3")
+            + " / rStep5=" + rStep5.ToString("F3")
+            + " / rStep6=" + rStep6.ToString("F3")
+            + " / rStep7=" + rStep7.ToString("F3")
+            + " / lAxis=" + lAxis
+            + " / rAxis=" + rAxis
+            + " / source=" + source);
+        UpdateStatus("Thigh side test running / both");
+
+        LogCover("Thigh side smooth path / build=v083 / mode=BothHandsToThighs / order=forward-step1-to-step7 / interpolation=catmull-rom");
+        yield return StartCoroutine(MoveBothHandsAlongSelfHipSmoothPath(lSnap, rSnap, lStart, rStart, false, "forward"));
+
+        float holdT = 0.0f;
+        while (holdT < ThighSideHoldSeconds)
+        {
+            holdT += Time.deltaTime;
+            TryGetSelfThighSideHandTargetStep7ThighMidBack(true, out lThigh, out lStep7, out lSide, out lAxis);
+            TryGetSelfThighSideHandTargetStep7ThighMidBack(false, out rThigh, out rStep7, out rSide, out rAxis);
+            SetControllerPosition(lHandControl, lStep7);
+            SetControllerPosition(rHandControl, rStep7);
+            yield return null;
+        }
+
+        LogCover("Thigh side smooth return / build=v083 / mode=BothHandsToThighs / order=step7-to-step1-to-original / interpolation=catmull-rom");
+        yield return StartCoroutine(MoveBothHandsAlongSelfHipSmoothPath(lSnap, rSnap, GetControllerPosition(lHandControl), GetControllerPosition(rHandControl), true, "return"));
+
+        RestoreController(lSnap);
+        RestoreController(rSnap);
+        RestoreController(lElbowSnap);
+        RestoreController(rElbowSnap);
+        ClearLifeLockForController(lHandControl);
+        ClearLifeLockForController(rHandControl);
+        ClearLifeLockForController(lElbowControl);
+        ClearLifeLockForController(rElbowControl);
+        activeCoverHandSnapshot = null;
+        activeCoverElbowSnapshot = null;
+        lifeGestureRoutine = null;
+        UpdateStatus("Hip/Thigh side step route done / both");
+        ScheduleNextGesture("thigh-side-done");
+    }
+
+    void RequestFixedCoverTarget(string targetLabel, Vector3 targetPos, string source)
+    {
+        ResolveControllers();
+        FreeControllerV3 hand = PickHandForCover();
+        if (hand == null)
+        {
+            UpdateStatus("Cover test skipped: no available hand / " + targetLabel);
+            LogCover("Cover test skipped / target=" + targetLabel + " / reason=no-hand / source=" + source);
+            return;
+        }
+
+        float selectedDist = Vector3.Distance(GetControllerPosition(hand), targetPos);
+        float selectedReach = EffectiveCoverMaxDistanceForTarget(targetLabel);
+        string selectedPlan = selectedDist > selectedReach ? "stretch-to-reach" : "direct";
+        LogCover("Cover test selected / hand=" + GetHandLabel(hand)
+            + " / target=" + targetLabel
+            + " / dist=" + selectedDist.ToString("F3", CultureInfo.InvariantCulture)
+            + " / reach=" + selectedReach.ToString("F3", CultureInfo.InvariantCulture)
+            + " / plan=" + selectedPlan
+            + " / targetPos=" + targetPos.ToString("F3")
+            + " / source=" + source);
+
+        StopLifeGesture(source + ":before-cover-test");
+        if (IsSelfHipCoverLabel(targetLabel))
+        {
+            // v081: test Self Hip uses the same completed hip step path as the live Self Hip cover.
+            lifeGestureRoutine = StartCoroutine(MoveHandToSelfThighSideRoutine(hand == lHandControl, "self-hip-test:" + source));
+        }
+        else
+        {
+            lifeGestureRoutine = StartCoroutine(RandomCoverRoutine(hand, targetPos, targetLabel, source));
+        }
+    }
+
+    bool IsSelfHipCoverLabel(string label)
+    {
+        return !string.IsNullOrEmpty(label) && label.Equals("Self Hip", StringComparison.OrdinalIgnoreCase);
     }
 
     bool IsFreeCoverLabel(string label)
@@ -1733,27 +2656,23 @@ public class HumanLifeAction : MVRScript
         }
         outward.Normalize();
 
-        Vector3 rawGoal = targetPos + outward * CoverSurfaceOffset;
+        bool headCoverTarget = IsHeadCoverTargetLabel(targetLabel);
+        float surfaceOffset = EffectiveCoverSurfaceOffsetForTarget(targetLabel);
+        Vector3 rawGoal = targetPos + outward * surfaceOffset;
         Vector3 goal = rawGoal;
         Vector3 delta = goal - start;
         float rawDist = delta.magnitude;
-        float maxDist = EffectiveCoverMaxDistance();
-        bool stretchToReach = false;
-        if (delta.magnitude > maxDist)
-        {
-            // HBA-style behavior: never drop a far target. Move as far as this Life gesture may reach toward it.
-            stretchToReach = true;
-            goal = start + delta.normalized * maxDist;
-            delta = goal - start;
-        }
+        float maxDist = EffectiveCoverMaxDistanceForTarget(targetLabel);
+        bool stretchToReach = delta.magnitude > maxDist;
         Vector3 dir = delta.sqrMagnitude > 0.0001f ? delta.normalized : outward;
         float reachRatio = 1.0f;
         if (delta.sqrMagnitude > 0.0001f)
         {
-            float reachMin = IsCover100Mode() ? Cover100LooseReachMin : CoverLooseReachMin;
-            float reachMax = IsCover100Mode() ? Cover100LooseReachMax : CoverLooseReachMax;
-            reachRatio = UnityEngine.Random.Range(reachMin, reachMax);
-            goal = start + delta * Mathf.Clamp01(reachRatio);
+            // v051: do not give up or stop short. Even when the target is beyond the old reach
+            // budget, command the IK all the way to the requested surface goal and let VaM solve
+            // the actual limb extension. A short final snap after the soft path makes the selected
+            // cover point visibly reached instead of hovering at maxDist or looseReach.
+            goal = rawGoal;
             delta = goal - start;
             dir = delta.sqrMagnitude > 0.0001f ? delta.normalized : outward;
         }
@@ -1761,8 +2680,12 @@ public class HumanLifeAction : MVRScript
             + " / target=" + targetLabel
             + " / rawDist=" + rawDist.ToString("F3", CultureInfo.InvariantCulture)
             + " / reach=" + maxDist.ToString("F3", CultureInfo.InvariantCulture)
+            + " / surface=" + surfaceOffset.ToString("F3", CultureInfo.InvariantCulture)
             + " / far=" + (stretchToReach ? "1" : "0")
             + " / reachRatio=" + reachRatio.ToString("F2", CultureInfo.InvariantCulture)
+            + " / headReach=" + (headCoverTarget ? "1" : "0")
+            + " / headTouch=" + (headCoverTarget ? "1" : "0")
+            + " / noGiveUp=1"
             + " / finalDist=" + delta.magnitude.ToString("F3", CultureInfo.InvariantCulture));
 
         try { hand.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
@@ -1771,12 +2694,58 @@ public class HumanLifeAction : MVRScript
         Vector3 elbowStart = elbowSnap != null ? elbowSnap.position : Vector3.zero;
         Quaternion elbowStartRot = elbowSnap != null ? elbowSnap.rotation : Quaternion.identity;
         Vector3 coverArc = BuildSoftCoverArc(start, goal, hand);
+        bool selfFaceChestAvoidApplied = false;
+        Vector3 chestAvoidArc;
+        if (TryBuildSelfFaceChestAvoidArc(hand, start, goal, targetLabel, out chestAvoidArc))
+        {
+            selfFaceChestAvoidApplied = true;
+            coverArc += chestAvoidArc;
+            LogCover("Cover chest avoid / hand=" + GetHandLabel(hand)
+                + " / target=" + targetLabel
+                + " / side=" + GetHandSideForCover(hand).ToString(CultureInfo.InvariantCulture)
+                + " / arc=" + chestAvoidArc.ToString("F3"));
+        }
+        Vector3 pathArc = coverArc;
+        Vector3 elbowArc = coverArc;
+        Vector3 leftHeadFrontLane;
+        bool leftHeadFrontLaneApplied = TryBuildSelfHeadLeftFrontLane(hand, targetLabel, out leftHeadFrontLane);
+        if (leftHeadFrontLaneApplied)
+        {
+            // v096: L Hand -> Self Head/Face/Mouth only.
+            // Do not move the final head goal. Put only the outbound hand path and lElbow lane
+            // in front of the breast so the route avoids the chest the same way the R side already does.
+            pathArc += leftHeadFrontLane;
+            elbowArc += leftHeadFrontLane * 1.35f;
+            LogCover("Cover head left front lane / build=v096"
+                + " / hand=" + GetHandLabel(hand)
+                + " / target=" + targetLabel
+                + " / lane=" + leftHeadFrontLane.ToString("F3")
+                + " / pathArc=" + pathArc.ToString("F3")
+                + " / elbowArc=" + elbowArc.ToString("F3"));
+        }
+
         Vector3 elbowGoal = elbowStart;
+        bool looseFinalElbow = false;
+        Vector3 elbowFinalLooseGoal = elbowStart;
         if (elbow != null)
         {
-            elbowGoal = elbowStart + (delta * CoverElbowNudgeScale) + (coverArc * CoverElbowArcScale);
+            elbowGoal = elbowStart + (delta * CoverElbowNudgeScale) + (elbowArc * CoverElbowArcScale);
+            looseFinalElbow = selfFaceChestAvoidApplied && IsSelfFaceChestAvoidTargetLabel(targetLabel);
+            elbowFinalLooseGoal = looseFinalElbow
+                ? Vector3.Lerp(elbowStart, elbowGoal, SelfHeadElbowFinalLooseBlend)
+                : elbowGoal;
             try { elbow.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
             try { elbow.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+
+            if (looseFinalElbow)
+            {
+                LogCover("Cover head elbow loose final / build=v085"
+                    + " / hand=" + GetHandLabel(hand)
+                    + " / target=" + targetLabel
+                    + " / blend=" + SelfHeadElbowFinalLooseBlend.ToString("F2", CultureInfo.InvariantCulture)
+                    + " / elbowGoal=" + elbowGoal.ToString("F3")
+                    + " / looseGoal=" + elbowFinalLooseGoal.ToString("F3"));
+            }
         }
 
         float prepareSeconds = EffectiveCoverPrepareSeconds();
@@ -1791,11 +2760,20 @@ public class HumanLifeAction : MVRScript
         float handSideForHold = (lHandControl != null && hand == lHandControl) ? -1.0f : 1.0f;
         if (rHandControl != null && hand == rHandControl) handSideForHold = 1.0f;
         Vector3 arcAxisForHold = coverArc.sqrMagnitude > 0.0001f ? coverArc.normalized : Vector3.up;
-        float looseDrift = UnityEngine.Random.Range(0.006f, 0.020f) * MotionScale();
-        Vector3 holdAnchor = goal + arcAxisForHold * looseDrift + sideAxisForHold * handSideForHold * UnityEngine.Random.Range(-0.010f, 0.014f) * MotionScale();
-        Vector3 prepare = start - dir * Mathf.Min(0.030f, delta.magnitude * CoverPrepareBackScale) + coverArc * CoverPrepareArcScale;
-        Vector3 c1 = start + coverArc * 1.05f - dir * 0.020f;
-        Vector3 c2 = holdAnchor + coverArc * 0.38f - dir * Mathf.Min(0.055f, delta.magnitude * 0.16f);
+        float looseDrift = headCoverTarget
+            ? HeadCoverHoldDrift * MotionScale()
+            : UnityEngine.Random.Range(0.006f, 0.020f) * MotionScale();
+        float sideDrift = headCoverTarget
+            ? UnityEngine.Random.Range(-HeadCoverSideDrift, HeadCoverSideDrift) * MotionScale()
+            : UnityEngine.Random.Range(-0.010f, 0.014f) * MotionScale();
+        // v052: do not intentionally hover off non-free targets.
+        // The selected cover point itself is the move/snap/hold anchor.
+        // Organic sway is applied only as a small post-snap hold vibration below.
+        Vector3 headExactGoal = rawGoal;
+        Vector3 holdAnchor = goal;
+        Vector3 prepare = start - dir * Mathf.Min(0.030f, delta.magnitude * CoverPrepareBackScale) + pathArc * CoverPrepareArcScale;
+        Vector3 c1 = start + pathArc * 1.05f - dir * 0.020f;
+        Vector3 c2 = holdAnchor + pathArc * 0.38f - dir * Mathf.Min(0.055f, delta.magnitude * 0.16f);
 
         float t = 0.0f;
         while (t < prepareSeconds)
@@ -1833,9 +2811,68 @@ public class HumanLifeAction : MVRScript
             yield return null;
         }
         Vector3 currentHoldAnchor = GetControllerPosition(hand);
-        if (elbow != null) SetControllerPosition(elbow, elbowGoal);
+        if (elbow != null)
+        {
+            if (looseFinalElbow)
+            {
+                SetControllerPosition(elbow, elbowFinalLooseGoal);
+                try { elbow.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+            }
+            else
+            {
+                SetControllerPosition(elbow, elbowGoal);
+            }
+        }
         lastAppliedPos = currentHoldAnchor;
         lastAppliedRot = GetControllerRotation(hand);
+
+        // v051: every non-free cover target is allowed to stretch first, then snap the IK target
+        // to the exact surface goal. This avoids the visual "selected but gave up early" case
+        // caused by reach caps, soft arcs, chest-avoid arcs, or loose cover math.
+        {
+            Vector3 snapStart = currentHoldAnchor;
+            Vector3 snapGoal = goal;
+            float snapSeconds = headCoverTarget ? HeadCoverSnapSeconds : CoverFinalSnapSeconds;
+            float snapDist = Vector3.Distance(snapStart, snapGoal);
+            if (snapDist > 0.0025f)
+            {
+                LogCover("Cover final snap / hand=" + GetHandLabel(hand)
+                    + " / target=" + targetLabel
+                    + " / head=" + (headCoverTarget ? "1" : "0")
+                    + " / dist=" + snapDist.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / seconds=" + snapSeconds.ToString("F2", CultureInfo.InvariantCulture));
+
+                float snapT = 0.0f;
+                while (snapT < snapSeconds)
+                {
+                    if (IsPoseChangeSafeOn() && ControllerExternallyMovedPositionOnly(hand, lastAppliedPos))
+                    {
+                        AbortGestureForPoseChange(snap, elbowSnap, "cover:final-snap");
+                        yield break;
+                    }
+                    snapT += Time.deltaTime;
+                    float e = Smoother01(snapT / Mathf.Max(0.001f, snapSeconds));
+                    Vector3 applyPos = Vector3.Lerp(snapStart, snapGoal, e);
+                    SetControllerPosition(hand, applyPos);
+                    if (elbow != null && !looseFinalElbow) SetControllerPosition(elbow, elbowGoal);
+                    lastAppliedPos = applyPos;
+                    lastAppliedRot = GetControllerRotation(hand);
+                    yield return null;
+                }
+            }
+
+            SetControllerPosition(hand, snapGoal);
+            if (elbow != null && !looseFinalElbow) SetControllerPosition(elbow, elbowGoal);
+            currentHoldAnchor = snapGoal;
+            lastAppliedPos = currentHoldAnchor;
+            lastAppliedRot = GetControllerRotation(hand);
+            LogCover("Cover snap verify / hand=" + GetHandLabel(hand)
+                + " / target=" + targetLabel
+                + " / toTarget=" + Vector3.Distance(GetControllerPosition(hand), targetPos).ToString("F3", CultureInfo.InvariantCulture)
+                + " / toGoal=" + Vector3.Distance(GetControllerPosition(hand), snapGoal).ToString("F3", CultureInfo.InvariantCulture)
+                + " / goal=" + snapGoal.ToString("F3")
+                + " / targetPos=" + targetPos.ToString("F3"));
+        }
 
         float holdSeconds = UnityEngine.Random.Range(holdMin, holdMax);
         Vector3 swayA = coverArc.sqrMagnitude > 0.0001f ? coverArc.normalized : Vector3.up;
@@ -1852,11 +2889,12 @@ public class HumanLifeAction : MVRScript
             }
             holdT += Time.deltaTime;
             float fade = Mathf.Sin(Mathf.Clamp01(holdT / Mathf.Max(0.001f, holdSeconds)) * Mathf.PI);
-            float wave = Mathf.Sin(holdT * 5.1f) * CoverHoldSwayAmount * MotionScale() * fade;
-            float wave2 = Mathf.Sin(holdT * 3.3f + 1.9f) * CoverHoldSwayAmount * 0.50f * MotionScale() * fade;
+            float headSwayScale = headCoverTarget ? HeadCoverHoldSwayScale : CoverTouchHoldSwayScale;
+            float wave = Mathf.Sin(holdT * 5.1f) * CoverHoldSwayAmount * headSwayScale * MotionScale() * fade;
+            float wave2 = Mathf.Sin(holdT * 3.3f + 1.9f) * CoverHoldSwayAmount * 0.50f * headSwayScale * MotionScale() * fade;
             Vector3 applyPos = currentHoldAnchor + swayA * wave + swayB * handSide * wave2;
             SetControllerPosition(hand, applyPos);
-            if (elbow != null) SetControllerPosition(elbow, elbowGoal + swayA * wave * 0.35f);
+            if (elbow != null && !looseFinalElbow) SetControllerPosition(elbow, elbowGoal + swayA * wave * 0.35f);
             lastAppliedPos = applyPos;
             lastAppliedRot = GetControllerRotation(hand);
             yield return null;
@@ -1864,6 +2902,12 @@ public class HumanLifeAction : MVRScript
 
         Vector3 from = GetControllerPosition(hand);
         Vector3 elbowFrom = elbow != null ? GetControllerPosition(elbow) : Vector3.zero;
+        if (elbow != null && looseFinalElbow)
+        {
+            try { elbow.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            try { elbow.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+            elbowFrom = GetControllerPosition(elbow);
+        }
         Vector3 looseReturn = BuildLooseReturnPosition(snap.position, start, hand);
         Vector3 returnC1 = from + coverArc * 0.25f - dir * 0.010f;
         Vector3 returnC2 = ((from + looseReturn) * 0.5f) + (coverArc * CoverSoftReturnArcScale) - dir * Mathf.Min(0.035f, delta.magnitude * 0.10f);
@@ -1894,6 +2938,292 @@ public class HumanLifeAction : MVRScript
         lifeGestureRoutine = null;
         UpdateStatus("RandomCover done");
         ScheduleNextGesture("cover-done");
+    }
+
+
+    bool IsSelfFaceChestAvoidTargetLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return false;
+        return label.IndexOf("Self Head", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Face", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Mouth", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    bool IsHeadCoverTargetLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return false;
+        return label.IndexOf("Head", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Face", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Mouth", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Neck", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    float EffectiveCoverSurfaceOffsetForTarget(string label)
+    {
+        if (IsHeadCoverTargetLabel(label))
+            return HeadCoverSurfaceOffset;
+        // v052: for Chest/Belly/Hip, do not stop at a generic near-surface offset.
+        // Move the IK to the actual selected cover point, then snap/hold there.
+        return 0.0f;
+    }
+
+    float EffectiveCoverMaxDistanceForTarget(string label)
+    {
+        float baseReach = EffectiveCoverMaxDistance();
+        if (string.IsNullOrEmpty(label)) return baseReach;
+
+        if (label.IndexOf("Self Head", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Face", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Self Mouth", StringComparison.OrdinalIgnoreCase) >= 0)
+            return Mathf.Max(baseReach, SelfHeadCoverMaxDistance);
+
+        if (label.IndexOf("Target Head", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Target Face", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Target Mouth", StringComparison.OrdinalIgnoreCase) >= 0
+            || label.IndexOf("Target Neck", StringComparison.OrdinalIgnoreCase) >= 0)
+            return Mathf.Max(baseReach, TargetHeadCoverMaxDistance);
+
+        return baseReach;
+    }
+
+    int GetHandSideForCover(FreeControllerV3 hand)
+    {
+        if (hand == null) return 1;
+        if (lHandControl != null && hand == lHandControl) return -1;
+        if (rHandControl != null && hand == rHandControl) return 1;
+        string name = hand.name != null ? hand.name.ToLowerInvariant() : "";
+        if (name.IndexOf("lhand") >= 0 || name.IndexOf("left") >= 0) return -1;
+        return 1;
+    }
+
+    bool IsLeftHandController(FreeControllerV3 hand)
+    {
+        if (hand == null) return false;
+        if (lHandControl != null && hand == lHandControl) return true;
+        string n = hand.name != null ? hand.name.ToLowerInvariant() : "";
+        return n.IndexOf("lhand") >= 0 || n.IndexOf("left") >= 0;
+    }
+
+    bool TryBuildSelfHeadLeftFrontLane(FreeControllerV3 hand, string targetLabel, out Vector3 frontLane)
+    {
+        frontLane = Vector3.zero;
+        if (!IsLeftHandController(hand)) return false;
+        if (!IsSelfFaceChestAvoidTargetLabel(targetLabel)) return false;
+        if (chestControl == null) return false;
+
+        Vector3 chestPos = GetControllerPosition(chestControl);
+        Vector3 bodyForward = containingAtom != null && containingAtom.transform != null
+            ? containingAtom.transform.forward
+            : Vector3.forward;
+        bodyForward.y = 0.0f;
+        if (bodyForward.sqrMagnitude < 0.0001f) bodyForward = Vector3.forward;
+        bodyForward.Normalize();
+
+        float protrusion;
+        float halfWidth;
+        float sign;
+        Vector3 breastCenter;
+        bool measured = TryMeasureSelfBreastForCover(bodyForward, chestPos, out protrusion, out halfWidth, out sign, out breastCenter);
+
+        Vector3 breastForward = Vector3.zero;
+        if (measured)
+        {
+            // Prefer the actual chest-to-breast direction for the L side front lane.
+            // This is only an outbound path/elbow lane offset; final head goal remains unchanged.
+            breastForward = breastCenter - chestPos;
+            if (breastForward.sqrMagnitude > 0.0001f)
+            {
+                // Remove most of the vertical component so this stays a "front lane" and does not lift/drop the elbow too much.
+                breastForward.y *= 0.25f;
+            }
+        }
+
+        if (breastForward.sqrMagnitude < 0.0001f)
+        {
+            breastForward = bodyForward * (measured && sign < 0.0f ? -1.0f : 1.0f);
+        }
+
+        if (breastForward.sqrMagnitude < 0.0001f) return false;
+        breastForward.Normalize();
+
+        float amount = measured
+            ? Mathf.Clamp(0.060f + protrusion * 0.70f, 0.080f, 0.180f)
+            : 0.095f;
+
+        frontLane = breastForward * amount;
+        return frontLane.sqrMagnitude > 0.0001f;
+    }
+
+    bool TryBuildSelfFaceChestAvoidArc(FreeControllerV3 hand, Vector3 from, Vector3 to, string targetLabel, out Vector3 avoidArc)
+    {
+        avoidArc = Vector3.zero;
+        if (!IsSelfFaceChestAvoidTargetLabel(targetLabel)) return false;
+        if (hand == null || chestControl == null) return false;
+
+        Vector3 delta = to - from;
+        if (delta.sqrMagnitude < 0.0025f) return false;
+
+        Vector3 forward = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.forward : Vector3.forward;
+        Vector3 right = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.right : Vector3.right;
+        forward.y = 0.0f;
+        right.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        forward.Normalize();
+        right.Normalize();
+
+        Vector3 chestPos = GetControllerPosition(chestControl);
+        float breastProtrusion;
+        float breastHalfWidth;
+        float breastSign;
+        Vector3 breastCenter;
+        bool breastMeasured = TryMeasureSelfBreastForCover(forward, chestPos, out breastProtrusion, out breastHalfWidth, out breastSign, out breastCenter);
+
+        Vector3 breastForward = forward;
+        float avoidRadius;
+        Vector3 chestProbe;
+        float breastStrength = 0.0f;
+
+        if (breastMeasured)
+        {
+            if (breastProtrusion < SelfFaceBreastAvoidProtrusionStart)
+            {
+                // Flat/small chest: keep the old direct face-cover path even if the geometric line passes near chestControl.
+                return false;
+            }
+
+            breastStrength = Mathf.Clamp01((breastProtrusion - SelfFaceBreastAvoidProtrusionStart) / Mathf.Max(0.001f, SelfFaceBreastAvoidProtrusionFull - SelfFaceBreastAvoidProtrusionStart));
+            breastForward = forward * (breastSign >= 0.0f ? 1.0f : -1.0f);
+            float probeForward = Mathf.Clamp(SelfFaceChestAvoidChestForwardOffset + breastProtrusion * 0.72f, 0.070f, 0.230f);
+            avoidRadius = Mathf.Clamp(SelfFaceChestAvoidRadius + (breastProtrusion - SelfFaceBreastAvoidProtrusionStart) * 0.95f + breastHalfWidth * 0.05f, 0.150f, SelfFaceBreastAvoidMaxRadius);
+            chestProbe = chestPos + breastForward * probeForward + Vector3.up * 0.025f;
+        }
+        else
+        {
+            // No nipple controls found. Keep a conservative path-crossing fallback so old scenes do not lose avoidance completely.
+            breastForward = forward;
+            avoidRadius = SelfFaceBreastAvoidFallbackRadius;
+            chestProbe = chestPos + breastForward * SelfFaceChestAvoidChestForwardOffset + Vector3.up * 0.025f;
+        }
+
+        float bodyTiltBoost = SelfFaceChestAvoidTiltBoost();
+        if (bodyTiltBoost > 0.001f)
+        {
+            // Tilted upper-body poses make the simple hand-to-head segment more likely to graze the chest,
+            // so broaden the detection radius before the segment test and later add strength to the avoid arc.
+            avoidRadius = Mathf.Min(SelfFaceBreastAvoidMaxRadius, avoidRadius + Mathf.Lerp(0.000f, 0.085f, bodyTiltBoost));
+        }
+
+        float along;
+        float dist = DistancePointToSegment(chestProbe, from, to, out along);
+        if (along < 0.08f || along > 0.92f) return false;
+        if (dist > avoidRadius) return false;
+
+        float closeness = Mathf.Clamp01((avoidRadius - dist) / Mathf.Max(0.001f, avoidRadius));
+        float strength = breastMeasured
+            ? Mathf.Lerp(0.70f, 1.45f, Mathf.Max(closeness, breastStrength))
+            : Mathf.Lerp(0.55f, 1.05f, closeness);
+        if (bodyTiltBoost > 0.001f)
+            strength += 0.30f * bodyTiltBoost;
+        strength = Mathf.Clamp(strength, 0.0f, 1.75f);
+        int side = GetHandSideForCover(hand);
+        avoidArc = right * side * SelfFaceChestAvoidSideOffset * strength
+            + Vector3.up * SelfFaceChestAvoidUpOffset * strength
+            + breastForward * SelfFaceChestAvoidForwardOffset * strength;
+
+        LogCover("Cover chest avoid / hand=" + GetHandLabel(hand)
+            + " / target=" + targetLabel
+            + " / measured=" + (breastMeasured ? "1" : "0")
+            + " / protrusion=" + breastProtrusion.ToString("F3", CultureInfo.InvariantCulture)
+            + " / halfWidth=" + breastHalfWidth.ToString("F3", CultureInfo.InvariantCulture)
+            + " / radius=" + avoidRadius.ToString("F3", CultureInfo.InvariantCulture)
+            + " / tiltBoost=" + bodyTiltBoost.ToString("F2", CultureInfo.InvariantCulture)
+            + " / dist=" + dist.ToString("F3", CultureInfo.InvariantCulture)
+            + " / arc=" + avoidArc.ToString("F3"));
+        return avoidArc.sqrMagnitude > 0.0001f;
+    }
+
+    float SelfFaceChestAvoidTiltBoost()
+    {
+        Transform t = chestControl != null ? chestControl.transform : null;
+        if (t == null && containingAtom != null) t = containingAtom.transform;
+        if (t == null) return 0.0f;
+
+        float angle = Vector3.Angle(t.up, Vector3.up);
+        // Start boosting after a mild lean. Full boost around a strong lean.
+        return Mathf.Clamp01((angle - 8.0f) / 32.0f);
+    }
+
+    Vector3 SelfHeadCoverForwardDir()
+    {
+        Vector3 f = Vector3.forward;
+        if (headControl != null && headControl.transform != null) f = headControl.transform.forward;
+        else if (containingAtom != null && containingAtom.transform != null) f = containingAtom.transform.forward;
+        if (f.sqrMagnitude < 0.0001f) f = Vector3.forward;
+        return f.normalized;
+    }
+
+    bool TryMeasureSelfBreastForCover(Vector3 bodyForward, Vector3 chestPos, out float protrusion, out float halfWidth, out float sign, out Vector3 breastCenter)
+    {
+        protrusion = 0.0f;
+        halfWidth = 0.0f;
+        sign = 1.0f;
+        breastCenter = Vector3.zero;
+
+        Vector3 left;
+        Vector3 right;
+        if (!TryGetSelfNipplePositions(out left, out right)) return false;
+
+        Vector3 f = bodyForward;
+        f.y = 0.0f;
+        if (f.sqrMagnitude < 0.0001f) f = Vector3.forward;
+        f.Normalize();
+
+        breastCenter = (left + right) * 0.5f;
+        halfWidth = Vector3.Distance(left, right) * 0.5f;
+
+        float signedCenter = Vector3.Dot(breastCenter - chestPos, f);
+        float signedLeft = Vector3.Dot(left - chestPos, f);
+        float signedRight = Vector3.Dot(right - chestPos, f);
+        protrusion = Mathf.Max(Mathf.Abs(signedCenter), Mathf.Max(Mathf.Abs(signedLeft), Mathf.Abs(signedRight)));
+
+        if (Mathf.Abs(signedCenter) > 0.001f) sign = signedCenter >= 0.0f ? 1.0f : -1.0f;
+        else
+        {
+            float signedMax = Mathf.Abs(signedLeft) >= Mathf.Abs(signedRight) ? signedLeft : signedRight;
+            sign = signedMax >= 0.0f ? 1.0f : -1.0f;
+        }
+
+        return protrusion > 0.001f || halfWidth > 0.001f;
+    }
+
+    bool TryGetSelfNipplePositions(out Vector3 left, out Vector3 right)
+    {
+        left = Vector3.zero;
+        right = Vector3.zero;
+        if (containingAtom == null) return false;
+
+        bool hasLeft = TryGetControllerPoint(containingAtom, out left,
+            "lNippleControl", "leftNippleControl", "lNipple", "lnipple", "leftNipple", "LeftNipple", "nipple_l", "nippleL");
+        bool hasRight = TryGetControllerPoint(containingAtom, out right,
+            "rNippleControl", "rightNippleControl", "rNipple", "rnipple", "rightNipple", "RightNipple", "nipple_r", "nippleR");
+
+        return hasLeft && hasRight;
+    }
+
+    float DistancePointToSegment(Vector3 point, Vector3 a, Vector3 b, out float along01)
+    {
+        Vector3 ab = b - a;
+        float lenSq = ab.sqrMagnitude;
+        if (lenSq < 0.000001f)
+        {
+            along01 = 0.0f;
+            return Vector3.Distance(point, a);
+        }
+
+        along01 = Mathf.Clamp01(Vector3.Dot(point - a, ab) / lenSq);
+        Vector3 closest = a + ab * along01;
+        return Vector3.Distance(point, closest);
     }
 
 
@@ -2122,9 +3452,9 @@ public class HumanLifeAction : MVRScript
         List<float> targetWeights = new List<float>();
 
         Vector3 p;
-        // v023: weighted Life cover targets. Head is intentionally much easier to appear,
-        // while Free Hand remains about 10% inside the Cover branch.
-        if (TryGetSelfHeadPoint(out p)) { selfLabels.Add("Self Head"); selfPositions.Add(p); selfWeights.Add(5.0f); }
+        // v023: weighted Life cover targets. Head is intentionally much easier to appear.
+        // v050: Head weight is 8 while Free Hand remains a low-weight filler inside the Cover branch.
+        if (TryGetSelfHeadPoint(out p)) { selfLabels.Add("Self Head"); selfPositions.Add(p); selfWeights.Add(8.0f); }
         if (TryGetSelfChestPoint(out p)) { selfLabels.Add("Self Chest"); selfPositions.Add(p); selfWeights.Add(2.0f); }
         if (TryGetSelfBellyPoint(out p)) { selfLabels.Add("Self Belly"); selfPositions.Add(p); selfWeights.Add(2.0f); }
         if (TryGetSelfHipPoint(out p)) { selfLabels.Add("Self Hip"); selfPositions.Add(p); selfWeights.Add(2.0f); }
@@ -2133,7 +3463,7 @@ public class HumanLifeAction : MVRScript
         Atom target = GetSelectedTargetPerson();
         if (target != null)
         {
-            if (TryGetControllerPoint(target, out p, "headControl", "head")) { targetLabels.Add("Target Head"); targetPositions.Add(p); targetWeights.Add(5.0f); }
+            if (TryGetControllerPoint(target, out p, "headControl", "head")) { targetLabels.Add("Target Head"); targetPositions.Add(p); targetWeights.Add(8.0f); }
             if (TryGetControllerPoint(target, out p, "chestControl", "chest")) { targetLabels.Add("Target Chest"); targetPositions.Add(p); targetWeights.Add(2.0f); }
             if (TryGetTargetBellyPoint(target, out p)) { targetLabels.Add("Target Belly"); targetPositions.Add(p); targetWeights.Add(2.0f); }
             if (TryGetTargetHipPoint(target, out p)) { targetLabels.Add("Target Hip"); targetPositions.Add(p); targetWeights.Add(2.0f); }
@@ -2145,25 +3475,25 @@ public class HumanLifeAction : MVRScript
         if (preferSelf && TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
             Log("Cover target group / Self / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=head5 free1");
+                + " / weighted=head8 free1");
             return true;
         }
         if (!preferSelf && TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
             Log("Cover target group / Target / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=head5 free1");
+                + " / weighted=head8 free1");
             return true;
         }
 
         // Fallback to the other group when the preferred side has no point.
         if (TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Self / weighted=head5 free1");
+            Log("Cover target group fallback / Self / weighted=head8 free1");
             return true;
         }
         if (TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Target / weighted=head5 free1");
+            Log("Cover target group fallback / Target / weighted=head8 free1");
             return true;
         }
 
@@ -2237,10 +3567,12 @@ public class HumanLifeAction : MVRScript
     {
         if (headControl != null)
         {
-            pos = GetControllerPosition(headControl);
+            pos = GetControllerPosition(headControl) + SelfHeadCoverForwardDir() * SelfHeadCoverPointForwardOffset;
             return true;
         }
-        pos = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position + Vector3.up * 1.55f : Vector3.zero;
+        pos = containingAtom != null && containingAtom.transform != null
+            ? containingAtom.transform.position + Vector3.up * 1.55f + containingAtom.transform.forward.normalized * SelfHeadCoverPointForwardOffset
+            : Vector3.zero;
         return containingAtom != null;
     }
 
@@ -3007,18 +4339,19 @@ public class HumanLifeAction : MVRScript
     float EffectiveCoverMaxDistance()
     {
         string mode = CurrentMotionMode();
-        // v024: Life cover is allowed to make a visible effort toward far targets.
-        // It still clamps when the target is unreachable, but the clamp is long enough
-        // for Head/Chest/Belly/Hip reactions to read clearly.
+        float configured = Mathf.Clamp(SafeFloat(coverMaxDistance, DefaultCoverMaxDistance), 0.05f, 1.50f);
+        // v044: honor the visible Life Cover Max Distance slider. Older builds always returned
+        // the hard-coded 0.58 in Normal mode, which made selected head targets stop short.
+        // Head labels still get their own larger minimum in EffectiveCoverMaxDistanceForTarget().
         if (IsCover100Mode())
         {
-            if (mode == LifeMotionSmall) return 0.62f;
-            if (mode == LifeMotionLarge) return 1.00f;
-            return 0.82f;
+            if (mode == LifeMotionSmall) return Mathf.Max(configured, 0.62f);
+            if (mode == LifeMotionLarge) return Mathf.Max(configured, 1.00f);
+            return Mathf.Max(configured, 0.82f);
         }
-        if (mode == LifeMotionSmall) return 0.42f;
-        if (mode == LifeMotionLarge) return 0.78f;
-        return DefaultCoverMaxDistance;
+        if (mode == LifeMotionSmall) return Mathf.Min(configured, 0.42f);
+        if (mode == LifeMotionLarge) return Mathf.Max(configured, 0.78f);
+        return configured;
     }
 
     void GetEffectiveInterval(out float min, out float max)

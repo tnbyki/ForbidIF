@@ -1,3 +1,33 @@
+// V88_CHEST_HOLD_FRONT_STEP2_STEP3_INWARD_BUILD 2026-06-29: Based on v87. Chest Hold Front only: step2 = assigned nipple 10cm down + 1cm hand-forward + 3cm inward; step3/final = assigned nipple 8cm down + 6cm hand-forward + 3cm inward. Back FIX unchanged.
+// V87_CHEST_HOLD_FRONT_STABLE_BODY_AXIS_BUILD 2026-06-29: Front simple cross forward axis no longer uses current/grab-start hand position. Uses stable self body/chest anchor -> assigned nipple so repeated Grab does not drift. Based on v86.
+// V86_CHEST_HOLD_FRONT_HAND_FORWARD_AXIS_BUILD 2026-06-29: Front simple cross uses each hand's actual reach direction (grab-start hand -> assigned nipple) for step2/final forward offsets. Based on v85.
+// V85_CHEST_HOLD_FRONT_FINAL_ADJUST_BUILD 2026-06-29: Front simple cross step2=8cm down+1cm front, step3/final=8cm down+6cm front. Based on v84.
+// V82_CHEST_HOLD_FRONT_SIMPLE_CROSS_BUILD 2026-06-29: Based on v81. Back is fixed/unchanged. Front face mode is isolated: R hand -> target left nipple, L hand -> target right nipple, with no OrderHoldTargets/palm/side remap.
+// V84_CHEST_HOLD_FRONT_STEP2_BACK_STEP3_DOWN_FRONT_BUILD 2026-06-29: Based on v83. Chest Hold Front only: mutual-facing simple cross now uses step2 = nipple 5cm down + 3cm back, step3/final = nipple 5cm down + 3cm front. Back FIX remains unchanged.
+// V81_CHEST_HOLD_BACK_WRIST_IN2_REVERSE_STRONGER_BUILD 2026-06-29: Based on v80. Reverses Wrist In2 bend direction and strengthens it. Chest Hold Back step5 uses Wrist In2; fixed Euler RotY remains removed.
+// V80_CHEST_HOLD_BACK_WRIST_IN2_STEP5_BUILD 2026-06-29: Based on v79. Removes fixed Euler RotY step5; adds Wrist In2 button/action and uses Wrist In2 as Chest Hold Back step5. In2 is stronger inward than Wrist In.
+// V77_CHEST_HOLD_BACK_STEP5_R20_BUILD 2026-06-29: Based on v76. Chest Hold Back step5 keeps L=300 and changes R from 180 to 20 (380 normalized).
+// V73_CHEST_HOLD_BACK_STEP2_STEP3_WRIST_IN_BUILD 2026-06-29: Based on v72. Chest Hold Back is now staged: step2=current side reach at nipple offset 0.000, step3=Chest Hold Back Nipple Offset target (default -0.030), step4=apply Wrist In only after step3.
+// V65_CHEST_HOLD_BACK_FRONT_ADJUST_3CM_BUILD 2026-06-29: Chest Hold Back reach test; based on v64. Only changes front adjust from 0.08m to 0.03m.
+// V58_CHEST_HOLD_BACK_AXIS_LOG_BUILD 2026-06-29: Chest Hold log-only. Adds normal-time axis diagnostics for target right, nipple right, and reach right axes. No motion logic changes.
+// V46_CHEST_HOLD_BACK_LEFT_DEPTH_3X_BUILD 2026-06-29: Chest Hold only, based on v45/v33. Only changes the L-hand back Chest Hold depth correction multiplier from 2.0f to 3.0f; R-hand route is unchanged.
+// V44_CHEST_HOLD_BACK_LEFT_DEPTH_REVERSE_2X_BUILD 2026-06-29: Chest Hold only, based on v43/v33. Only the L-hand back Chest Hold depth correction is reversed and doubled from v43; R-hand route is unchanged.
+// V31_CHEST_HOLD_TARGET_AXIS_MIDPOINTS_LOGS_BUILD 2026-06-29: Chest Hold only: middle/open points now use the actual target L-nipple to R-nipple axis and nipple-pair center for symmetric left/right routing; debug logs show start/mid/final and axis. Other routes unchanged.
+// V29_CHEST_HOLD_MUTUAL_FRONT_EXACT_ONLY_BUILD 2026-06-29: Chest Hold only: adds an isolated mutual-facing front route using both self/target facing, assigns L hand->target R nipple and R hand->target L nipple, and moves hand IK exactly to nipple IK; non-mutual/self-front-target-back cases stay on legacy Chest Hold routes. Hug Body and all other routes are unchanged.
+// V30_CHEST_HOLD_CURRENT_QUIET_LOGS_BUILD 2026-06-29: Keeps the current v29 Chest Hold behavior, but moves normal diagnostic logs behind Debug Log so routine use stays quiet.
+// V28_HUG_BODY_WRAP_ACTUAL_HAND_SIDE_BUILD 2026-06-29: Hug Body wrapSide now aligns +side with the actual current R-hand side after actorRight projection, so unusual standing positions open hands outward instead of crossing.
+// V24_HUG_BODY_BACK_CHEST_CENTER_BUILD 2026-06-29: Hug Body backside now keeps final handCenter on chestControl center instead of applying final-depth offset, so backside Hug Body converges to chest, not shifted handCenter/nipple-side.
+// V21_CHEST_HOLD_BACK_LR_RESTORE_VIA_BUILD 2026-06-29: Reverts the v20 visual L/R swap; back-side Chest Hold uses L hand -> L nipple and R hand -> R nipple, keeping the v18 two-stage via route and v17 nipple stabilize.
+// V19_CHEST_HOLD_BACK_FIXED_LR_NIPPLE_VIA_BUILD 2026-06-29: Back-side Chest Hold no longer uses ordered/cross hand targets; L hand stays on assigned L nipple, R hand stays on assigned R nipple, and via logs show raw/used targets.
+// V18_CHEST_HOLD_BACK_TWO_STAGE_VIA_BUILD 2026-06-29: Back-side Chest Hold hand path now uses a two-stage route via target-front/outside before converging to nipple/palm target, keeping v17 nipple stabilization and v16 front=Up/back=In wrist fix.
+// V15_CHEST_HOLD_TARGET_VISUAL_FRONT_SIDE_BUILD 2026-06-29: Chest Hold front/back now uses target visual side from target nipple/chest center to self position; visual front is dot<=0 for VaM root-forward convention. Front keeps Wrist Up, back keeps Wrist In.
+// V16_CHEST_HOLD_FRONT_DOT_POSITIVE_UP_BUILD 2026-06-29: Chest Hold visual front判定を targetForward dot (targetPoint->self) >= 0 に修正。正面側は Wrist Up、背面側は Wrist In。
+// V17_CHEST_HOLD_NIPPLE_STABILIZE_ON_GRAB_BUILD 2026-06-29: Chest Hold Grab Hand開始時だけ target L/R nipple PositionState を一時Onにして暴れを抑え、Release/Target reset/defaultsで元のIK状態へ戻す。Utility nipple moveでは新規Onしない。
+// V13_CHEST_HOLD_FRONT_UP_BACK_IN_BUILD 2026-06-29: Chest Hold mutual-facing front/back remains unchanged, but final wrist mode is corrected to front=Up and back=In. Final logs now include wristMode.
+// V12_CHEST_HOLD_FRONT_MUTUAL_FACING_BUILD 2026-06-29: Chest Hold front/back is now decided by mutual facing: front only when self faces target and target faces self; self faces target while target faces away is back. Wrist remains front=In/back=Up.
+// V11_CHEST_HOLD_FRONT_IN_BACK_UP_BUILD 2026-06-29: Chest Hold keeps the shared front/back decision and nipple target offsets, but swaps final wrist assignment: front wrist is Wrist In, back wrist is Wrist Up.
+// CHEST_HOLD_NIPPLE_NO_IK_ON_BUILD 2026-06-29: Chest Hold utility nipple moves no longer turn nipple IK PositionState/RotationState On; nipple control positions are moved/restored directly while preserving IK state.
+// HUG_BODY_CHEST_HOLD_ISOLATION_BUILD 2026-06-29: Restores/clears Chest Hold nipple stabilize state as soon as IK Select leaves Chest Hold, and hard-gates nipple-pair grab logic so Hug Body can never run Chest Hold/R nipple routes.
 // TARGET_RELEASE_UNBLOCK_HBA_HLA_HAND_COVER_BUILD 2026-06-28: Target Release/Target reset now restores held target-hand IK locks before clearing held state and forces TG Held Target Hand/L/R flags false early, so HBA/HLA hand cover unblocks on target-side release.
 // HELD_TARGET_HAND_TARGET_UID_EXPORT_BUILD 2026-06-28: Exports TG Held Target Person UID so HBA/HLA on the target Person can find TargetGrabber even when TargetGrabber is installed on the grabbing/self Person.
 // HELD_TARGET_HAND_FLAG_AGGREGATE_BUILD 2026-06-27: Adds hidden aggregate TG Held Target Hand flag and keeps L/R flags updated for HBA/HLA linkage diagnostics.
@@ -300,6 +330,24 @@ public class TargetGrabber : MVRScript
     private const float HUG_BODY_IK_SNAP_MAX_OFFSET = 0.040f;
     private const float HUG_BODY_WRIST_NEAR_CENTER_DISTANCE = 0.03f;
     private const float HUG_BODY_WRIST_DEPTH_THRESHOLD = 0.03f;
+    private const float CHEST_HOLD_PALM_CENTER_REACH_FRONT = 0.04f;
+    private const float CHEST_HOLD_PALM_CENTER_REACH_BACK = 0.08f;
+    private const float CHEST_HOLD_FRONT_NIPPLE_DOWN = 0.08f;
+    private const float CHEST_HOLD_FRONT_NIPPLE_INWARD = 0.04f;
+    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN = 0.10f; // v88: step2 is 10cm below assigned nipple
+    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN = 0.08f; // v88: step3/final is 8cm below assigned nipple
+    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD = 0.01f; // v88: step2 is 1cm forward along stable hand route
+    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD = 0.06f; // v88: step3/final is 6cm forward along stable hand route
+    private const float CHEST_HOLD_FRONT_SIMPLE_INWARD = 0.03f; // v88: both step2 and step3/final move 3cm inward toward nipple pair center
+    private const float CHEST_HOLD_BACK_VIA_OUTSIDE = 0.12f;
+    private const float CHEST_HOLD_BACK_VIA_FORWARD = 0.18f;
+    private const float CHEST_HOLD_BACK_VIA_UP = 0.00f;
+    private const float CHEST_HOLD_BACK_VIA_SWITCH_T = 0.55f;
+    private const float CHEST_HOLD_BACK_PASS_THROUGH = 0.35f; // back-side reach depth; keep v61 distance feeling
+    private const float CHEST_HOLD_BACK_PASS_SIDE_OFFSET = 0.05f; // v71: side clearance 5cm. R hand right of R nipple, L hand left of L nipple
+    private const float CHEST_HOLD_BACK_REACH_FRONT_ADJUST_DEFAULT = -0.03f; // v73: step3 default. Step2 is always nipple offset 0.000; step3 uses this slider value.
+    private const float CHEST_HOLD_MUTUAL_FACE_DOT = 0.35f;
+    private const float CHEST_HOLD_MUTUAL_ROOT_OPPOSITE_DOT = -0.35f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
     private const float HEAD_TARGET_UP_OFFSET = 0.130f;
     private const float HEAD_TOP_FORWARD_OFFSET = 0.180f;
@@ -347,6 +395,7 @@ public class TargetGrabber : MVRScript
     private JSONStorableFloat kissFaceStrengthJSON;
     private JSONStorableFloat handPalmOffsetJSON;
     private JSONStorableFloat handCenterOffsetJSON;
+    private JSONStorableFloat chestHoldBackReachFrontAdjustJSON;
     private JSONStorableFloat footSoleOffsetJSON;
     private JSONStorableFloat kneeWidthMultiplierJSON;
     private JSONStorableFloat footArcWidthJSON;
@@ -424,10 +473,24 @@ public class TargetGrabber : MVRScript
     private float grabElapsed = 0.0f;
     private float grabStartWidth = 0.0f;
     private float currentGrabWidth = 0.0f;
+    private bool chestHoldFinalLeftLogged = false;
+    private bool chestHoldFinalRightLogged = false;
+    private bool chestHoldMovePointsLeftLogged = false;
+    private bool chestHoldMovePointsRightLogged = false;
+    private bool chestHoldEssentialTwoLineLogged = false;
+    private bool chestHoldModeLogged = false;
     private readonly Dictionary<FreeControllerV3, Vector3> grabStartPositions = new Dictionary<FreeControllerV3, Vector3>();
     private readonly Dictionary<FreeControllerV3, Quaternion> grabStartRotations = new Dictionary<FreeControllerV3, Quaternion>();
     private readonly Dictionary<FreeControllerV3, Vector3> targetOriginalPositions = new Dictionary<FreeControllerV3, Vector3>();
     private readonly Dictionary<FreeControllerV3, Quaternion> targetOriginalRotations = new Dictionary<FreeControllerV3, Quaternion>();
+    // v5bl: Chest Hold nipple utility moves must not turn nipple IK ON.
+    // Controls in this set are restored by direct transform assignment, not MoveControl/LockTargetIKControl.
+    private readonly HashSet<FreeControllerV3> chestHoldNoIkNippleMoveControls = new HashSet<FreeControllerV3>();
+    // v17: Chest Hold Grab Hand開始時だけ、target nipple L/R のPositionStateを一時Onにする。
+    // Utility nipple moveでは新規Onしない。Release/Target reset/defaultsで元の状態へ戻す。
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> chestHoldNippleStabilizePositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
+    private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> chestHoldNippleStabilizeRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
+    private readonly List<FreeControllerV3> chestHoldNippleStabilizeControls = new List<FreeControllerV3>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> targetLockPositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.RotationState> targetLockRotationStates = new Dictionary<FreeControllerV3, FreeControllerV3.RotationState>();
     private readonly List<FreeControllerV3> targetLockControls = new List<FreeControllerV3>();
@@ -495,6 +558,7 @@ public class TargetGrabber : MVRScript
     private float lastSideDebugTime = -10.0f;
     private float lastHandRotationDebugTime = -10.0f;
     private float lastHandTargetDebugTime = -10.0f;
+    private float lastRouteCheckLogTime = -10.0f;
     private bool releaseRestoreIKPending = false;
     private float releaseRestoreIKTime = 0.0f;
     private ColorBlock releaseTargetDefaultColors;
@@ -675,6 +739,7 @@ public class TargetGrabber : MVRScript
         alignHandPalmJSON = CreateBool("Align Hand Palm", true, false);
         handPalmOffsetJSON = CreateFloat("Hand Palm Offset", 0.00f, -0.30f, 0.30f, false);
         handCenterOffsetJSON = CreateFloat("Hand Center Offset", 0.00f, -0.20f, 0.20f, false);
+        chestHoldBackReachFrontAdjustJSON = CreateFloat("Chest Hold Back Nipple Offset", CHEST_HOLD_BACK_REACH_FRONT_ADJUST_DEFAULT, -0.100f, 0.100f, false);
         handRotXJSON = CreateFloat("Hand Palm Add Rot X", 0.0f, -180.0f, 180.0f, false);
         handRotYJSON = CreateFloat("Hand Palm Add Rot Y", 0.0f, -180.0f, 180.0f, false);
         handRotZJSON = CreateFloat("Hand Palm Add Rot Z", 0.0f, -180.0f, 180.0f, false);
@@ -745,6 +810,7 @@ public class TargetGrabber : MVRScript
         handWristAngleJSON = CreateBool("Use Hand Wrist Angle", true, true);
         CreateButton("Wrist Straight", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("Straight"); });
         CreateButton("Wrist In", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("In"); });
+        CreateButton("Wrist In2", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("In2"); });
         CreateButton("Wrist Out", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("Out"); });
         CreateButton("Wrist Up", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("Up"); });
         CreateButton("Wrist Down", true).button.onClick.AddListener(delegate { ApplyBothHandWristTest("Down"); });
@@ -759,7 +825,7 @@ public class TargetGrabber : MVRScript
 
         RefreshAll();
 
-        DebugLog("ready / v5bf_default_ik_select_hug_body / based-on-v5be_target_ik_default_snap_current");
+        DebugLog("ready / v88_chest_hold_front_step2_step3_inward / based-on-v87 / back-fix-kept / front-step2-down10-front1-in3-step3-down8-front6-in3");
     }
 
     private void RegisterExternalActions()
@@ -779,6 +845,7 @@ public class TargetGrabber : MVRScript
         RegisterAction(new JSONStorableAction("Grab Hand", GrabHand));
         RegisterAction(new JSONStorableAction("Wrist Straight", delegate { ApplyBothHandWristTest("Straight"); }));
         RegisterAction(new JSONStorableAction("Wrist In", delegate { ApplyBothHandWristTest("In"); }));
+        RegisterAction(new JSONStorableAction("Wrist In2", delegate { ApplyBothHandWristTest("In2"); }));
         RegisterAction(new JSONStorableAction("Wrist Out", delegate { ApplyBothHandWristTest("Out"); }));
         RegisterAction(new JSONStorableAction("Wrist Up", delegate { ApplyBothHandWristTest("Up"); }));
         RegisterAction(new JSONStorableAction("Wrist Down", delegate { ApplyBothHandWristTest("Down"); }));
@@ -1179,6 +1246,20 @@ public class TargetGrabber : MVRScript
         DebugLog("[TARGET CONTROLLER] raw=" + (part ?? "<null>") +
             " key=" + NormalizeControllerKey(part) +
             " nipple=" + Bool01(IsNipplePairControlName(part)));
+
+        // v22: Chest Hold の nipple安定化/直接移動状態は、IK Select が Chest Hold を離れた時点で必ず解除する。
+        // これを遅らせると、Hug Bodyへ切替後も nipple L/R の一時ONや移動キャッシュが残り、
+        // Hug Body開始時に R nipple へ吸われるように見えることがある。
+        if (part != TC_CHEST_HOLD)
+        {
+            int restored = RestoreChestHoldNippleIKStabilize("target-controller-change-to-" + (part ?? "<null>"));
+            chestHoldNoIkNippleMoveControls.Clear();
+            if (restored > 0 || IsDebugEnabled())
+            {
+                DebugLog("[CHEST HOLD ISOLATE] cleared on target change / next=" + (part ?? "<null>") +
+                    " / restored=" + restored.ToString(CultureInfo.InvariantCulture));
+            }
+        }
 
         if (string.IsNullOrEmpty(part) || part == NONE)
             ClearHeldTargetGrabState();
@@ -1899,7 +1980,7 @@ public class TargetGrabber : MVRScript
         }
 
         SetStatus("Load User Defaults action not found");
-        SuperController.LogMessage("[TargetGrabber] LOAD USER DEFAULTS: PosePresets action not found.");
+        DebugLog("LOAD USER DEFAULTS: PosePresets action not found.");
     }
 
     private void SelfIKDefault()
@@ -2006,7 +2087,7 @@ public class TargetGrabber : MVRScript
         }
 
         SetStatus("Target Load User Defaults action not found");
-        SuperController.LogMessage("[TargetGrabber] TARGET LOAD DEFAULTS: PosePresets action not found on target person.");
+        DebugLog("TARGET LOAD DEFAULTS: PosePresets action not found on target person.");
     }
 
     private string ResetTargetGrabberRuntimeState(string reason, bool clearTargetSnapshots)
@@ -2033,6 +2114,7 @@ public class TargetGrabber : MVRScript
         RestoreSelfFollowParentLinks();
         RestoreTemporaryRelaxLinkedIK();
         RestoreTemporaryHandRotationOffStates();
+        int restoredNippleStabilize = RestoreChestHoldNippleIKStabilize(reason + "-nipple-stabilize");
         StopSwoonDrop(true, reason);
 
         int restoredLocks = RestoreTargetLocks();
@@ -2051,6 +2133,10 @@ public class TargetGrabber : MVRScript
         {
             targetOriginalPositions.Clear();
             targetOriginalRotations.Clear();
+            chestHoldNoIkNippleMoveControls.Clear();
+            chestHoldNippleStabilizeControls.Clear();
+            chestHoldNippleStabilizePositionStates.Clear();
+            chestHoldNippleStabilizeRotationStates.Clear();
             targetLockPositionStates.Clear();
             targetLockRotationStates.Clear();
             targetLockControls.Clear();
@@ -2058,11 +2144,13 @@ public class TargetGrabber : MVRScript
 
         DebugLog("[TARGET RUNTIME RESET] reason=" + reason +
             " / heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+            " / nippleStabilize=" + restoredNippleStabilize.ToString(CultureInfo.InvariantCulture) +
             " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
             " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture) +
             " / clearSnapshots=" + Bool01(clearTargetSnapshots));
 
         return "heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
+            " / nippleStabilize=" + restoredNippleStabilize.ToString(CultureInfo.InvariantCulture) +
             " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
             " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture);
     }
@@ -2202,7 +2290,7 @@ public class TargetGrabber : MVRScript
                     continue;
 
                 action.actionCallback.Invoke();
-                SuperController.LogMessage("[TargetGrabber] " + logPrefix + ": atom=" + atom.uid + " / pose action=" + storableId + " / " + actionNames[i]);
+                DebugLog(logPrefix + ": atom=" + atom.uid + " / pose action=" + storableId + " / " + actionNames[i]);
                 return true;
             }
         }
@@ -2250,12 +2338,17 @@ public class TargetGrabber : MVRScript
         // This intentionally does not change targetPersonPartChooser / IK Select; HDU_Commander
         // direct route actions also use that chooser and should remain the owner of their selection.
         ClearHeldTargetGrabState();
+        RestoreChestHoldNippleIKStabilize(reason + "-nipple-stabilize");
         pendingAutoSnapIKControls.Clear();
         hugBodyWristReferencePositions.Clear();
         hugBodyHandSnapAnchorPositions.Clear();
 
         targetOriginalPositions.Clear();
         targetOriginalRotations.Clear();
+        chestHoldNoIkNippleMoveControls.Clear();
+        chestHoldNippleStabilizeControls.Clear();
+        chestHoldNippleStabilizePositionStates.Clear();
+        chestHoldNippleStabilizeRotationStates.Clear();
         targetLockPositionStates.Clear();
         targetLockRotationStates.Clear();
         targetLockControls.Clear();
@@ -2342,10 +2435,15 @@ public class TargetGrabber : MVRScript
             ClearHeldTargetGrabState();
             StopSwoonDrop(true, reason);
             RestoreTargetNoneBodyRelaxIK();
+            RestoreChestHoldNippleIKStabilize(reason + "-nipple-stabilize");
             RestoreTargetLocks();
 
             targetOriginalPositions.Clear();
             targetOriginalRotations.Clear();
+            chestHoldNoIkNippleMoveControls.Clear();
+            chestHoldNippleStabilizeControls.Clear();
+            chestHoldNippleStabilizePositionStates.Clear();
+            chestHoldNippleStabilizeRotationStates.Clear();
             targetLockPositionStates.Clear();
             targetLockRotationStates.Clear();
             targetLockControls.Clear();
@@ -4232,6 +4330,111 @@ public class TargetGrabber : MVRScript
         return TryGetChestHoldNippleIKControls(out controls, out left, out right);
     }
 
+    private bool ShouldStabilizeChestHoldNippleIKOnGrabStart(bool includeHands, bool useFinalGrabWidth)
+    {
+        // v22: 通常の Chest Hold Grab Hand 開始だけでONにする。
+        // IsNipplePairMode() ではなく IsChestHoldTarget() で厳密判定し、Hug Body へ漏らさない。
+        // Grab Hand Pull/Push/Open/Close等のUtility後の再Grabは useFinalGrabWidth=true なので新規ONしない。
+        return includeHands && !useFinalGrabWidth && IsChestHoldTarget();
+    }
+
+    private void UpdateChestHoldNippleIKStabilizeOnGrabStart(bool includeHands, bool useFinalGrabWidth)
+    {
+        bool chestHoldMode = IsChestHoldTarget();
+
+        if (ShouldStabilizeChestHoldNippleIKOnGrabStart(includeHands, useFinalGrabWidth))
+        {
+            StabilizeChestHoldNippleIKOnGrabStart();
+            return;
+        }
+
+        // Chest Hold utility再Grabでは既存の一時ONを保持する。
+        // 別ターゲット/別モードへ移る場合だけ戻す。
+        if (!chestHoldMode)
+            RestoreChestHoldNippleIKStabilize("grab-start-non-chest-hold");
+    }
+
+    private void StabilizeChestHoldNippleIKOnGrabStart()
+    {
+        List<FreeControllerV3> controls;
+        FreeControllerV3 left;
+        FreeControllerV3 right;
+        if (!TryGetChestHoldNippleIKControls(out controls, out left, out right) || controls == null || controls.Count == 0)
+        {
+            DebugLog("[CHEST HOLD NIPPLE STABILIZE] skip / reason=no-nipple-controls");
+            return;
+        }
+
+        int changed = 0;
+        int total = 0;
+        for (int i = 0; i < controls.Count; i++)
+        {
+            FreeControllerV3 fc = controls[i];
+            if (fc == null)
+                continue;
+
+            total++;
+            if (!chestHoldNippleStabilizePositionStates.ContainsKey(fc))
+            {
+                try { chestHoldNippleStabilizePositionStates[fc] = fc.currentPositionState; } catch { }
+                try { chestHoldNippleStabilizeRotationStates[fc] = fc.currentRotationState; } catch { }
+                chestHoldNippleStabilizeControls.Add(fc);
+            }
+
+            try
+            {
+                if (fc.currentPositionState != FreeControllerV3.PositionState.On)
+                    changed++;
+                fc.currentPositionState = FreeControllerV3.PositionState.On;
+            }
+            catch { }
+
+            // 回転は暴れ防止目的では触らない。元状態だけ保存しておく。
+        }
+
+        DebugLog("[CHEST HOLD NIPPLE STABILIZE] on-grab / total=" + total.ToString(CultureInfo.InvariantCulture) +
+            " / changed=" + changed.ToString(CultureInfo.InvariantCulture) +
+            " / left=" + Bool01(left != null) +
+            " / right=" + Bool01(right != null));
+    }
+
+    private int RestoreChestHoldNippleIKStabilize(string reason)
+    {
+        int restored = 0;
+
+        if (chestHoldNippleStabilizeControls.Count == 0)
+            return 0;
+
+        List<FreeControllerV3> controls = new List<FreeControllerV3>(chestHoldNippleStabilizeControls);
+        for (int i = 0; i < controls.Count; i++)
+        {
+            FreeControllerV3 fc = controls[i];
+            if (fc == null)
+                continue;
+
+            FreeControllerV3.PositionState posState;
+            if (chestHoldNippleStabilizePositionStates.TryGetValue(fc, out posState))
+            {
+                try { fc.currentPositionState = posState; } catch { }
+                restored++;
+            }
+
+            FreeControllerV3.RotationState rotState;
+            if (chestHoldNippleStabilizeRotationStates.TryGetValue(fc, out rotState))
+            {
+                try { fc.currentRotationState = rotState; } catch { }
+            }
+        }
+
+        chestHoldNippleStabilizeControls.Clear();
+        chestHoldNippleStabilizePositionStates.Clear();
+        chestHoldNippleStabilizeRotationStates.Clear();
+
+        DebugLog("[CHEST HOLD NIPPLE STABILIZE] restore / reason=" + reason +
+            " / restored=" + restored.ToString(CultureInfo.InvariantCulture));
+        return restored;
+    }
+
     private List<FreeControllerV3> GetChestHoldUtilityControls()
     {
         List<FreeControllerV3> baseControls = new List<FreeControllerV3>();
@@ -4292,6 +4495,42 @@ public class TargetGrabber : MVRScript
         return offset.sqrMagnitude > 0.0001f;
     }
 
+    private void MoveChestHoldNippleControlByOffsetNoIKOn(FreeControllerV3 fc, Vector3 offset)
+    {
+        if (fc == null || offset.sqrMagnitude < 0.0001f)
+            return;
+
+        CaptureTargetOriginal(fc);
+        chestHoldNoIkNippleMoveControls.Add(fc);
+
+        Vector3 pos = fc.control != null ? fc.control.position : fc.transform.position;
+        Quaternion rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
+        SetControlTransformNoIKStateChange(fc, pos + offset, rot, true);
+    }
+
+    private void ApplyChestHoldNippleOpenCloseOffsetNoIKOn(FreeControllerV3 left, FreeControllerV3 right, bool open)
+    {
+        if (left == null || right == null || left == right)
+            return;
+
+        Vector3 leftPos = GetControlPosition(left);
+        Vector3 rightPos = GetControlPosition(right);
+        Vector3 axis = rightPos - leftPos;
+
+        if (axis.sqrMagnitude < 0.0001f)
+            axis = GetActorViewSideAxisForControls(new List<FreeControllerV3> { left, right });
+
+        if (axis.sqrMagnitude < 0.0001f)
+            return;
+
+        axis.Normalize();
+        Vector3 leftOffset = (open ? -axis : axis) * GRAB_HAND_OPEN_DISTANCE;
+        Vector3 rightOffset = -leftOffset;
+
+        MoveChestHoldNippleControlByOffsetNoIKOn(left, leftOffset);
+        MoveChestHoldNippleControlByOffsetNoIKOn(right, rightOffset);
+    }
+
     private int ApplyChestHoldNippleOffset(List<FreeControllerV3> controls, Vector3 offset)
     {
         if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
@@ -4305,9 +4544,9 @@ public class TargetGrabber : MVRScript
             if (fc == null)
                 continue;
 
-            MoveTargetControlByOffset(fc, offset);
+            MoveChestHoldNippleControlByOffsetNoIKOn(fc, offset);
             if (IsDebugEnabled())
-                DebugLog("[CHEST HOLD NIPPLE MOVE] control=" + fc.name +
+                DebugLog("[CHEST HOLD NIPPLE MOVE NO IK] control=" + fc.name +
                     " offset=" + FormatVector3(offset) +
                     " next=" + FormatVector3(GetControlPosition(fc)));
             moved++;
@@ -4452,9 +4691,9 @@ public class TargetGrabber : MVRScript
 
         PrepareTemporaryRelaxLinkedIK(movedControls);
         if (open)
-            ApplyGrabHandOpenOffset(left, right);
+            ApplyChestHoldNippleOpenCloseOffsetNoIKOn(left, right, true);
         else
-            ApplyGrabHandCloseOffset(left, right);
+            ApplyChestHoldNippleOpenCloseOffsetNoIKOn(left, right, false);
 
         FinishChestHoldNippleButton(true);
 
@@ -5205,7 +5444,10 @@ public class TargetGrabber : MVRScript
                 if (!targetOriginalRotations.TryGetValue(fc, out rot))
                     rot = fc.control != null ? fc.control.rotation : fc.transform.rotation;
 
-                MoveControl(fc, pos, rot, false, true);
+                if (chestHoldNoIkNippleMoveControls.Contains(fc))
+                    SetControlTransformNoIKStateChange(fc, pos, rot, true);
+                else
+                    MoveControl(fc, pos, rot, false, true);
                 restored++;
             }
         }
@@ -6146,10 +6388,9 @@ public class TargetGrabber : MVRScript
                 fc.control.rotation = best.rotation;
         }
 
-        if (hugBodySelfHandPositionOnly && IsDebugEnabled())
+        if (hugBodySelfHandPositionOnly)
         {
-            Vector3 e = GetControlRotation(fc).eulerAngles;
-            DebugLog("[HAND IK SNAP POS CLAMP] hand=" + (fc == rHandControl ? "R" : "L") +
+            string snapMsg = "[HAND IK SNAP POS CLAMP] hand=" + (fc == rHandControl ? "R" : "L") +
                 " reason=hug-body-keep-final-wrist-in" +
                 " clamp=" + Bool01(snapClamped) +
                 " max=" + HUG_BODY_IK_SNAP_MAX_OFFSET.ToString("F3", CultureInfo.InvariantCulture) +
@@ -6157,9 +6398,18 @@ public class TargetGrabber : MVRScript
                 " anchor=" + FormatVector3(snapAnchor) +
                 " body=" + FormatVector3(best.position) +
                 " applied=" + FormatVector3(snapPosition) +
-                " keepEuler=(" + e.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
-                    e.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
-                    e.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
+                " anchorToApplied=" + Vector3.Distance(snapAnchor, snapPosition).ToString("F3", CultureInfo.InvariantCulture);
+
+            DebugLog(snapMsg);
+
+            if (IsDebugEnabled())
+            {
+                Vector3 e = GetControlRotation(fc).eulerAngles;
+                DebugLog(snapMsg +
+                    " keepEuler=(" + e.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                        e.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                        e.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
+            }
         }
 
         return true;
@@ -6838,6 +7088,14 @@ public class TargetGrabber : MVRScript
         grabStartRotations.Clear();
         positionStateOnControls.Clear();
         rotationStateOnControls.Clear();
+        chestHoldFinalLeftLogged = false;
+        chestHoldFinalRightLogged = false;
+        chestHoldMovePointsLeftLogged = false;
+        chestHoldMovePointsRightLogged = false;
+        chestHoldEssentialTwoLineLogged = false;
+        chestHoldModeLogged = false;
+
+        UpdateChestHoldNippleIKStabilizeOnGrabStart(includeHands, useFinalGrabWidth);
 
         ApplyTemporaryHandRotationOffIfNeeded(includeHands);
 
@@ -6857,6 +7115,8 @@ public class TargetGrabber : MVRScript
             " controller=" + controllerDebug +
             " key=" + NormalizeControllerKey(controllerActual) +
             " nipple=" + Bool01(IsNipplePairControlName(controllerActual)));
+
+        LogChestHoldHugBodyRouteAlways("grab-start", includeHands, includeFeet, includeHead, useFinalGrabWidth, GetTargetCenter(), IsChestHoldTarget(), IsHipHoldMode(), IsTargetPairMode(), true);
 
         targetPelvisAutoOnGrabAppliedThisGrab = false;
 
@@ -6974,6 +7234,8 @@ public class TargetGrabber : MVRScript
         public bool leftPathRightSide;
         public bool rightPathRightSide;
         public bool useActorMidpointRoute;
+        public bool useHugBodyThreeStepRoute;
+        public Vector3 depthAxis;
         public string mode;
     }
 
@@ -6990,6 +7252,8 @@ public class TargetGrabber : MVRScript
         route.leftPathRightSide = !swapSidePaths;
         route.rightPathRightSide = swapSidePaths;
         route.useActorMidpointRoute = false;
+        route.useHugBodyThreeStepRoute = false;
+        route.depthAxis = Vector3.zero;
 
         if (ShouldUseActorViewHandRoute())
         {
@@ -7007,19 +7271,42 @@ public class TargetGrabber : MVRScript
         if (IsHugBodyTarget())
         {
             Vector3 depthAxis = GetFinalPointDepthAxis(targetCenter);
-            Vector3 sideAxis = GetFinalPointSideAxis(depthAxis, route.side);
+            Vector3 sideAxis = GetHugBodyWrapSideAxis(depthAxis, route.side);
+            bool backSide = IsTargetPersonMode() && selectedTargetPerson != null && !IsGrabberInFrontOfTargetPerson(targetCenter);
 
-            route.mode = "hug-body-final-point-midpoint";
-            route.handCenter = targetCenter + depthAxis * GetHugBodyFinalPointDepthOffset();
+            // v27:
+            // Hug Body is a wrap route, not a generic grab route.  The width itself can remain large,
+            // but the width must be applied on the actor's left/right wrap axis, and the hand must move
+            // in three explicit phases:
+            //   step1: open L/R from the current depth,
+            //   step2: move straight toward/past the chest while keeping that width,
+            //   step3: close toward the chest-front final point.
+            // Do not use the old approach-side/candidate layout to decide the spread direction.
+            route.mode = backSide ? "hug-body-back-three-step-wrap" : "hug-body-front-three-step-wrap";
+            route.handCenter = backSide ? targetCenter : targetCenter + depthAxis * GetHugBodyFinalPointDepthOffset();
             route.side = sideAxis;
             route.actorSpreadSide = sideAxis;
             route.pathWidth = Mathf.Min(GetGrabWidth(), HUG_BODY_HAND_WIDTH_CAP);
             route.useActorMidpointRoute = true;
+            route.useHugBodyThreeStepRoute = true;
+            route.depthAxis = depthAxis;
 
-            // For the final-point route, keep actual left hand on actor-left and right hand on actor-right.
-            // This avoids sameFacing/backSide/swapPath logic from changing the destination after the final points are built.
+            // Actual hands stay on actual body sides: L=actor-left, R=actor-right.
             route.leftPathRightSide = false;
             route.rightPathRightSide = true;
+
+            if (log)
+            {
+                DebugLog("[HUG BODY THREE STEP ROUTE]" +
+                    " mode=" + route.mode +
+                    " targetCenter=" + FormatVector3(targetCenter) +
+                    " finalCenter=" + FormatVector3(route.handCenter) +
+                    " depthAxis=" + FormatVector3(depthAxis) +
+                    " wrapSide=" + FormatVector3(sideAxis) +
+                    " pathWidth=" + route.pathWidth.ToString("F3", CultureInfo.InvariantCulture) +
+                    " finalWidth=" + GetFinalGrabWidth().ToString("F3", CultureInfo.InvariantCulture) +
+                    " backSide=" + Bool01(backSide));
+            }
         }
 
         if (log && IsDebugEnabled())
@@ -7033,6 +7320,8 @@ public class TargetGrabber : MVRScript
                 " handCenter=" + FormatVector3(route.handCenter) +
                 " side=" + FormatVector3(route.side) +
                 " actorSpreadSide=" + FormatVector3(route.actorSpreadSide) +
+                " depthAxis=" + FormatVector3(route.depthAxis) +
+                " threeStep=" + Bool01(route.useHugBodyThreeStepRoute) +
                 " pathWidth=" + route.pathWidth.ToString("F3", CultureInfo.InvariantCulture) +
                 " finalWidth=" + GetFinalGrabWidth().ToString("F3", CultureInfo.InvariantCulture) +
                 " hugMode=" + Bool01(IsHugMode()) +
@@ -7115,6 +7404,68 @@ public class TargetGrabber : MVRScript
         // Therefore do not flip this axis using selectedPerson.transform.right.
         return side.normalized;
     }
+    private Vector3 GetHugBodyWrapSideAxis(Vector3 depthAxis, Vector3 fallbackSide)
+    {
+        // v27:
+        // Hug Body opens the actor's own hands left/right while the forward motion still follows
+        // the actor-to-target chest direction.  Use actor-right projected onto the plane
+        // perpendicular to that chest direction; this avoids world-X matching and keeps diagonal
+        // standing positions valid, while preventing the old approach-side axis from sending an
+        // elbow behind the actor.
+        Vector3 depth = depthAxis;
+        depth.y = 0.0f;
+        if (depth.sqrMagnitude > 0.0001f)
+            depth.Normalize();
+
+        Vector3 actorRight = Vector3.zero;
+        if (selectedPerson != null && selectedPerson.transform != null)
+            actorRight = selectedPerson.transform.right;
+        actorRight.y = 0.0f;
+
+        Vector3 side = actorRight;
+        if (depth.sqrMagnitude > 0.0001f && side.sqrMagnitude > 0.0001f)
+            side = side - depth * Vector3.Dot(side, depth);
+
+        side.y = 0.0f;
+        if (side.sqrMagnitude < 0.0001f && depth.sqrMagnitude > 0.0001f)
+            side = Vector3.Cross(Vector3.up, depth);
+
+        side.y = 0.0f;
+        if (side.sqrMagnitude < 0.0001f)
+            side = fallbackSide;
+
+        side.y = 0.0f;
+        if (side.sqrMagnitude < 0.0001f)
+            side = Vector3.right;
+
+        side.Normalize();
+
+        // +side must be the actor's right side because GetSideOffset(true)=+side and the
+        // right hand uses pathRightSide=true.
+        actorRight.y = 0.0f;
+        if (actorRight.sqrMagnitude > 0.0001f && Vector3.Dot(side, actorRight.normalized) < 0.0f)
+            side = -side;
+
+        // v28:
+        // In unusual placements, root.right can still be misleading compared with the visible hand
+        // order.  Hug Body must open hands outward from their actual current body sides, so align
+        // +side with the current R-hand side as the final guard.  This only chooses the wrap axis
+        // sign; L/R assignment remains fixed as L=false, R=true in BuildHandFinalPointRoute().
+        if (lHandControl != null && rHandControl != null)
+        {
+            Vector3 handRight = GetControlPosition(rHandControl) - GetControlPosition(lHandControl);
+            handRight.y = 0.0f;
+            if (handRight.sqrMagnitude > 0.0001f)
+            {
+                handRight.Normalize();
+                if (Vector3.Dot(side, handRight) < 0.0f)
+                    side = -side;
+            }
+        }
+
+        return side.normalized;
+    }
+
 
     private bool ShouldUseActorViewHandRoute()
     {
@@ -7150,6 +7501,9 @@ public class TargetGrabber : MVRScript
 
     private Vector3 GetHandRouteMidPoint(HandFinalPointRoute route, bool pathRightSide, Vector3 finalPoint)
     {
+        if (route.useHugBodyThreeStepRoute)
+            return route.handCenter + GetSideOffset(pathRightSide, route.side, route.pathWidth);
+
         if (!route.useActorMidpointRoute)
             return route.handCenter + GetSideOffset(pathRightSide, route.side, route.pathWidth);
 
@@ -7191,7 +7545,9 @@ public class TargetGrabber : MVRScript
 
         AutoCloseGrabWidth();
 
-        bool nipplePairMode = IsNipplePairMode();
+        // v22: Chest Hold 専用処理を Hug Body へ漏らさない。
+        // IsNipplePairMode() は古い互換で control 名を拾うため、移動分岐には使わない。
+        bool nipplePairMode = IsChestHoldTarget();
         bool hipHoldMode = IsHipHoldMode();
         bool targetPairMode = IsTargetPairMode();
 
@@ -7204,17 +7560,22 @@ public class TargetGrabber : MVRScript
         LogSideDebug(center, handSide, footSide);
         bool swapSidePaths = ShouldSwapSidePaths(center);
         LogHandRotationDebug(swapSidePaths, center);
+        bool routeNormalLog = IsHugBodyTarget() || IsChestHoldTarget();
         bool logHandTargetsThisFrame = false;
-        if (IsDebugEnabled() && Time.time - lastHandTargetDebugTime >= 0.50f)
+        if ((IsDebugEnabled() || routeNormalLog) && Time.time - lastHandTargetDebugTime >= 0.50f)
         {
             logHandTargetsThisFrame = true;
             lastHandTargetDebugTime = Time.time;
         }
+
+        LogChestHoldHugBodyRouteAlways("apply-grab", includeHands, includeFeet, includeHead, false, center, nipplePairMode, hipHoldMode, targetPairMode, false);
+
         int moved = 0;
         moved += ApplyHeadGrabIfNeeded(immediate, includeHead, center);
 
         if (nipplePairMode && (includeHands || includeFeet))
         {
+            LogChestHoldHugBodyRouteAlways("branch-nipple-pair", includeHands, includeFeet, includeHead, false, center, nipplePairMode, hipHoldMode, targetPairMode, true);
             ApplyNipplePairGrab(immediate, includeHands, includeFeet, center, handCenter, footCenter, handSide);
             return;
         }
@@ -7233,6 +7594,9 @@ public class TargetGrabber : MVRScript
 
         if (includeHands)
         {
+            if (IsHugBodyTarget())
+                LogChestHoldHugBodyRouteAlways("branch-hug-body-hand-route", includeHands, includeFeet, includeHead, false, center, nipplePairMode, hipHoldMode, targetPairMode, true);
+
             HandFinalPointRoute handRoute = BuildHandFinalPointRoute(center, baseSide, swapSidePaths, logHandTargetsThisFrame);
             handCenter = handRoute.handCenter;
             handSide = handRoute.side;
@@ -7255,7 +7619,10 @@ public class TargetGrabber : MVRScript
                     : GetReachLimitedPosition(root, midDesired, GetMaxHandReach(), GetHandPalmOffset(), lHandControl, true, pathRightSide);
                 if (logHandTargetsThisFrame)
                     LogHandTargetDebug(false, lHandControl, root, midDesired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
-                MoveHandControlThenRotateViaMidpoint(lHandControl, midTarget, target, center, pathRightSide, false, immediate, handRoute.useActorMidpointRoute);
+                if (handRoute.useHugBodyThreeStepRoute)
+                    MoveHugBodyHandControlThreeStep(lHandControl, handRoute, pathRightSide, false, immediate, logHandTargetsThisFrame);
+                else
+                    MoveHandControlThenRotateViaMidpoint(lHandControl, midTarget, target, center, pathRightSide, false, immediate, handRoute.useActorMidpointRoute);
                 moved++;
             }
 
@@ -7273,7 +7640,10 @@ public class TargetGrabber : MVRScript
                     : GetReachLimitedPosition(root, midDesired, GetMaxHandReach(), GetHandPalmOffset(), rHandControl, true, pathRightSide);
                 if (logHandTargetsThisFrame)
                     LogHandTargetDebug(true, rHandControl, root, midDesired, target, center, handCenter, handSide, handPathWidth, pathRightSide, effectiveSwapSidePaths, immediate);
-                MoveHandControlThenRotateViaMidpoint(rHandControl, midTarget, target, center, pathRightSide, true, immediate, handRoute.useActorMidpointRoute);
+                if (handRoute.useHugBodyThreeStepRoute)
+                    MoveHugBodyHandControlThreeStep(rHandControl, handRoute, pathRightSide, true, immediate, logHandTargetsThisFrame);
+                else
+                    MoveHandControlThenRotateViaMidpoint(rHandControl, midTarget, target, center, pathRightSide, true, immediate, handRoute.useActorMidpointRoute);
                 moved++;
             }
         }
@@ -7499,6 +7869,83 @@ public class TargetGrabber : MVRScript
 
     private void ApplyNipplePairGrab(bool immediate, bool includeHands, bool includeFeet, Vector3 center, Vector3 handCenter, Vector3 footCenter, Vector3 side)
     {
+        LogChestHoldHugBodyRouteAlways("enter-apply-nipple-pair", includeHands, includeFeet, false, false, center, true, IsHipHoldMode(), IsTargetPairMode(), true);
+
+        // v22 hard gate: この関数は Chest Hold 専用。
+        // Hug Body や他ターゲットから呼ばれても nipple route に入らないよう即returnする。
+        if (!IsChestHoldTarget())
+        {
+            DebugLog("[CHEST HOLD ISOLATE ALERT] nipple-pair route blocked / controller=" +
+                (targetPersonPartChooser != null ? targetPersonPartChooser.val : "<null>") +
+                " / hugBody=" + Bool01(IsHugBodyTarget()) +
+                " / strictChest=" + Bool01(IsChestHoldTarget()) +
+                " / nippleCompat=" + Bool01(IsNipplePairMode()));
+            return;
+        }
+
+        Vector3 targetLeftNipple;
+        Vector3 targetRightNipple;
+        if (!TryGetTargetNipplePositions(out targetLeftNipple, out targetRightNipple))
+        {
+            SetStatus("Chest Hold invalid / target nipples not ready");
+            DebugLog("[CHEST HOLD] invalid nipples");
+            return;
+        }
+
+        Vector3 zOffset = GetNipplePairZOffsetVector();
+        targetLeftNipple += zOffset;
+        targetRightNipple += zOffset;
+
+        Vector3 chestHoldActualPairCenter = (targetLeftNipple + targetRightNipple) * 0.5f;
+        Vector3 chestHoldTargetSideAxis = GetChestHoldNippleSideAxis(targetLeftNipple, targetRightNipple, side);
+        bool relationValid;
+        bool mutualFront;
+        bool selfFacingTarget;
+        bool targetFacingSelf;
+        float selfLooksTarget;
+        float targetLooksSelf;
+        float rootDot;
+        relationValid = TryGetChestHoldMutualFrontRelation(
+            chestHoldActualPairCenter,
+            out mutualFront,
+            out selfFacingTarget,
+            out targetFacingSelf,
+            out selfLooksTarget,
+            out targetLooksSelf,
+            out rootDot
+        );
+
+        string relationRoute = GetChestHoldRelationRouteLabel(mutualFront, selfFacingTarget, targetFacingSelf, rootDot, relationValid);
+        LogChestHoldRelationClass(relationRoute, relationValid, mutualFront, selfFacingTarget, targetFacingSelf, selfLooksTarget, targetLooksSelf, rootDot, chestHoldActualPairCenter);
+
+        // v29: 正面どうし専用ルート。
+        // ここだけは既存のtarget正面側判定 / OrderHoldTargets / palm offsetを通さない。
+        // 目的はまず「向かい合わせ時に、相手nipple IKへ確実に届く」ことを確立すること。
+        // 自分前・相手後ろ等の非mutual-frontは既存Chest Holdへ流し、影響を分離する。
+        if (includeHands && relationValid && selfFacingTarget && targetFacingSelf)
+        {
+            if (!chestHoldModeLogged)
+            {
+                chestHoldModeLogged = true;
+                SuperController.LogMessage("[TargetGrabber] [CHEST HOLD MODE] mode=face / modeFront=1 / modeBack=0 / relation=mutual-facing" +
+                    " / selfFacingTarget=" + Bool01(selfFacingTarget) +
+                    " / targetFacingSelf=" + Bool01(targetFacingSelf) +
+                    " / selfLooksTarget=" + selfLooksTarget.ToString("F3", CultureInfo.InvariantCulture) +
+                    " / targetLooksSelf=" + targetLooksSelf.ToString("F3", CultureInfo.InvariantCulture) +
+                    " / rootDot=" + rootDot.ToString("F3", CultureInfo.InvariantCulture));
+            }
+            int mutualMoved = ApplyChestHoldFrontSimpleCrossHandGrab(immediate, targetLeftNipple, targetRightNipple, chestHoldActualPairCenter, chestHoldTargetSideAxis);
+            if (IsDebugEnabled())
+            {
+                SetStatus("Chest Hold / route=front-simple-cross" +
+                    " / moved=" + mutualMoved.ToString(CultureInfo.InvariantCulture) +
+                    " / follow=" + GetFollowMode() +
+                    " / time=" + GetMoveTLinear().ToString("F2", CultureInfo.InvariantCulture) +
+                    " / hug=" + (IsHugMode() ? "ON" : "OFF"));
+            }
+            return;
+        }
+
         Vector3 leftSideTarget;
         Vector3 rightSideTarget;
         string mode;
@@ -7510,9 +7957,27 @@ public class TargetGrabber : MVRScript
             return;
         }
 
-        Vector3 zOffset = GetNipplePairZOffsetVector();
         leftSideTarget += zOffset;
         rightSideTarget += zOffset;
+
+        // v82: Front(face) is deliberately simple and isolated.
+        // Do not pass through OrderHoldTargets / palm offset / side remap.
+        // Contract: R hand -> target left nipple, L hand -> target right nipple.
+        // Back route remains unchanged below.
+        if (includeHands && mode == "face")
+        {
+            int frontMoved = ApplyChestHoldFrontSimpleCrossHandGrab(immediate, targetLeftNipple, targetRightNipple, chestHoldActualPairCenter, chestHoldTargetSideAxis);
+            if (IsDebugEnabled())
+            {
+                SetStatus("Chest Hold / route=front-simple-cross" +
+                    " / moved=" + frontMoved.ToString(CultureInfo.InvariantCulture) +
+                    " / follow=" + GetFollowMode() +
+                    " / time=" + GetMoveTLinear().ToString("F2", CultureInfo.InvariantCulture) +
+                    " / hug=" + (IsHugMode() ? "ON" : "OFF"));
+            }
+            return;
+        }
+
         Vector3 footSide = GetFootSideAxis(side);
         Vector3 rawLeftSideTarget = leftSideTarget;
         Vector3 rawRightSideTarget = rightSideTarget;
@@ -7520,9 +7985,9 @@ public class TargetGrabber : MVRScript
         Vector3 rightHandTarget = rightSideTarget;
         Vector3 leftFootTarget = leftSideTarget;
         Vector3 rightFootTarget = rightSideTarget;
-        OrderHoldTargetsForHands(ref leftHandTarget, ref rightHandTarget, center, side);
+        OrderHoldTargetsForHands(ref leftHandTarget, ref rightHandTarget, chestHoldActualPairCenter, chestHoldTargetSideAxis);
         OrderHoldTargetsForFeet(ref leftFootTarget, ref rightFootTarget, center, side);
-        LogHoldTargetOrder("Chest Hold", mode, rawLeftSideTarget, rawRightSideTarget, leftHandTarget, rightHandTarget, center, side);
+        LogHoldTargetOrder("Chest Hold", mode, rawLeftSideTarget, rawRightSideTarget, leftHandTarget, rightHandTarget, chestHoldActualPairCenter, chestHoldTargetSideAxis);
         LogHoldFootTargetOrder("Chest Hold", mode, rawLeftSideTarget, rawRightSideTarget, leftFootTarget, rightFootTarget, center, side);
 
         int moved = 0;
@@ -7530,27 +7995,117 @@ public class TargetGrabber : MVRScript
         if (includeHands)
         {
             bool crossedTargets = mode == "face";
-            bool leftTargetRightSide = IsTargetOnPositiveSide(leftHandTarget, center, side);
-            bool rightTargetRightSide = IsTargetOnPositiveSide(rightHandTarget, center, side);
+            Vector3 chestHoldPairCenter = (rawLeftSideTarget + rawRightSideTarget) * 0.5f;
+            bool chestHoldVisualFrontSide = IsChestHoldFrontSideByTargetVisualSide(chestHoldPairCenter, mode);
+            bool chestHoldFrontSide = IsChestHoldFrontSideFromMode(mode);
+            bool chestHoldBackMode = !chestHoldFrontSide;
+
+            // v64: Chest Holdの実処理/通常ログは位置(posFront)ではなく mode(face/back) を優先する。
+            // 例: target-front-self-back は posFront=1 でも mode=back なので、Back reachログ/Back reach処理に入れる。
+            // chestHoldVisualFrontSide はログ/確認用。
+            if (!chestHoldModeLogged)
+            {
+                chestHoldModeLogged = true;
+                SuperController.LogMessage("[TargetGrabber] [CHEST HOLD MODE]" +
+                    " mode=" + (mode ?? "") +
+                    " / modeFront=" + Bool01(chestHoldFrontSide) +
+                    " / modeBack=" + Bool01(chestHoldBackMode) +
+                    " / visualFront=" + Bool01(chestHoldVisualFrontSide) +
+                    " / visualBack=" + Bool01(!chestHoldVisualFrontSide));
+            }
+
+            // v21: 背面Chest HoldはL hand->L nipple / R hand->R nipple固定。v20のLR swapは不採用。
+            // ここで並べ替えを残すと、背面2段階viaの最終収束先が左右入れ替わり、
+            // 右手が左nipple側へ行くように見えるケースがある。
+            // front側は従来どおり、face時の見た目左右/近い手割当を維持する。
+            if (chestHoldBackMode)
+            {
+                leftHandTarget = rawLeftSideTarget;
+                rightHandTarget = rawRightSideTarget;
+
+                if (IsDebugEnabled())
+                {
+                    DebugLog("[CHEST HOLD BACK LR RESTORE] mode=" + (mode ?? "") +
+                        " / front=" + Bool01(chestHoldFrontSide) +
+                        " / rawL=" + FormatVector3(rawLeftSideTarget) +
+                        " / rawR=" + FormatVector3(rawRightSideTarget) +
+                        " / usedL=" + FormatVector3(leftHandTarget) +
+                        " / usedR=" + FormatVector3(rightHandTarget) +
+                        " / pairCenter=" + FormatVector3(chestHoldPairCenter) +
+                        " / targetSideAxis=" + FormatVector3(chestHoldTargetSideAxis));
+                }
+            }
+
+            bool leftTargetRightSide = IsTargetOnPositiveSide(leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis);
+            bool rightTargetRightSide = IsTargetOnPositiveSide(rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis);
+
+            Vector3 chestHoldBackStep2Left = Vector3.zero;
+            Vector3 chestHoldBackStep2Right = Vector3.zero;
+            Vector3 chestHoldBackStep3Left = Vector3.zero;
+            Vector3 chestHoldBackStep3Right = Vector3.zero;
+            bool hasChestHoldBackReachTargets = false;
+            if (chestHoldBackMode)
+            {
+                // v73 steps:
+                // step2 = current approved side reach position, nipple offset 0.000
+                // step3 = same side reach position plus Chest Hold Back Nipple Offset slider, default -0.030
+                // step4 = Wrist In after step3 is reached
+                chestHoldBackStep2Left = GetChestHoldBackPassOffsetTargetWithOffset(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false, 0.0f);
+                chestHoldBackStep2Right = GetChestHoldBackPassOffsetTargetWithOffset(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true, 0.0f);
+                chestHoldBackStep3Left = GetChestHoldBackPassOffsetTarget(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false);
+                chestHoldBackStep3Right = GetChestHoldBackPassOffsetTarget(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true);
+                hasChestHoldBackReachTargets = true;
+                // Existing log names map as:
+                // reachBase = step2, reachAdj = step3, final = nipple.
+                LogChestHoldEssentialTwoLineAlways(chestHoldBackStep3Right, chestHoldBackStep3Left, rightHandTarget, leftHandTarget);
+            }
 
             if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
             {
-                Vector3 leftRoot = GetHandRootPosition(false);
-                Vector3 leftSideGrabTarget = GetNipplePairSideGrabTarget(leftHandTarget, side, leftTargetRightSide);
-                Vector3 target = GetNipplePairHandTarget(leftRoot, leftSideGrabTarget, lHandControl, false);
-                LogHoldHandTarget("Chest Hold", mode, false, leftHandTarget, leftSideGrabTarget, target, leftRoot, side, leftTargetRightSide, center, immediate);
-                MoveControl(lHandControl, target, Quaternion.identity, false, immediate);
-                moved++;
+                if (chestHoldBackMode)
+                {
+                    Vector3 step2 = hasChestHoldBackReachTargets ? chestHoldBackStep2Left : GetChestHoldBackPassOffsetTargetWithOffset(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false, 0.0f);
+                    Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Left : GetChestHoldBackPassOffsetTarget(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false);
+                    MoveChestHoldBackStep2Step3Control(lHandControl, step2, step3, immediate);
+                    ApplyChestHoldBackWristInAtStep4(lHandControl, leftHandTarget, false, immediate);
+                    moved++;
+                }
+                else
+                {
+                    Vector3 leftRoot = GetHandRootPosition(false);
+                    Vector3 leftSideGrabTarget = GetNipplePairSideGrabTarget(leftHandTarget, chestHoldTargetSideAxis, leftTargetRightSide);
+                    Vector3 leftPalmTarget = GetChestHoldAdjustedPalmTarget(leftHandTarget, false, chestHoldFrontSide);
+                    Vector3 target = GetChestHoldPalmCenteredWristTarget(lElbowControl, lHandControl, leftPalmTarget, false, chestHoldFrontSide);
+                    LogHoldHandTarget("Chest Hold", mode, false, leftHandTarget, leftSideGrabTarget, target, leftRoot, chestHoldTargetSideAxis, leftTargetRightSide, chestHoldPairCenter, immediate);
+                    MoveChestHoldHandControl(lHandControl, target, leftPalmTarget, false, immediate, chestHoldFrontSide, chestHoldPairCenter, chestHoldTargetSideAxis, leftTargetRightSide, leftHandTarget);
+                    ApplyChestHoldFrontUpBackInWrist(lHandControl, leftPalmTarget, false, immediate, chestHoldFrontSide);
+                    LogChestHoldFinalHandNipplePosition(lHandControl, leftHandTarget, leftPalmTarget, false, immediate, chestHoldFrontSide);
+                    moved++;
+                }
             }
 
             if (rightHandJSON != null && rightHandJSON.val && rHandControl != null)
             {
-                Vector3 rightRoot = GetHandRootPosition(true);
-                Vector3 rightSideGrabTarget = GetNipplePairSideGrabTarget(rightHandTarget, side, rightTargetRightSide);
-                Vector3 target = GetNipplePairHandTarget(rightRoot, rightSideGrabTarget, rHandControl, true);
-                LogHoldHandTarget("Chest Hold", mode, true, rightHandTarget, rightSideGrabTarget, target, rightRoot, side, rightTargetRightSide, center, immediate);
-                MoveControl(rHandControl, target, Quaternion.identity, false, immediate);
-                moved++;
+                if (chestHoldBackMode)
+                {
+                    Vector3 step2 = hasChestHoldBackReachTargets ? chestHoldBackStep2Right : GetChestHoldBackPassOffsetTargetWithOffset(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true, 0.0f);
+                    Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Right : GetChestHoldBackPassOffsetTarget(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true);
+                    MoveChestHoldBackStep2Step3Control(rHandControl, step2, step3, immediate);
+                    ApplyChestHoldBackWristInAtStep4(rHandControl, rightHandTarget, true, immediate);
+                    moved++;
+                }
+                else
+                {
+                    Vector3 rightRoot = GetHandRootPosition(true);
+                    Vector3 rightSideGrabTarget = GetNipplePairSideGrabTarget(rightHandTarget, chestHoldTargetSideAxis, rightTargetRightSide);
+                    Vector3 rightPalmTarget = GetChestHoldAdjustedPalmTarget(rightHandTarget, true, chestHoldFrontSide);
+                    Vector3 target = GetChestHoldPalmCenteredWristTarget(rElbowControl, rHandControl, rightPalmTarget, true, chestHoldFrontSide);
+                    LogHoldHandTarget("Chest Hold", mode, true, rightHandTarget, rightSideGrabTarget, target, rightRoot, chestHoldTargetSideAxis, rightTargetRightSide, chestHoldPairCenter, immediate);
+                    MoveChestHoldHandControl(rHandControl, target, rightPalmTarget, true, immediate, chestHoldFrontSide, chestHoldPairCenter, chestHoldTargetSideAxis, rightTargetRightSide, rightHandTarget);
+                    ApplyChestHoldFrontUpBackInWrist(rHandControl, rightPalmTarget, true, immediate, chestHoldFrontSide);
+                    LogChestHoldFinalHandNipplePosition(rHandControl, rightHandTarget, rightPalmTarget, true, immediate, chestHoldFrontSide);
+                    moved++;
+                }
             }
         }
 
@@ -7865,6 +8420,252 @@ public class TargetGrabber : MVRScript
         }
     }
 
+
+    private bool TryGetChestHoldMutualFrontRelation(Vector3 targetPoint, out bool mutualFront, out bool selfFacingTarget, out bool targetFacingSelf, out float selfLooksTarget, out float targetLooksSelf, out float rootDot)
+    {
+        mutualFront = false;
+        selfFacingTarget = false;
+        targetFacingSelf = false;
+        selfLooksTarget = 0.0f;
+        targetLooksSelf = 0.0f;
+        rootDot = 0.0f;
+
+        if (selectedPerson == null || selectedPerson.transform == null || selectedTargetPerson == null || selectedTargetPerson.transform == null)
+            return false;
+
+        Vector3 selfPos = selectedPerson.transform.position;
+        if (chestControl != null)
+            selfPos = chestControl.control != null ? chestControl.control.position : chestControl.transform.position;
+
+        Vector3 toTarget = targetPoint - selfPos;
+        Vector3 toSelf = selfPos - targetPoint;
+        // v83: Chest Hold front/back relation must use the body/chest facing used by nipple route,
+        // not only Person root facing. Root can remain same-facing while the actual chest/front pose is face-to-face.
+        Vector3 selfForward = GetNipplePairActorForwardAxis();
+        Vector3 targetForward = GetNipplePairTargetForwardAxis();
+
+        toTarget.y = 0.0f;
+        toSelf.y = 0.0f;
+        selfForward.y = 0.0f;
+        targetForward.y = 0.0f;
+
+        if (toTarget.sqrMagnitude < 0.0001f || toSelf.sqrMagnitude < 0.0001f || selfForward.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
+            return false;
+
+        toTarget.Normalize();
+        toSelf.Normalize();
+        selfForward.Normalize();
+        targetForward.Normalize();
+
+        selfLooksTarget = Vector3.Dot(selfForward, toTarget);
+        targetLooksSelf = Vector3.Dot(targetForward, toSelf);
+        rootDot = Vector3.Dot(selfForward, targetForward);
+
+        selfFacingTarget = selfLooksTarget >= CHEST_HOLD_MUTUAL_FACE_DOT;
+        targetFacingSelf = targetLooksSelf >= CHEST_HOLD_MUTUAL_FACE_DOT;
+        mutualFront = selfFacingTarget && targetFacingSelf && rootDot <= CHEST_HOLD_MUTUAL_ROOT_OPPOSITE_DOT;
+        return true;
+    }
+
+    private string GetChestHoldRelationRouteLabel(bool mutualFront, bool selfFacingTarget, bool targetFacingSelf, float rootDot, bool relationValid)
+    {
+        if (!relationValid)
+            return "relation-invalid-legacy";
+        if (mutualFront)
+            return "mutual-front-exact";
+        if (selfFacingTarget && !targetFacingSelf)
+            return "self-front-target-back-legacy";
+        if (!selfFacingTarget && targetFacingSelf)
+            return "target-front-self-back-legacy";
+        if (rootDot > 0.35f)
+            return "same-facing-legacy";
+        return "diagonal-legacy";
+    }
+
+    private void LogChestHoldRelationClass(string route, bool relationValid, bool mutualFront, bool selfFacingTarget, bool targetFacingSelf, float selfLooksTarget, float targetLooksSelf, float rootDot, Vector3 targetPoint)
+    {
+        if (!IsDebugEnabled())
+            return;
+
+        DebugLog("[CHEST HOLD RELATION] route=" + (route ?? "") +
+            " / valid=" + Bool01(relationValid) +
+            " / mutualFront=" + Bool01(mutualFront) +
+            " / selfFacingTarget=" + Bool01(selfFacingTarget) +
+            " / targetFacingSelf=" + Bool01(targetFacingSelf) +
+            " / selfLooksTarget=" + selfLooksTarget.ToString("F3", CultureInfo.InvariantCulture) +
+            " / targetLooksSelf=" + targetLooksSelf.ToString("F3", CultureInfo.InvariantCulture) +
+            " / rootDot=" + rootDot.ToString("F3", CultureInfo.InvariantCulture) +
+            " / targetPoint=" + FormatVector3(targetPoint));
+    }
+
+    private Vector3 GetChestHoldNippleSideAxis(Vector3 targetLeftNipple, Vector3 targetRightNipple, Vector3 fallbackSide)
+    {
+        Vector3 side = targetRightNipple - targetLeftNipple;
+        side.y = 0.0f;
+        if (side.sqrMagnitude < 0.0001f)
+        {
+            side = fallbackSide;
+            side.y = 0.0f;
+        }
+        if (side.sqrMagnitude < 0.0001f)
+            side = selectedTargetPerson != null && selectedTargetPerson.transform != null ? selectedTargetPerson.transform.right : Vector3.right;
+        side.y = 0.0f;
+        if (side.sqrMagnitude < 0.0001f)
+            side = Vector3.right;
+        return side.normalized;
+    }
+
+    private Vector3 GetChestHoldFrontHandForwardAxis(bool rightHand, Vector3 assignedNippleWithDown, Vector3 fallbackAxis)
+    {
+        // v87:
+        // Do NOT use current hand IK/grab-start hand position here.
+        // After one Grab, the hand position is already moved, so pressing Grab again changes the axis.
+        // Use a stable body/chest anchor instead: self body -> assigned nipple route.
+        Vector3 anchor = GetHandRootPosition(rightHand);
+        Vector3 axis = assignedNippleWithDown - anchor;
+        axis.y = 0.0f;
+
+        if (axis.sqrMagnitude < 0.0001f)
+        {
+            axis = fallbackAxis;
+            axis.y = 0.0f;
+        }
+        if (axis.sqrMagnitude < 0.0001f && selectedTargetPerson != null && selectedTargetPerson.transform != null)
+        {
+            axis = selectedTargetPerson.transform.forward;
+            axis.y = 0.0f;
+        }
+        if (axis.sqrMagnitude < 0.0001f)
+            axis = Vector3.forward;
+        return axis.normalized;
+    }
+
+    private int ApplyChestHoldFrontSimpleCrossHandGrab(bool immediate, Vector3 targetLeftNipple, Vector3 targetRightNipple, Vector3 center, Vector3 side)
+    {
+        int moved = 0;
+
+        Vector3 fallbackFrontAxis = Vector3.forward;
+        if (selectedTargetPerson != null && selectedTargetPerson.transform != null)
+            fallbackFrontAxis = selectedTargetPerson.transform.forward;
+        fallbackFrontAxis.y = 0.0f;
+        if (fallbackFrontAxis.sqrMagnitude < 0.0001f)
+            fallbackFrontAxis = Vector3.forward;
+        fallbackFrontAxis.Normalize();
+
+        Vector3 step2DownOffset = Vector3.down * CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN;
+        Vector3 finalDownOffset = Vector3.down * CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN;
+
+        // v88 Front contract:
+        // R hand -> target left nipple. L hand -> target right nipple.
+        // step2: assigned nipple + 10cm down + 1cm stable hand-forward + 3cm inward.
+        // step3/final: assigned nipple + 8cm down + 6cm stable hand-forward + 3cm inward.
+        // "front" is stable self-body/chest anchor -> assigned nipple route.
+        // It must not use current hand IK position, or repeated Grab changes the axis.
+        Vector3 frontNippleSideAxis = GetChestHoldNippleSideAxis(targetLeftNipple, targetRightNipple, side);
+        Vector3 rightInward = frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_INWARD;   // target left nipple -> pair center/right nipple
+        Vector3 leftInward = -frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_INWARD;   // target right nipple -> pair center/left nipple
+
+        Vector3 leftStep2Base = targetRightNipple + step2DownOffset + leftInward;
+        Vector3 leftFinalBase = targetRightNipple + finalDownOffset + leftInward;
+        Vector3 rightStep2Base = targetLeftNipple + step2DownOffset + rightInward;
+        Vector3 rightFinalBase = targetLeftNipple + finalDownOffset + rightInward;
+
+        Vector3 leftFrontAxis = GetChestHoldFrontHandForwardAxis(false, leftFinalBase, fallbackFrontAxis);
+        Vector3 rightFrontAxis = GetChestHoldFrontHandForwardAxis(true, rightFinalBase, fallbackFrontAxis);
+
+        Vector3 leftStep2 = leftStep2Base + leftFrontAxis * CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD;
+        Vector3 leftFinal = leftFinalBase + leftFrontAxis * CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD;
+        Vector3 rightStep2 = rightStep2Base + rightFrontAxis * CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD;
+        Vector3 rightFinal = rightFinalBase + rightFrontAxis * CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD;
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD FRONT SIMPLE] assign=R->targetL/L->targetR / route=stable-body-axis-step2-down10-front1-in3-step3-down8-front6-in3" +
+                " / center=" + FormatVector3(center) +
+                " / targetL=" + FormatVector3(targetLeftNipple) +
+                " / targetR=" + FormatVector3(targetRightNipple) +
+                " / side=" + FormatVector3(side) +
+                " / frontNippleSideAxis=" + FormatVector3(frontNippleSideAxis) +
+                " / rightInward=" + FormatVector3(rightInward) +
+                " / leftInward=" + FormatVector3(leftInward) +
+                " / axisSource=self-body-anchor / fallbackFrontAxis=" + FormatVector3(fallbackFrontAxis) +
+                " / rightFrontAxis=" + FormatVector3(rightFrontAxis) +
+                " / leftFrontAxis=" + FormatVector3(leftFrontAxis) +
+                " / step2Down=" + CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN.ToString("F3", CultureInfo.InvariantCulture) +
+                " / finalDown=" + CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN.ToString("F3", CultureInfo.InvariantCulture) +
+                " / inward=" + CHEST_HOLD_FRONT_SIMPLE_INWARD.ToString("F3", CultureInfo.InvariantCulture) +
+                " / step2Front=" + CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD.ToString("F3", CultureInfo.InvariantCulture) +
+                " / finalFront=" + CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD.ToString("F3", CultureInfo.InvariantCulture) +
+                " / rightStep2=" + FormatVector3(rightStep2) +
+                " / rightFinal=" + FormatVector3(rightFinal) +
+                " / leftStep2=" + FormatVector3(leftStep2) +
+                " / leftFinal=" + FormatVector3(leftFinal));
+        }
+
+        // L hand goes to target right nipple route.
+        if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
+        {
+            Vector3 leftRoot = GetHandRootPosition(false);
+            LogHoldHandTarget("Chest Hold", "front-simple-cross", false, leftFinal, leftStep2, leftFinal, leftRoot, side, true, center, immediate);
+            MoveChestHoldBackStep2Step3Control(lHandControl, leftStep2, leftFinal, immediate);
+            ApplyChestHoldFrontUpBackInWrist(lHandControl, leftFinal, false, immediate, true);
+            LogChestHoldFinalHandNipplePosition(lHandControl, leftFinal, leftFinal, false, immediate, true);
+            moved++;
+        }
+
+        // R hand goes to target left nipple route.
+        if (rightHandJSON != null && rightHandJSON.val && rHandControl != null)
+        {
+            Vector3 rightRoot = GetHandRootPosition(true);
+            LogHoldHandTarget("Chest Hold", "front-simple-cross", true, rightFinal, rightStep2, rightFinal, rightRoot, side, false, center, immediate);
+            MoveChestHoldBackStep2Step3Control(rHandControl, rightStep2, rightFinal, immediate);
+            ApplyChestHoldFrontUpBackInWrist(rHandControl, rightFinal, true, immediate, true);
+            LogChestHoldFinalHandNipplePosition(rHandControl, rightFinal, rightFinal, true, immediate, true);
+            moved++;
+        }
+
+        return moved;
+    }
+
+    private int ApplyChestHoldMutualFrontExactHandGrab(bool immediate, Vector3 targetLeftNipple, Vector3 targetRightNipple, Vector3 center, Vector3 fallbackSide)
+    {
+        int moved = 0;
+        Vector3 side = GetChestHoldNippleSideAxis(targetLeftNipple, targetRightNipple, fallbackSide);
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD MUTUAL FRONT ROUTE] assign=L->targetR/R->targetL / exactNipple=1" +
+                " / center=" + FormatVector3(center) +
+                " / targetL=" + FormatVector3(targetLeftNipple) +
+                " / targetR=" + FormatVector3(targetRightNipple) +
+                " / side=" + FormatVector3(side));
+        }
+
+        if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
+        {
+            Vector3 leftTarget = targetRightNipple;
+            Vector3 leftRoot = GetHandRootPosition(false);
+            LogHoldHandTarget("Chest Hold", "mutual-front-exact", false, leftTarget, leftTarget, leftTarget, leftRoot, side, true, center, immediate);
+            MoveChestHoldHandControl(lHandControl, leftTarget, leftTarget, false, immediate, true, center, side, true, leftTarget);
+            ApplyChestHoldFrontUpBackInWrist(lHandControl, leftTarget, false, immediate, true);
+            LogChestHoldFinalHandNipplePosition(lHandControl, leftTarget, leftTarget, false, immediate, true);
+            moved++;
+        }
+
+        if (rightHandJSON != null && rightHandJSON.val && rHandControl != null)
+        {
+            Vector3 rightTarget = targetLeftNipple;
+            Vector3 rightRoot = GetHandRootPosition(true);
+            LogHoldHandTarget("Chest Hold", "mutual-front-exact", true, rightTarget, rightTarget, rightTarget, rightRoot, side, false, center, immediate);
+            MoveChestHoldHandControl(rHandControl, rightTarget, rightTarget, true, immediate, true, center, side, false, rightTarget);
+            ApplyChestHoldFrontUpBackInWrist(rHandControl, rightTarget, true, immediate, true);
+            LogChestHoldFinalHandNipplePosition(rHandControl, rightTarget, rightTarget, true, immediate, true);
+            moved++;
+        }
+
+        return moved;
+    }
+
     private bool TryGetAssignedNippleTargets(out Vector3 leftSideTarget, out Vector3 rightSideTarget, out string mode)
     {
         leftSideTarget = Vector3.zero;
@@ -7879,8 +8680,41 @@ public class TargetGrabber : MVRScript
         if (!TryGetTargetNipplePositions(out targetLeftNipple, out targetRightNipple))
             return false;
 
-        Vector3 actorForward = GetSelectedPersonForwardAxis();
-        Vector3 targetForward = GetTargetPersonForwardAxis();
+        // v83: Chest Hold face/back is a relation problem, not a root-dot-only problem.
+        // Prefer chest/nipple facing axes so face-to-face does not fall into Back when Person roots happen to be same-facing.
+        Vector3 pairCenter = (targetLeftNipple + targetRightNipple) * 0.5f;
+        bool relationValid;
+        bool mutualFront;
+        bool selfFacingTarget;
+        bool targetFacingSelf;
+        float selfLooksTarget;
+        float targetLooksSelf;
+        float rootDot;
+        relationValid = TryGetChestHoldMutualFrontRelation(
+            pairCenter,
+            out mutualFront,
+            out selfFacingTarget,
+            out targetFacingSelf,
+            out selfLooksTarget,
+            out targetLooksSelf,
+            out rootDot
+        );
+
+        if (relationValid && selfFacingTarget && targetFacingSelf)
+        {
+            // 向かい合い: R hand -> target L nipple, L hand -> target R nipple.
+            leftSideTarget = targetRightNipple;
+            rightSideTarget = targetLeftNipple;
+            mode = "face";
+            DebugLog("[CHEST HOLD] mode=face relation=mutual-facing" +
+                " selfLooksTarget=" + selfLooksTarget.ToString("F3", CultureInfo.InvariantCulture) +
+                " targetLooksSelf=" + targetLooksSelf.ToString("F3", CultureInfo.InvariantCulture) +
+                " rootDot=" + rootDot.ToString("F3", CultureInfo.InvariantCulture));
+            return true;
+        }
+
+        Vector3 actorForward = GetNipplePairActorForwardAxis();
+        Vector3 targetForward = GetNipplePairTargetForwardAxis();
 
         if (actorForward.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
             return false;
@@ -7901,7 +8735,6 @@ public class TargetGrabber : MVRScript
 
         if (dot < -0.70f)
         {
-            // 向かい合い: 見た目上の左右に合わせるためクロス割当。
             leftSideTarget = targetRightNipple;
             rightSideTarget = targetLeftNipple;
             mode = "face";
@@ -8172,6 +9005,20 @@ public class TargetGrabber : MVRScript
             return forward.normalized;
 
         return Vector3.forward;
+    }
+
+    private Vector3 GetTargetPersonRightAxis()
+    {
+        // v52: Target-local right axis for Chest Hold back pass test.
+        // Root basis only; do not use self/hand position.
+        if (selectedTargetPerson == null || selectedTargetPerson.transform == null)
+            return Vector3.right;
+
+        Vector3 right = selectedTargetPerson.transform.right;
+        if (right.sqrMagnitude > 0.0001f)
+            return right.normalized;
+
+        return Vector3.right;
     }
 
     private Vector3 GetSelectedPersonForwardAxis()
@@ -9425,7 +10272,7 @@ public class TargetGrabber : MVRScript
         bool reachClamp = (finalTarget - sideTarget).sqrMagnitude > 0.000001f;
         float finalError = (finalTarget - sideTarget).magnitude;
 
-        DebugLog("[HOLD HAND TARGET] controller=" + controller +
+        string holdHandTargetMessage = "[HOLD HAND TARGET] controller=" + controller +
             " mode=" + mode +
             " hand=" + (rightHand ? "R" : "L") +
             " immediate=" + Bool01(immediate) +
@@ -9456,7 +10303,9 @@ public class TargetGrabber : MVRScript
             " sideTarget=" + FormatVector3(sideTarget) +
             " pathStart=" + FormatVector3(start) +
             " pathNext=" + FormatVector3(next) +
-            " pathEnd=" + FormatVector3(finalTarget));
+            " pathEnd=" + FormatVector3(finalTarget);
+
+        DebugLog(holdHandTargetMessage);
     }
 
     private void LogHandTargetDebug(
@@ -9473,7 +10322,8 @@ public class TargetGrabber : MVRScript
         bool swapSidePaths,
         bool immediate)
     {
-        if (!IsDebugEnabled())
+        bool forceNormal = IsHugBodyTarget() || IsChestHoldTarget();
+        if (!IsDebugEnabled() && !forceNormal)
             return;
 
         Vector3 start = Vector3.zero;
@@ -9514,7 +10364,7 @@ public class TargetGrabber : MVRScript
         bool targetChanged = (finalTarget - desired).sqrMagnitude > 0.000001f;
         bool reachClamp = targetChanged && maxReach > 0.0001f && rootToFinal >= maxReach - 0.0005f;
 
-        DebugLog("[HAND TARGET] controller=" + (targetPersonPartChooser != null ? targetPersonPartChooser.val : "<null>") +
+        string handTargetMessage = "[HAND TARGET] controller=" + (targetPersonPartChooser != null ? targetPersonPartChooser.val : "<null>") +
             " hand=" + (rightHand ? "R" : "L") +
             " immediate=" + Bool01(immediate) +
             " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
@@ -9548,7 +10398,97 @@ public class TargetGrabber : MVRScript
             " pathStart=" + FormatVector3(start) +
             " pathCurrent=" + FormatVector3(current) +
             " pathNext=" + FormatVector3(next) +
-            " pathEnd=" + FormatVector3(finalTarget));
+            " pathEnd=" + FormatVector3(finalTarget);
+
+        DebugLog(handTargetMessage);
+    }
+
+    private void LogChestHoldHugBodyRouteAlways(
+        string stage,
+        bool includeHands,
+        bool includeFeet,
+        bool includeHead,
+        bool useFinalGrabWidth,
+        Vector3 center,
+        bool nipplePairRoute,
+        bool hipHoldMode,
+        bool targetPairMode,
+        bool force)
+    {
+        bool hugBody = IsHugBodyTarget();
+        bool strictChest = IsChestHoldTarget();
+        bool nippleCompat = IsNipplePairMode();
+        if (!force && !hugBody && !strictChest && !nippleCompat)
+            return;
+
+        if (!force && Time.time - lastRouteCheckLogTime < 0.50f)
+            return;
+        lastRouteCheckLogTime = Time.time;
+
+        string choice = targetPersonPartChooser != null ? targetPersonPartChooser.val : "<null>";
+        string actual = GetTargetControllerActualName(choice);
+        string targetUid = selectedTargetPerson != null ? selectedTargetPerson.uid : "<null>";
+        string selfUid = selectedPerson != null ? selectedPerson.uid : "<null>";
+
+        FreeControllerV3 targetChest = null;
+        FreeControllerV3 lNipple = null;
+        FreeControllerV3 rNipple = null;
+        if (selectedTargetPerson != null)
+        {
+            targetChest = GetTargetPersonControlByAliases("chestControl", "chest");
+            lNipple = GetTargetPersonControlByAliases("lNippleControl", "leftNippleControl", "lNipple", "lnipple", "leftNipple", "LeftNipple", "nipple_l", "nippleL");
+            rNipple = GetTargetPersonControlByAliases("rNippleControl", "rightNippleControl", "rNipple", "rnipple", "rightNipple", "RightNipple", "nipple_r", "nippleR");
+        }
+
+        Vector3 chestPos = GetControlPositionSafe(targetChest);
+        Vector3 lPos = GetControlPositionSafe(lNipple);
+        Vector3 rPos = GetControlPositionSafe(rNipple);
+        float chestDelta = targetChest != null ? (center - chestPos).magnitude : -1.0f;
+        float lDist = lNipple != null ? (center - lPos).magnitude : -1.0f;
+        float rDist = rNipple != null ? (center - rPos).magnitude : -1.0f;
+
+        DebugLog("[ROUTE CHECK] stage=" + stage +
+            " / choice=" + choice +
+            " / actual=" + actual +
+            " / self=" + selfUid +
+            " / target=" + targetUid +
+            " / hugBody=" + Bool01(hugBody) +
+            " / strictChest=" + Bool01(strictChest) +
+            " / nippleCompat=" + Bool01(nippleCompat) +
+            " / nippleRoute=" + Bool01(nipplePairRoute) +
+            " / hipHold=" + Bool01(hipHoldMode) +
+            " / targetPair=" + Bool01(targetPairMode) +
+            " / includeHands=" + Bool01(includeHands) +
+            " / includeFeet=" + Bool01(includeFeet) +
+            " / includeHead=" + Bool01(includeHead) +
+            " / useFinalWidth=" + Bool01(useFinalGrabWidth) +
+            " / follow=" + GetFollowMode() +
+            " / active=" + Bool01(hasActiveGrab) +
+            " / t=" + GetMoveTLinear().ToString("F3", CultureInfo.InvariantCulture) +
+            " / center=" + FormatVector3(center) +
+            " / targetChest=" + (targetChest != null ? FormatVector3(chestPos) : "<none>") +
+            " / centerToTargetChest=" + chestDelta.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lNipple=" + (lNipple != null ? FormatVector3(lPos) : "<none>") +
+            " / rNipple=" + (rNipple != null ? FormatVector3(rPos) : "<none>") +
+            " / centerToL=" + lDist.ToString("F3", CultureInfo.InvariantCulture) +
+            " / centerToR=" + rDist.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private Vector3 GetControlPositionSafe(FreeControllerV3 fc)
+    {
+        if (fc == null)
+            return Vector3.zero;
+
+        try
+        {
+            if (fc.control != null)
+                return fc.control.position;
+            return fc.transform.position;
+        }
+        catch
+        {
+            return Vector3.zero;
+        }
     }
 
     private string FormatVector3(Vector3 value)
@@ -10403,6 +11343,17 @@ public class TargetGrabber : MVRScript
 
     private WristArmPose GetWristButtonArmPose(string mode)
     {
+        if (mode == "In2")
+        {
+            // Wrist In2: use the verified Wrist In arm/elbow pose, but bend the hand rotations
+            // in the opposite direction from v80 and a little stronger.  This keeps the button/test
+            // independent from chest-hold position and avoids fixed world Euler angles.
+            WristArmPose inPose = GetWristButtonArmPose("In");
+            inPose.RHand.LocalRot = NormalizeQuaternionRaw(inPose.RHand.LocalRot * Quaternion.Euler(0.0f, 0.0f, -45.0f));
+            inPose.LHand.LocalRot = NormalizeQuaternionRaw(inPose.LHand.LocalRot * Quaternion.Euler(0.0f, 0.0f, 45.0f));
+            return inPose;
+        }
+
         if (mode == "In")
         {
             return new WristArmPose(
@@ -10741,7 +11692,9 @@ public class TargetGrabber : MVRScript
         if (selectedPerson == null || !HasValidTarget())
             return false;
 
-        bool nipplePairMode = IsNipplePairMode();
+        // v22: Chest Hold 専用処理を Hug Body へ漏らさない。
+        // IsNipplePairMode() は古い互換で control 名を拾うため、移動分岐には使わない。
+        bool nipplePairMode = IsChestHoldTarget();
         bool hipHoldMode = IsHipHoldMode();
         bool targetPairMode = IsTargetPairMode();
 
@@ -10799,6 +11752,14 @@ public class TargetGrabber : MVRScript
     private Vector3 GetHandWristModeEuler(bool actualRightHand, string mode)
     {
         const float angle = 90.0f;
+
+        if (mode == "In2")
+        {
+            // IN2 = stronger inward bend than Wrist In, reversed from v80.
+            // Wrist In is 90 degrees; In2 uses 150 degrees in the opposite sign.
+            const float in2Angle = 150.0f;
+            return new Vector3(0.0f, 0.0f, actualRightHand ? -in2Angle : in2Angle);
+        }
 
         if (mode == "In")
         {
@@ -11217,6 +12178,113 @@ public class TargetGrabber : MVRScript
         return baseRotation;
     }
 
+    private bool IsChestHoldFrontSideByTargetVisualSide(Vector3 targetPoint, string mode)
+    {
+        // v15: Chest Hold専用の正面/背面判定。
+        // 目的: 「targetの正面側に自分がいるか」だけで決める。
+        // v16: Chest Holdの正面/背面は、target forward と targetPoint->self の向きで判定する。
+        // dot >= 0 = targetがself側を向いている = 正面側: Wrist Up + front palm offset
+        // dot <  0 = targetがselfと反対側を向いている = 背面側: Wrist In
+        if (selectedPerson == null || selectedTargetPerson == null)
+            return IsChestHoldFrontSideFromMode(mode);
+
+        Vector3 grabberPos = selectedPerson.transform != null ? selectedPerson.transform.position : Vector3.zero;
+        if (chestControl != null)
+            grabberPos = chestControl.control != null ? chestControl.control.position : chestControl.transform.position;
+
+        Vector3 toGrabber = grabberPos - targetPoint;
+        toGrabber.y = 0.0f;
+
+        Vector3 targetForward = GetTargetPersonForwardAxis();
+        targetForward.y = 0.0f;
+
+        if (toGrabber.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
+            return IsChestHoldFrontSideFromMode(mode);
+
+        toGrabber.Normalize();
+        targetForward.Normalize();
+
+        float dot = Vector3.Dot(toGrabber, targetForward);
+        bool front = dot >= 0.0f;
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD FRONT] target-dot-positive / mode=" + (mode ?? "") +
+                " / front=" + Bool01(front) +
+                " / back=" + Bool01(!front) +
+                " / dot=" + dot.ToString("F3", CultureInfo.InvariantCulture) +
+                " / targetPoint=" + FormatVector3(targetPoint) +
+                " / self=" + FormatVector3(grabberPos) +
+                " / targetForward=" + FormatVector3(targetForward));
+        }
+
+        return front;
+    }
+
+    private bool IsChestHoldFrontSideFromMode(string mode)
+    {
+        // v14: Chest Hold already classifies the pair as "face" or "back" in TryGetAssignedNippleTargets().
+        // Use that same classification for Chest Hold wrist/front palm behavior.
+        // face = mutual-facing front side => Wrist Up.
+        // back = target faces away/back side => Wrist In.
+        bool front = string.Equals(mode, "face", StringComparison.OrdinalIgnoreCase);
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD FRONT] mode-based / mode=" + (mode ?? "") +
+                " / front=" + Bool01(front) +
+                " / back=" + Bool01(!front));
+        }
+
+        return front;
+    }
+
+    private bool IsChestHoldFrontSideByMutualFacing(Vector3 targetPoint)
+    {
+        // v12: Chest Hold専用の正面/背面判定。
+        // front = 自分がtargetを向いていて、targetも自分を向いている（向かい合い）。
+        // back  = 自分がtargetを向いているが、targetが反対側を向いている（背面側）。
+        // 通常Grab/Hug/Foot/Pelvis側の既存front/back判定は触らない。
+        if (selectedPerson == null || selectedPerson.transform == null || selectedTargetPerson == null || selectedTargetPerson.transform == null)
+            return IsGrabberInFrontOfTargetPerson(targetPoint);
+
+        Vector3 selfPos = selectedPerson.transform.position;
+        if (chestControl != null)
+            selfPos = chestControl.control != null ? chestControl.control.position : chestControl.transform.position;
+
+        Vector3 toTarget = targetPoint - selfPos;
+        Vector3 toSelf = selfPos - targetPoint;
+        Vector3 selfForward = GetSelectedPersonForwardAxis();
+        Vector3 targetForward = GetTargetPersonForwardAxis();
+
+        toTarget.y = 0.0f;
+        toSelf.y = 0.0f;
+        selfForward.y = 0.0f;
+        targetForward.y = 0.0f;
+
+        if (toTarget.sqrMagnitude < 0.0001f || toSelf.sqrMagnitude < 0.0001f || selfForward.sqrMagnitude < 0.0001f || targetForward.sqrMagnitude < 0.0001f)
+            return IsGrabberInFrontOfTargetPerson(targetPoint);
+
+        toTarget.Normalize();
+        toSelf.Normalize();
+        selfForward.Normalize();
+        targetForward.Normalize();
+
+        float selfLooksTarget = Vector3.Dot(selfForward, toTarget);
+        float targetLooksSelf = Vector3.Dot(targetForward, toSelf);
+        bool front = selfLooksTarget >= 0.0f && targetLooksSelf >= 0.0f;
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD FRONT] mutual-facing / front=" + Bool01(front) +
+                " back=" + Bool01(!front) +
+                " selfLooksTarget=" + selfLooksTarget.ToString("F3", CultureInfo.InvariantCulture) +
+                " targetLooksSelf=" + targetLooksSelf.ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        return front;
+    }
+
     private bool IsGrabberInFrontOfTargetPerson(Vector3 targetPoint)
     {
         if (selectedPerson == null || selectedTargetPerson == null)
@@ -11242,6 +12310,750 @@ public class TargetGrabber : MVRScript
         // Hold系は指定した左右ターゲットを最終地点にする。
         // reach clamp を掛けると、人物間距離が Max Hand Reach を超えた時に胸/腰まで届かず手前で止まる。
         return nippleTarget;
+    }
+
+    private void MoveChestHoldHandControl(FreeControllerV3 handControl, Vector3 finalTarget, Vector3 palmTarget, bool actualRightHand, bool immediate, bool frontSide, Vector3 pairCenter, Vector3 sideAxis, bool targetRightSide, Vector3 nippleTarget)
+    {
+        if (handControl == null)
+            return;
+
+        Vector3 start = GetChestHoldMoveStartPosition(handControl);
+        Vector3 mid = (start + finalTarget) * 0.5f;
+        string route = frontSide || immediate ? "front-linear" : "back-symmetric-mid";
+
+        // v18/v31: 正面側は従来どおり直線。
+        // 背面側だけ、左右それぞれのpalmTarget基準ではなく、target nippleペア中心基準で対称の中間点を作る。
+        if (frontSide || immediate)
+        {
+            LogChestHoldMovePoints(handControl, actualRightHand, route, start, mid, finalTarget, palmTarget, nippleTarget, pairCenter, sideAxis, sideAxis, targetRightSide, frontSide, immediate);
+            MoveControl(handControl, finalTarget, Quaternion.identity, false, immediate);
+            return;
+        }
+
+        Vector3 openAxis = GetChestHoldBackOpenAxis(sideAxis);
+        Vector3 via = GetChestHoldBackViaTarget(finalTarget, palmTarget, pairCenter, openAxis, targetRightSide);
+        LogChestHoldMovePoints(handControl, actualRightHand, route, start, via, finalTarget, palmTarget, nippleTarget, pairCenter, sideAxis, openAxis, targetRightSide, frontSide, immediate);
+        MoveControlTwoStage(handControl, via, finalTarget, CHEST_HOLD_BACK_VIA_SWITCH_T, false);
+    }
+
+    private float GetChestHoldBackReachFrontAdjust()
+    {
+        return chestHoldBackReachFrontAdjustJSON != null
+            ? chestHoldBackReachFrontAdjustJSON.val
+            : CHEST_HOLD_BACK_REACH_FRONT_ADJUST_DEFAULT;
+    }
+
+    private Vector3 GetChestHoldBackPassOffsetTarget(FreeControllerV3 handControl, Vector3 nippleTarget, Vector3 pairCenter, Vector3 sideAxis, bool rightHand)
+    {
+        return GetChestHoldBackPassOffsetTargetWithOffset(handControl, nippleTarget, pairCenter, sideAxis, rightHand, GetChestHoldBackReachFrontAdjust());
+    }
+
+    private Vector3 GetChestHoldBackPassOffsetTargetWithOffset(FreeControllerV3 handControl, Vector3 nippleTarget, Vector3 pairCenter, Vector3 sideAxis, bool rightHand, float nippleOffset)
+    {
+        Vector3 targetForward = GetTargetPersonForwardAxis();
+        targetForward.y = 0.0f;
+        if (targetForward.sqrMagnitude < 0.0001f)
+            targetForward = Vector3.forward;
+        targetForward.Normalize();
+
+        Vector3 targetBackAxis = -targetForward;
+
+        Vector3 measuredSideAxis = sideAxis;
+        measuredSideAxis.y = 0.0f;
+        if (measuredSideAxis.sqrMagnitude < 0.0001f)
+        {
+            measuredSideAxis = GetTargetPersonRightAxis();
+            measuredSideAxis.y = 0.0f;
+        }
+        if (measuredSideAxis.sqrMagnitude < 0.0001f)
+            measuredSideAxis = Vector3.right;
+        measuredSideAxis.Normalize();
+
+        Vector3 depthAxis = Vector3.Cross(Vector3.up, measuredSideAxis);
+        depthAxis.y = 0.0f;
+        if (depthAxis.sqrMagnitude < 0.0001f)
+            depthAxis = targetBackAxis;
+        if (Vector3.Dot(depthAxis, targetBackAxis) < 0.0f)
+            depthAxis = -depthAxis;
+        if (depthAxis.sqrMagnitude < 0.0001f)
+            depthAxis = targetBackAxis;
+        depthAxis.Normalize();
+
+        Vector3 targetSideAxis = rightHand ? measuredSideAxis : -measuredSideAxis;
+
+        // v73:
+        // step2 uses nippleOffset 0.000.
+        // step3 uses the Chest Hold Back Nipple Offset slider, default -0.030.
+        // The side promise remains: R hand goes right of R nipple, L hand goes left of L nipple.
+        return nippleTarget
+            + targetSideAxis * CHEST_HOLD_BACK_PASS_SIDE_OFFSET
+            + depthAxis * nippleOffset;
+    }
+
+    private void MoveChestHoldBackStep2Step3Control(FreeControllerV3 fc, Vector3 step2Target, Vector3 step3Target, bool immediate)
+    {
+        if (fc == null)
+            return;
+
+        EnsurePositionStateOn(fc);
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        const float step2SwitchT = 0.70f;
+
+        Vector3 start;
+        if (!grabStartPositions.TryGetValue(fc, out start))
+            start = fc.control != null ? fc.control.position : fc.transform.position;
+
+        Vector3 next;
+        if (t <= step2SwitchT)
+        {
+            float a = Mathf.Clamp01(t / step2SwitchT);
+            next = Vector3.Lerp(start, step2Target, a);
+        }
+        else
+        {
+            float b = Mathf.Clamp01((t - step2SwitchT) / Mathf.Max(0.001f, 1.0f - step2SwitchT));
+            next = Vector3.Lerp(step2Target, step3Target, b);
+        }
+
+        fc.transform.position = next;
+        if (fc.control != null)
+            fc.control.position = next;
+    }
+
+    private void ApplyChestHoldBackWristInAtStep4(FreeControllerV3 fc, Vector3 nippleTarget, bool actualRightHand, bool immediate)
+    {
+        if (fc == null)
+            return;
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        if (t < 0.999f)
+            return;
+
+        // step4: existing Wrist In.
+        ApplyChestHoldFrontUpBackInWrist(fc, nippleTarget, actualRightHand, true, false);
+
+        // step5: separate Wrist In2 feature.  Do not force world Euler angles here;
+        // use the wrist preset so self/target placement does not directly change a fixed RotY.
+        ApplyChestHoldBackWristIn2AtStep5(fc, actualRightHand);
+    }
+
+    private void ApplyChestHoldBackWristIn2AtStep5(FreeControllerV3 fc, bool actualRightHand)
+    {
+        if (fc == null || !ShouldAlignHandPalm())
+            return;
+
+        Vector3 movedPosition = GetControlPosition(fc);
+        Quaternion baseRotation = GetFixedHandBaseRotation(GetHandRotationOffset(), actualRightHand, actualRightHand, false);
+        Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, "In2");
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, "In2", fallbackRotation);
+        MoveControl(fc, movedPosition, finalRotation, true, true);
+
+        if (IsDebugEnabled())
+        {
+            Vector3 finalEuler = finalRotation.eulerAngles;
+            DebugLog("[CHEST HOLD STEP5 WRIST IN2] hand=" + (actualRightHand ? "R" : "L") +
+                " source=wrist-in2-preset" +
+                " pos=" + FormatVector3(movedPosition) +
+                " finalEuler=(" + finalEuler.x.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.y.ToString("F1", CultureInfo.InvariantCulture) + "," +
+                    finalEuler.z.ToString("F1", CultureInfo.InvariantCulture) + ")");
+        }
+    }
+
+    private Vector3 GetChestHoldBackPassSelfReference()
+    {
+        Vector3 selfRef = Vector3.zero;
+        bool hasSelfRef = false;
+
+        if (selectedPerson != null && selectedPerson.transform != null)
+        {
+            selfRef = selectedPerson.transform.position;
+            hasSelfRef = true;
+        }
+
+        if (chestControl != null)
+        {
+            if (chestControl.control != null)
+            {
+                selfRef = chestControl.control.position;
+                hasSelfRef = true;
+            }
+            else if (chestControl.transform != null)
+            {
+                selfRef = chestControl.transform.position;
+                hasSelfRef = true;
+            }
+        }
+
+        return hasSelfRef ? selfRef : Vector3.zero;
+    }
+
+    private Vector3 GetChestHoldBackCommonPassDirection(Vector3 pairCenter)
+    {
+        Vector3 selfRef = GetChestHoldBackPassSelfReference();
+        Vector3 passDir = pairCenter - selfRef;
+        passDir.y = 0.0f;
+
+        if (passDir.sqrMagnitude < 0.0001f)
+        {
+            passDir = GetTargetPersonForwardAxis();
+            passDir.y = 0.0f;
+        }
+
+        if (passDir.sqrMagnitude < 0.0001f)
+            passDir = Vector3.forward;
+
+        passDir.Normalize();
+        return passDir;
+    }
+
+
+    private Vector3 GetChestHoldSelfRootLogPosition()
+    {
+        if (hipControl != null && hipControl.control != null)
+            return hipControl.control.position;
+        if (chestControl != null && chestControl.control != null)
+            return chestControl.control.position;
+        if (headControl != null && headControl.control != null)
+            return headControl.control.position;
+        if (containingAtom != null && containingAtom.mainController != null)
+            return containingAtom.mainController.control.position;
+        if (selectedPerson != null && selectedPerson.transform != null)
+            return selectedPerson.transform.position;
+        return Vector3.zero;
+    }
+
+    private Vector3 GetChestHoldTargetRootLogPosition()
+    {
+        FreeControllerV3 hip = GetTargetPersonControlByAliases("hipControl", "hip", "pelvisControl", "pelvis");
+        if (hip != null && hip.control != null)
+            return hip.control.position;
+
+        FreeControllerV3 chest = GetTargetPersonControlByAliases("chestControl", "chest");
+        if (chest != null && chest.control != null)
+            return chest.control.position;
+
+        FreeControllerV3 head = GetTargetPersonControlByAliases("headControl", "head");
+        if (head != null && head.control != null)
+            return head.control.position;
+
+        if (selectedTargetPerson != null && selectedTargetPerson.mainController != null)
+            return selectedTargetPerson.mainController.control.position;
+        if (selectedTargetPerson != null && selectedTargetPerson.transform != null)
+            return selectedTargetPerson.transform.position;
+        return Vector3.zero;
+    }
+
+    private string FormatDistance(float value)
+    {
+        return value.ToString("F3", CultureInfo.InvariantCulture);
+    }
+
+    private void LogChestHoldEssentialTwoLineAlways(Vector3 reachRightTarget, Vector3 reachLeftTarget, Vector3 finalRightTarget, Vector3 finalLeftTarget)
+    {
+        if (chestHoldEssentialTwoLineLogged)
+            return;
+        chestHoldEssentialTwoLineLogged = true;
+
+        Vector3 selfRoot = GetChestHoldSelfRootLogPosition();
+        Vector3 targetRoot = GetChestHoldTargetRootLogPosition();
+        Vector3 rightHandPos = GetControlPositionSafe(rHandControl);
+        Vector3 leftHandPos = GetControlPositionSafe(lHandControl);
+        Vector3 pairCenter = (finalRightTarget + finalLeftTarget) * 0.5f;
+
+        Vector3 targetForwardAxisForAdjust = GetTargetPersonForwardAxis();
+        targetForwardAxisForAdjust.y = 0.0f;
+        if (targetForwardAxisForAdjust.sqrMagnitude < 0.0001f)
+            targetForwardAxisForAdjust = Vector3.forward;
+        targetForwardAxisForAdjust.Normalize();
+
+        Vector3 targetBackAxisForAdjust = -targetForwardAxisForAdjust;
+        Vector3 nippleSideAxisForAdjust = finalRightTarget - finalLeftTarget;
+        nippleSideAxisForAdjust.y = 0.0f;
+        if (nippleSideAxisForAdjust.sqrMagnitude < 0.0001f)
+        {
+            nippleSideAxisForAdjust = GetTargetPersonRightAxis();
+            nippleSideAxisForAdjust.y = 0.0f;
+        }
+        if (nippleSideAxisForAdjust.sqrMagnitude < 0.0001f)
+            nippleSideAxisForAdjust = Vector3.right;
+        nippleSideAxisForAdjust.Normalize();
+
+        Vector3 sliderAxisForAdjust = Vector3.Cross(Vector3.up, nippleSideAxisForAdjust);
+        sliderAxisForAdjust.y = 0.0f;
+        if (sliderAxisForAdjust.sqrMagnitude < 0.0001f)
+            sliderAxisForAdjust = targetBackAxisForAdjust;
+        if (Vector3.Dot(sliderAxisForAdjust, targetBackAxisForAdjust) < 0.0f)
+            sliderAxisForAdjust = -sliderAxisForAdjust;
+        if (sliderAxisForAdjust.sqrMagnitude < 0.0001f)
+            sliderAxisForAdjust = targetBackAxisForAdjust;
+        sliderAxisForAdjust.Normalize();
+
+        float frontAdjust = GetChestHoldBackReachFrontAdjust();
+        // v69: base is each nipple plus its promised side clearance. The slider moves only front/back.
+        Vector3 baseReachRightTarget = finalRightTarget + nippleSideAxisForAdjust * CHEST_HOLD_BACK_PASS_SIDE_OFFSET;
+        Vector3 baseReachLeftTarget = finalLeftTarget - nippleSideAxisForAdjust * CHEST_HOLD_BACK_PASS_SIDE_OFFSET;
+        Vector3 baseReachCenter = (baseReachRightTarget + baseReachLeftTarget) * 0.5f;
+        Vector3 adjustedReachCenter = (reachRightTarget + reachLeftTarget) * 0.5f;
+        float baseCenterForward = Vector3.Dot(baseReachCenter - pairCenter, targetForwardAxisForAdjust);
+        float adjustedCenterForward = Vector3.Dot(adjustedReachCenter - pairCenter, targetForwardAxisForAdjust);
+        float visibleFrontDelta = Vector3.Dot(adjustedReachCenter - baseReachCenter, sliderAxisForAdjust);
+        float sliderSideDelta = Vector3.Dot(adjustedReachCenter - baseReachCenter, nippleSideAxisForAdjust);
+        float nippleToReachR = Vector3.Dot(reachRightTarget - finalRightTarget, sliderAxisForAdjust);
+        float nippleToReachL = Vector3.Dot(reachLeftTarget - finalLeftTarget, sliderAxisForAdjust);
+        float nippleSideDeltaR = Vector3.Dot(reachRightTarget - finalRightTarget, nippleSideAxisForAdjust);
+        float nippleSideDeltaL = Vector3.Dot(reachLeftTarget - finalLeftTarget, nippleSideAxisForAdjust);
+
+        float rightHandToReach = Vector3.Distance(rightHandPos, reachRightTarget);
+        float leftHandToReach = Vector3.Distance(leftHandPos, reachLeftTarget);
+        float rightReachToFinal = Vector3.Distance(reachRightTarget, finalRightTarget);
+        float leftReachToFinal = Vector3.Distance(reachLeftTarget, finalLeftTarget);
+        float rightFinalFromPair = Vector3.Distance(finalRightTarget, pairCenter);
+        float leftFinalFromPair = Vector3.Distance(finalLeftTarget, pairCenter);
+        float rightReachFromPair = Vector3.Distance(reachRightTarget, pairCenter);
+        float leftReachFromPair = Vector3.Distance(reachLeftTarget, pairCenter);
+
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD INPUT]" +
+            " selfRoot=" + FormatVector3(selfRoot) +
+            " / rHand=" + FormatVector3(rightHandPos) +
+            " / lHand=" + FormatVector3(leftHandPos) +
+            " / targetRoot=" + FormatVector3(targetRoot) +
+            " / rNipple=" + FormatVector3(finalRightTarget) +
+            " / lNipple=" + FormatVector3(finalLeftTarget) +
+            " / pairCenter=" + FormatVector3(pairCenter));
+
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD TARGETS]" +
+            " reachBaseR=" + FormatVector3(baseReachRightTarget) +
+            " / reachBaseL=" + FormatVector3(baseReachLeftTarget) +
+            " / reachAdjR=" + FormatVector3(reachRightTarget) +
+            " / reachAdjL=" + FormatVector3(reachLeftTarget) +
+            " / finalR=" + FormatVector3(finalRightTarget) +
+            " / finalL=" + FormatVector3(finalLeftTarget) +
+            " / nippleOffset=" + frontAdjust.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sideOffset=" + CHEST_HOLD_BACK_PASS_SIDE_OFFSET.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleToReachR=" + nippleToReachR.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleToReachL=" + nippleToReachL.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleSideDeltaR=" + nippleSideDeltaR.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleSideDeltaL=" + nippleSideDeltaL.ToString("F3", CultureInfo.InvariantCulture) +
+            " / baseCenterForward=" + baseCenterForward.ToString("F3", CultureInfo.InvariantCulture) +
+            " / adjustedCenterForward=" + adjustedCenterForward.ToString("F3", CultureInfo.InvariantCulture) +
+            " / visibleFrontDelta=" + visibleFrontDelta.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sliderAxis=" + FormatVector3(sliderAxisForAdjust) +
+            " / sliderSideDelta=" + sliderSideDelta.ToString("F3", CultureInfo.InvariantCulture) +
+            " / dHandReachR=" + FormatDistance(rightHandToReach) +
+            " / dHandReachL=" + FormatDistance(leftHandToReach) +
+            " / dReachFinalR=" + FormatDistance(rightReachToFinal) +
+            " / dReachFinalL=" + FormatDistance(leftReachToFinal) +
+            " / dReachPairR=" + FormatDistance(rightReachFromPair) +
+            " / dReachPairL=" + FormatDistance(leftReachFromPair) +
+            " / dFinalPairR=" + FormatDistance(rightFinalFromPair) +
+            " / dFinalPairL=" + FormatDistance(leftFinalFromPair));
+
+        Vector3 rightElbowPos = GetControlPositionSafe(rElbowControl);
+        Vector3 leftElbowPos = GetControlPositionSafe(lElbowControl);
+        Vector3 rightElbowFromHand = rightElbowPos - rightHandPos;
+        Vector3 leftElbowFromHand = leftElbowPos - leftHandPos;
+        Vector3 rightElbowFromReach = rightElbowPos - reachRightTarget;
+        Vector3 leftElbowFromReach = leftElbowPos - reachLeftTarget;
+        float rightElbowOutFromHand = Vector3.Dot(rightElbowFromHand, nippleSideAxisForAdjust);
+        float leftElbowOutFromHand = Vector3.Dot(leftElbowFromHand, -nippleSideAxisForAdjust);
+        float rightElbowOutFromReach = Vector3.Dot(rightElbowFromReach, nippleSideAxisForAdjust);
+        float leftElbowOutFromReach = Vector3.Dot(leftElbowFromReach, -nippleSideAxisForAdjust);
+        float rightElbowSideFromPair = Vector3.Dot(rightElbowPos - pairCenter, nippleSideAxisForAdjust);
+        float leftElbowSideFromPair = Vector3.Dot(leftElbowPos - pairCenter, nippleSideAxisForAdjust);
+        float rightHandSideFromPair = Vector3.Dot(rightHandPos - pairCenter, nippleSideAxisForAdjust);
+        float leftHandSideFromPair = Vector3.Dot(leftHandPos - pairCenter, nippleSideAxisForAdjust);
+        float rightReachSideFromPair = Vector3.Dot(reachRightTarget - pairCenter, nippleSideAxisForAdjust);
+        float leftReachSideFromPair = Vector3.Dot(reachLeftTarget - pairCenter, nippleSideAxisForAdjust);
+
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD ELBOW]" +
+            " rElbow=" + FormatVector3(rightElbowPos) +
+            " / lElbow=" + FormatVector3(leftElbowPos) +
+            " / rElbowOutFromHand=" + rightElbowOutFromHand.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lElbowOutFromHand=" + leftElbowOutFromHand.ToString("F3", CultureInfo.InvariantCulture) +
+            " / rElbowOutFromReach=" + rightElbowOutFromReach.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lElbowOutFromReach=" + leftElbowOutFromReach.ToString("F3", CultureInfo.InvariantCulture) +
+            " / rElbowSidePair=" + rightElbowSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lElbowSidePair=" + leftElbowSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
+            " / rHandSidePair=" + rightHandSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lHandSidePair=" + leftHandSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
+            " / rReachSidePair=" + rightReachSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
+            " / lReachSidePair=" + leftReachSideFromPair.ToString("F3", CultureInfo.InvariantCulture));
+
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD FRONT ADJUST]" +
+            " targetForward=" + FormatVector3(targetForwardAxisForAdjust) +
+            " / sliderAxis=" + FormatVector3(sliderAxisForAdjust) +
+            " / nippleSideAxis=" + FormatVector3(nippleSideAxisForAdjust) +
+            " / baseCenter=" + FormatVector3(baseReachCenter) +
+            " / adjustedCenter=" + FormatVector3(adjustedReachCenter) +
+            " / baseR=" + FormatVector3(baseReachRightTarget) +
+            " / adjustedR=" + FormatVector3(reachRightTarget) +
+            " / baseL=" + FormatVector3(baseReachLeftTarget) +
+            " / adjustedL=" + FormatVector3(reachLeftTarget) +
+            " / nippleOffset=" + frontAdjust.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sideOffset=" + CHEST_HOLD_BACK_PASS_SIDE_OFFSET.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleToReachR=" + nippleToReachR.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleToReachL=" + nippleToReachL.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleSideDeltaR=" + nippleSideDeltaR.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleSideDeltaL=" + nippleSideDeltaL.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sliderDelta=" + visibleFrontDelta.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sliderSideDelta=" + sliderSideDelta.ToString("F3", CultureInfo.InvariantCulture));
+
+        Vector3 targetRightAxis = GetTargetPersonRightAxis();
+        targetRightAxis.y = 0.0f;
+        if (targetRightAxis.sqrMagnitude < 0.0001f)
+            targetRightAxis = Vector3.right;
+        targetRightAxis.Normalize();
+
+        Vector3 targetForwardAxis = GetTargetPersonForwardAxis();
+        targetForwardAxis.y = 0.0f;
+        if (targetForwardAxis.sqrMagnitude < 0.0001f)
+            targetForwardAxis = Vector3.forward;
+        targetForwardAxis.Normalize();
+
+        Vector3 nippleRightAxis = finalRightTarget - finalLeftTarget;
+        nippleRightAxis.y = 0.0f;
+        float nippleAxisLen = nippleRightAxis.magnitude;
+        if (nippleRightAxis.sqrMagnitude < 0.0001f)
+            nippleRightAxis = targetRightAxis;
+        else
+            nippleRightAxis.Normalize();
+
+        Vector3 reachRightAxis = reachRightTarget - reachLeftTarget;
+        reachRightAxis.y = 0.0f;
+        float reachAxisLen = reachRightAxis.magnitude;
+        if (reachRightAxis.sqrMagnitude < 0.0001f)
+            reachRightAxis = targetRightAxis;
+        else
+            reachRightAxis.Normalize();
+
+        float targetVsNippleDot = Vector3.Dot(targetRightAxis, nippleRightAxis);
+        float reachVsNippleDot = Vector3.Dot(reachRightAxis, nippleRightAxis);
+        float targetVsReachDot = Vector3.Dot(targetRightAxis, reachRightAxis);
+        float nippleForwardDepth = Vector3.Dot((finalRightTarget - finalLeftTarget), targetForwardAxis);
+        float reachForwardDepth = Vector3.Dot((reachRightTarget - reachLeftTarget), targetForwardAxis);
+        float nippleRightDepth = Vector3.Dot((finalRightTarget - finalLeftTarget), targetRightAxis);
+        float reachRightDepth = Vector3.Dot((reachRightTarget - reachLeftTarget), targetRightAxis);
+        Vector3 pairToReachCenter = ((reachRightTarget + reachLeftTarget) * 0.5f) - pairCenter;
+        float reachCenterForward = Vector3.Dot(pairToReachCenter, targetForwardAxis);
+        float reachCenterBack = Vector3.Dot(pairToReachCenter, -targetForwardAxis);
+
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD AXIS]" +
+            " targetRight=" + FormatVector3(targetRightAxis) +
+            " / targetForward=" + FormatVector3(targetForwardAxis) +
+            " / nippleRight=" + FormatVector3(nippleRightAxis) +
+            " / reachRight=" + FormatVector3(reachRightAxis) +
+            " / dotTargetNipple=" + targetVsNippleDot.ToString("F3", CultureInfo.InvariantCulture) +
+            " / dotReachNipple=" + reachVsNippleDot.ToString("F3", CultureInfo.InvariantCulture) +
+            " / dotTargetReach=" + targetVsReachDot.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleAxisLen=" + nippleAxisLen.ToString("F3", CultureInfo.InvariantCulture) +
+            " / reachAxisLen=" + reachAxisLen.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleForwardDepth=" + nippleForwardDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / reachForwardDepth=" + reachForwardDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / nippleRightDepth=" + nippleRightDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / reachRightDepth=" + reachRightDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / reachCenterForward=" + reachCenterForward.ToString("F3", CultureInfo.InvariantCulture) +
+            " / reachCenterBack=" + reachCenterBack.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private void DebugChestHoldBackPassOffsetTarget(string handLabel, Vector3 nippleTarget, Vector3 finalTarget, Vector3 pairCenter, Vector3 sideAxis, bool immediate)
+    {
+        if (!IsDebugEnabled())
+            return;
+
+        Vector3 targetForward = GetTargetPersonForwardAxis();
+        targetForward.y = 0.0f;
+        if (targetForward.sqrMagnitude < 0.0001f)
+            targetForward = Vector3.forward;
+        targetForward.Normalize();
+        Vector3 targetBackAxis = -targetForward;
+
+        Vector3 targetRightAxis = GetTargetPersonRightAxis();
+        targetRightAxis.y = 0.0f;
+        if (targetRightAxis.sqrMagnitude < 0.0001f)
+            targetRightAxis = Vector3.right;
+        targetRightAxis.Normalize();
+
+        Vector3 targetSideAxis = (handLabel == "R") ? targetRightAxis : -targetRightAxis;
+        Vector3 deltaFromNipple = finalTarget - nippleTarget;
+        Vector3 deltaFromPairCenter = finalTarget - pairCenter;
+        float backDepth = Vector3.Dot(deltaFromPairCenter, targetBackAxis);
+        float sideDepth = Vector3.Dot(deltaFromPairCenter, targetSideAxis);
+        float forwardDepth = Vector3.Dot(deltaFromPairCenter, targetForward);
+        float distanceFromPairCenter = deltaFromPairCenter.magnitude;
+        float distanceFromNipple = deltaFromNipple.magnitude;
+        float frontAdjust = GetChestHoldBackReachFrontAdjust();
+
+        DebugLog("[CHEST HOLD BACK PASS TEST] hand=" + (handLabel ?? "") +
+            " / mode=orthogonal-nipple-axis-front-adjust-reach" +
+            " / nipple=" + FormatVector3(nippleTarget) +
+            " / final=" + FormatVector3(finalTarget) +
+            " / pairCenter=" + FormatVector3(pairCenter) +
+            " / targetBackAxis=" + FormatVector3(targetBackAxis) +
+            " / targetSideAxis=" + FormatVector3(targetSideAxis) +
+            " / targetForward=" + FormatVector3(targetForward) +
+            " / reachBack=" + CHEST_HOLD_BACK_PASS_THROUGH.ToString("F2", CultureInfo.InvariantCulture) +
+            " / sideClearance=" + CHEST_HOLD_BACK_PASS_SIDE_OFFSET.ToString("F2", CultureInfo.InvariantCulture) +
+            " / frontAdjust=" + frontAdjust.ToString("F3", CultureInfo.InvariantCulture) +
+            " / backDepthFromPair=" + backDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / sideDepthFromPair=" + sideDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / forwardDepthFromPair=" + forwardDepth.ToString("F3", CultureInfo.InvariantCulture) +
+            " / distanceFromPair=" + distanceFromPairCenter.ToString("F3", CultureInfo.InvariantCulture) +
+            " / distanceFromNipple=" + distanceFromNipple.ToString("F3", CultureInfo.InvariantCulture) +
+            " / deltaFromNipple=" + FormatVector3(deltaFromNipple) +
+            " / immediate=" + Bool01(immediate));
+    }
+
+    private Vector3 GetChestHoldMoveStartPosition(FreeControllerV3 handControl)
+    {
+        Vector3 start;
+        if (handControl != null && grabStartPositions.TryGetValue(handControl, out start))
+            return start;
+        return GetControlPosition(handControl);
+    }
+
+    private Vector3 GetChestHoldBackOpenAxis(Vector3 sideAxis)
+    {
+        Vector3 openAxis = Vector3.zero;
+        if (selectedTargetPerson != null && selectedTargetPerson.transform != null)
+            openAxis = selectedTargetPerson.transform.right;
+
+        openAxis.y = 0.0f;
+        if (openAxis.sqrMagnitude < 0.0001f)
+            openAxis = sideAxis;
+        openAxis.y = 0.0f;
+        if (openAxis.sqrMagnitude < 0.0001f)
+            openAxis = Vector3.right;
+        openAxis.Normalize();
+
+        Vector3 signAxis = sideAxis;
+        signAxis.y = 0.0f;
+        if (signAxis.sqrMagnitude >= 0.0001f)
+        {
+            signAxis.Normalize();
+            if (Vector3.Dot(openAxis, signAxis) < 0.0f)
+                openAxis = -openAxis;
+        }
+
+        return openAxis;
+    }
+
+    private Vector3 GetChestHoldBackViaTarget(Vector3 finalTarget, Vector3 palmTarget, Vector3 pairCenter, Vector3 openAxis, bool targetRightSide)
+    {
+        Vector3 lateralAxis = openAxis;
+        lateralAxis.y = 0.0f;
+        if (lateralAxis.sqrMagnitude < 0.0001f)
+            lateralAxis = selectedTargetPerson != null && selectedTargetPerson.transform != null ? selectedTargetPerson.transform.right : Vector3.right;
+        lateralAxis.y = 0.0f;
+        if (lateralAxis.sqrMagnitude < 0.0001f)
+            lateralAxis = Vector3.right;
+        lateralAxis.Normalize();
+        if (!targetRightSide)
+            lateralAxis = -lateralAxis;
+
+        Vector3 upAxis = selectedTargetPerson != null && selectedTargetPerson.transform != null
+            ? selectedTargetPerson.transform.up
+            : Vector3.up;
+        if (upAxis.sqrMagnitude < 0.0001f)
+            upAxis = Vector3.up;
+        upAxis.Normalize();
+
+        // v33: 背面Chest Holdの中間点は、pairCenter + forward ではなく、
+        // 各手のfinalTargetから左右へ開く。
+        // L/R nippleの奥行き差が大きい時、pairCenter基準 + forward via だと片手だけ大きく動くため。
+        Vector3 via = finalTarget
+            + lateralAxis * CHEST_HOLD_BACK_VIA_OUTSIDE
+            + upAxis * CHEST_HOLD_BACK_VIA_UP;
+
+        // v44: v43 の L hand depth 補正が逆だったため、余計な変更はせず、
+        // その補正量だけを反対方向へ 2 倍にする。R hand は v33/v43 のまま。
+        if (!targetRightSide)
+        {
+            Vector3 depthAxis = GetTargetPersonForwardAxis();
+            depthAxis.y = 0.0f;
+            if (depthAxis.sqrMagnitude >= 0.0001f)
+            {
+                depthAxis.Normalize();
+                float palmDepth = Vector3.Dot(palmTarget - pairCenter, depthAxis);
+                if (palmDepth > 0.0001f)
+                    via += depthAxis * (2.5f * palmDepth);
+            }
+        }
+
+        return via;
+    }
+
+    private void LogChestHoldMovePoints(FreeControllerV3 handControl, bool actualRightHand, string route, Vector3 start, Vector3 mid, Vector3 finalTarget, Vector3 palmTarget, Vector3 nippleTarget, Vector3 pairCenter, Vector3 sideAxis, Vector3 openAxis, bool targetRightSide, bool frontSide, bool immediate)
+    {
+        if (!IsDebugEnabled() || handControl == null)
+            return;
+
+        if (actualRightHand ? chestHoldMovePointsRightLogged : chestHoldMovePointsLeftLogged)
+            return;
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        if (!immediate && t > 0.075f)
+            return;
+
+        DebugLog("[CHEST HOLD POINTS] hand=" + (actualRightHand ? "R" : "L") +
+            " route=" + (route ?? "") +
+            " front=" + Bool01(frontSide) +
+            " targetRightSide=" + Bool01(targetRightSide) +
+            " start=" + FormatVector3(start) +
+            " mid=" + FormatVector3(mid) +
+            " final=" + FormatVector3(finalTarget) +
+            " nipple=" + FormatVector3(nippleTarget) +
+            " palmTarget=" + FormatVector3(palmTarget) +
+            " pairCenter=" + FormatVector3(pairCenter) +
+            " side=" + FormatVector3(sideAxis) +
+            " openAxis=" + FormatVector3(openAxis) +
+            " midDepth=" + GetChestHoldDebugDepth(mid, pairCenter).ToString("F3", CultureInfo.InvariantCulture) +
+            " finalDepth=" + GetChestHoldDebugDepth(finalTarget, pairCenter).ToString("F3", CultureInfo.InvariantCulture) +
+            " palmDepth=" + GetChestHoldDebugDepth(palmTarget, pairCenter).ToString("F3", CultureInfo.InvariantCulture) +
+            " openFromFinal=" + Vector3.Distance(mid, finalTarget).ToString("F3", CultureInfo.InvariantCulture) +
+            " startToMid=" + Vector3.Distance(start, mid).ToString("F3", CultureInfo.InvariantCulture) +
+            " midToFinal=" + Vector3.Distance(mid, finalTarget).ToString("F3", CultureInfo.InvariantCulture) +
+            " t=" + t.ToString("F3", CultureInfo.InvariantCulture));
+
+        if (actualRightHand)
+            chestHoldMovePointsRightLogged = true;
+        else
+            chestHoldMovePointsLeftLogged = true;
+    }
+
+    private float GetChestHoldDebugDepth(Vector3 point, Vector3 pairCenter)
+    {
+        Vector3 depthAxis = GetTargetPersonForwardAxis();
+        depthAxis.y = 0.0f;
+        if (depthAxis.sqrMagnitude < 0.0001f)
+            return 0.0f;
+        depthAxis.Normalize();
+        return Vector3.Dot(point - pairCenter, depthAxis);
+    }
+
+    private void MoveControlTwoStage(FreeControllerV3 fc, Vector3 viaTarget, Vector3 finalTarget, float switchT, bool immediate)
+    {
+        if (fc == null)
+            return;
+
+        EnsurePositionStateOn(fc);
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        switchT = Mathf.Clamp(switchT, 0.05f, 0.95f);
+
+        Vector3 start;
+        if (!grabStartPositions.TryGetValue(fc, out start))
+            start = fc.control != null ? fc.control.position : fc.transform.position;
+
+        Vector3 next;
+        if (t <= switchT)
+        {
+            float a = Mathf.Clamp01(t / switchT);
+            next = Vector3.Lerp(start, viaTarget, a);
+        }
+        else
+        {
+            float b = Mathf.Clamp01((t - switchT) / Mathf.Max(0.001f, 1.0f - switchT));
+            next = Vector3.Lerp(viaTarget, finalTarget, b);
+        }
+
+        fc.transform.position = next;
+        if (fc.control != null)
+            fc.control.position = next;
+
+        if (IsDebugEnabled() && t <= 0.05f)
+        {
+            DebugLog("[CHEST HOLD BACK VIA] hand=" + (fc == rHandControl ? "R" : "L") +
+                " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " via=" + FormatVector3(viaTarget) +
+                " final=" + FormatVector3(finalTarget) +
+                " switch=" + switchT.ToString("F2", CultureInfo.InvariantCulture));
+        }
+    }
+
+    private Vector3 GetChestHoldAdjustedPalmTarget(Vector3 nippleTarget, bool actualRightHand, bool frontSide)
+    {
+        if (!frontSide)
+            return nippleTarget;
+
+        Vector3 downAxis = selectedTargetPerson != null ? -selectedTargetPerson.transform.up : Vector3.down;
+        if (downAxis.sqrMagnitude < 0.0001f)
+            downAxis = Vector3.down;
+
+        Vector3 inwardAxis = -GetNipplePairOutwardAxis(actualRightHand);
+        if (inwardAxis.sqrMagnitude < 0.0001f)
+            inwardAxis = actualRightHand ? Vector3.left : Vector3.right;
+
+        return nippleTarget
+            + downAxis.normalized * CHEST_HOLD_FRONT_NIPPLE_DOWN
+            + inwardAxis.normalized * CHEST_HOLD_FRONT_NIPPLE_INWARD;
+    }
+
+    private Vector3 GetChestHoldPalmCenteredWristTarget(FreeControllerV3 elbowControl, FreeControllerV3 handControl, Vector3 palmTarget, bool actualRightHand, bool frontSide)
+    {
+        if (elbowControl == null || handControl == null)
+            return palmTarget;
+
+        Vector3 elbowPos = GetControlPosition(elbowControl);
+        Vector3 wristPos = GetControlPosition(handControl);
+        Vector3 forearmDir = wristPos - elbowPos;
+        if (forearmDir.sqrMagnitude < 0.0001f)
+            return palmTarget;
+
+        forearmDir.Normalize();
+        float reach = frontSide ? CHEST_HOLD_PALM_CENTER_REACH_FRONT : CHEST_HOLD_PALM_CENTER_REACH_BACK;
+        return palmTarget - forearmDir * reach;
+    }
+
+    private string GetChestHoldFrontBackWristMode(bool frontSide)
+    {
+        // v16: frontSide comes from target-dot-positive判定。
+        // front side = Wrist Up, back side = Wrist In.
+        return frontSide ? "Up" : "In";
+    }
+
+    private void ApplyChestHoldFrontUpBackInWrist(FreeControllerV3 fc, Vector3 center, bool actualRightHand, bool immediate, bool frontSide)
+    {
+        if (fc == null || !ShouldAlignHandPalm())
+            return;
+
+        Vector3 movedPosition = GetControlPosition(fc);
+        string mode = GetChestHoldFrontBackWristMode(frontSide);
+
+        Quaternion baseRotation = GetFixedHandBaseRotation(GetHandRotationOffset(), actualRightHand, actualRightHand, frontSide);
+        Quaternion fallbackRotation = ApplyHandWristMode(baseRotation, actualRightHand, mode);
+        Quaternion finalRotation = GetWristButtonHandWorldRotation(actualRightHand, mode, fallbackRotation);
+        MoveControl(fc, movedPosition, finalRotation, true, true);
+    }
+
+    private void LogChestHoldFinalHandNipplePosition(FreeControllerV3 handControl, Vector3 nippleTarget, Vector3 palmTarget, bool actualRightHand, bool immediate, bool frontSide)
+    {
+        if (handControl == null)
+            return;
+
+        if (actualRightHand ? chestHoldFinalRightLogged : chestHoldFinalLeftLogged)
+            return;
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        if (t < 0.999f)
+            return;
+
+        Vector3 handPos = GetControlPosition(handControl);
+        DebugLog("[CHEST HOLD FINAL] hand=" + (actualRightHand ? "R" : "L") +
+            " front=" + Bool01(frontSide) +
+            " wristMode=" + GetChestHoldFrontBackWristMode(frontSide) +
+            " handPos=" + FormatVector3(handPos) +
+            " nipple=" + FormatVector3(nippleTarget) +
+            " palmTarget=" + FormatVector3(palmTarget) +
+            " nippleDistance=" + Vector3.Distance(handPos, nippleTarget).ToString("F3", CultureInfo.InvariantCulture) +
+            " palmDistance=" + Vector3.Distance(handPos, palmTarget).ToString("F3", CultureInfo.InvariantCulture) +
+            " t=" + t.ToString("F3", CultureInfo.InvariantCulture));
+
+        if (actualRightHand)
+            chestHoldFinalRightLogged = true;
+        else
+            chestHoldFinalLeftLogged = true;
     }
 
     private Vector3 GetNipplePairSideGrabTarget(Vector3 nippleTarget, Vector3 side, bool rightSide)
@@ -11324,6 +13136,150 @@ public class TargetGrabber : MVRScript
             handControl.control.position = target;
     }
 
+    private Vector3 GetHugBodyThreeStepOpenPoint(HandFinalPointRoute route, bool pathRightSide, Vector3 start)
+    {
+        Vector3 side = route.side.sqrMagnitude > 0.0001f ? route.side.normalized : Vector3.right;
+        Vector3 depth = route.depthAxis.sqrMagnitude > 0.0001f ? route.depthAxis.normalized : GetFinalPointDepthAxis(route.handCenter);
+        depth.y = 0.0f;
+        if (depth.sqrMagnitude > 0.0001f)
+            depth.Normalize();
+
+        float startDepth = 0.0f;
+        if (depth.sqrMagnitude > 0.0001f)
+            startDepth = Vector3.Dot(start - route.handCenter, depth);
+
+        Vector3 openPoint = route.handCenter + depth * startDepth + GetSideOffset(pathRightSide, side, route.pathWidth);
+        // Step1 is only an open-left/right phase.  Keep the current hand height so the elbow does
+        // not solve by diving behind before the forward extension begins.
+        openPoint.y = start.y;
+        return openPoint;
+    }
+
+    private void MoveHugBodyHandControlThreeStep(FreeControllerV3 handControl, HandFinalPointRoute route, bool pathRightSide, bool actualRightHand, bool immediate, bool logRoute)
+    {
+        if (handControl == null)
+            return;
+
+        Vector3 finalTarget = GetHandRouteFinalPoint(route, pathRightSide);
+        Vector3 forwardWideTarget = route.handCenter + GetSideOffset(pathRightSide, route.side, route.pathWidth);
+
+        if (immediate)
+        {
+            MoveHandControlThenRotate(handControl, finalTarget, route.handCenter, pathRightSide, actualRightHand, true);
+            return;
+        }
+
+        EnsurePositionStateOn(handControl);
+
+        float t = GetMoveTLinear();
+        Vector3 start;
+        if (!grabStartPositions.TryGetValue(handControl, out start))
+            start = GetControlPosition(handControl);
+
+        Vector3 openTarget = GetHugBodyThreeStepOpenPoint(route, pathRightSide, start);
+
+        Vector3 routePosition;
+        string phase;
+        if (t < 0.333333f)
+        {
+            float u = Mathf.Clamp01(t / 0.333333f);
+            routePosition = Vector3.Lerp(start, openTarget, u);
+            phase = "step1-open";
+        }
+        else if (t < 0.666667f)
+        {
+            float u = Mathf.Clamp01((t - 0.333333f) / 0.333334f);
+            routePosition = Vector3.Lerp(openTarget, forwardWideTarget, u);
+            phase = "step2-forward-wide";
+        }
+        else
+        {
+            float u = Mathf.Clamp01((t - 0.666667f) / 0.333333f);
+            routePosition = Vector3.Lerp(forwardWideTarget, finalTarget, u);
+            phase = "step3-close";
+        }
+
+        handControl.transform.position = routePosition;
+        if (handControl.control != null)
+            handControl.control.position = routePosition;
+
+        bool doIkSnap = t >= HUG_BODY_IK_SNAP_START_T;
+        if (IsHugBodyTarget() && IsSelfHandControl(handControl))
+            hugBodyHandSnapAnchorPositions[handControl] = finalTarget;
+
+        if (doIkSnap)
+        {
+            Vector3 beforeSnap = GetControlPosition(handControl);
+            bool snapped = SnapIKControlToBody(selectedPerson, handControl);
+            if (IsDebugEnabled())
+                DebugLog("[HAND IK SNAP] hand=" + (actualRightHand ? "R" : "L") +
+                    " snapped=" + Bool01(snapped) +
+                    " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                    " snapStart=" + HUG_BODY_IK_SNAP_START_T.ToString("F3", CultureInfo.InvariantCulture) +
+                    " route=" + FormatVector3(beforeSnap) +
+                    " ik=" + FormatVector3(GetControlPosition(handControl)) +
+                    " final=" + FormatVector3(finalTarget));
+
+            Vector3 afterSnap = GetControlPosition(handControl);
+            DebugLog("[HUG BODY SNAP FINAL CHECK] hand=" + (actualRightHand ? "R" : "L") +
+                " snapped=" + Bool01(snapped) +
+                " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " center=" + FormatVector3(route.handCenter) +
+                " final=" + FormatVector3(finalTarget) +
+                " routeBeforeSnap=" + FormatVector3(beforeSnap) +
+                " ikAfterSnap=" + FormatVector3(afterSnap) +
+                " finalToIk=" + Vector3.Distance(finalTarget, afterSnap).ToString("F3", CultureInfo.InvariantCulture) +
+                " centerToIk=" + Vector3.Distance(route.handCenter, afterSnap).ToString("F3", CultureInfo.InvariantCulture) +
+                " centerToFinal=" + Vector3.Distance(route.handCenter, finalTarget).ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        if (logRoute)
+        {
+            DebugLog("[HUG BODY THREE STEP]" +
+                " hand=" + (actualRightHand ? "R" : "L") +
+                " phase=" + phase +
+                " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " pathRight=" + Bool01(pathRightSide) +
+                " center=" + FormatVector3(route.handCenter) +
+                " depthAxis=" + FormatVector3(route.depthAxis) +
+                " side=" + FormatVector3(route.side) +
+                " start=" + FormatVector3(start) +
+                " step1Open=" + FormatVector3(openTarget) +
+                " step2Forward=" + FormatVector3(forwardWideTarget) +
+                " final=" + FormatVector3(finalTarget) +
+                " current=" + FormatVector3(GetControlPosition(handControl)) +
+                " pathWidth=" + route.pathWidth.ToString("F3", CultureInfo.InvariantCulture) +
+                " finalWidth=" + GetFinalGrabWidth().ToString("F3", CultureInfo.InvariantCulture));
+        }
+
+        if (t < 1.0f && !doIkSnap)
+        {
+            if (IsDebugEnabled())
+                DebugLog("[WRIST AUTO WAIT] hand=" + (actualRightHand ? "R" : "L") +
+                    " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                    " target=" + FormatVector3(finalTarget) +
+                    " current=" + FormatVector3(GetControlPosition(handControl)));
+            return;
+        }
+
+        if (IsPeniMode())
+            return;
+
+        if (!ShouldAlignHandPalm())
+        {
+            LogWristAutoSkipDebug("align-hand-palm-off", GetControlPosition(handControl), route.handCenter, pathRightSide, actualRightHand, false);
+            return;
+        }
+
+        Vector3 movedPosition = GetControlPosition(handControl);
+        Vector3 startPosition;
+        if (!grabStartPositions.TryGetValue(handControl, out startPosition))
+            startPosition = movedPosition;
+
+        Quaternion rotation = GetPalmOrSoleRotation(movedPosition, startPosition, route.handCenter, GetHandRotationOffset(), true, pathRightSide, actualRightHand);
+        MoveControl(handControl, movedPosition, rotation, true, true);
+    }
+
     private void MoveHandControlThenRotateViaMidpoint(FreeControllerV3 handControl, Vector3 midTarget, Vector3 finalTarget, Vector3 center, bool pathRightSide, bool actualRightHand, bool immediate, bool useMidpointRoute)
     {
         if (handControl == null)
@@ -11379,6 +13335,21 @@ public class TargetGrabber : MVRScript
                     " route=" + FormatVector3(beforeSnap) +
                     " ik=" + FormatVector3(GetControlPosition(handControl)) +
                     " final=" + FormatVector3(finalTarget));
+
+            if (IsHugBodyTarget())
+            {
+                Vector3 afterSnap = GetControlPosition(handControl);
+                DebugLog("[HUG BODY SNAP FINAL CHECK] hand=" + (actualRightHand ? "R" : "L") +
+                    " snapped=" + Bool01(snapped) +
+                    " t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                    " center=" + FormatVector3(center) +
+                    " final=" + FormatVector3(finalTarget) +
+                    " routeBeforeSnap=" + FormatVector3(beforeSnap) +
+                    " ikAfterSnap=" + FormatVector3(afterSnap) +
+                    " finalToIk=" + Vector3.Distance(finalTarget, afterSnap).ToString("F3", CultureInfo.InvariantCulture) +
+                    " centerToIk=" + Vector3.Distance(center, afterSnap).ToString("F3", CultureInfo.InvariantCulture) +
+                    " centerToFinal=" + Vector3.Distance(center, finalTarget).ToString("F3", CultureInfo.InvariantCulture));
+            }
         }
 
         if (IsDebugEnabled())
@@ -11466,6 +13437,33 @@ public class TargetGrabber : MVRScript
 
         Quaternion rotation = GetPalmOrSoleRotation(movedPosition, startPosition, center, GetHandRotationOffset(), true, pathRightSide, actualRightHand);
         MoveControl(handControl, movedPosition, rotation, true, true);
+    }
+
+    private void SetControlTransformNoIKStateChange(FreeControllerV3 fc, Vector3 position, Quaternion rotation, bool applyRotation)
+    {
+        if (fc == null)
+            return;
+
+        // Do not call EnsurePositionStateOn / EnsureRotationStateOn here.
+        // This is used by Chest Hold nipple utility moves so nipple IK state is preserved.
+        try
+        {
+            fc.transform.position = position;
+            if (fc.control != null)
+                fc.control.position = position;
+        }
+        catch { }
+
+        if (applyRotation)
+        {
+            try
+            {
+                fc.transform.rotation = rotation;
+                if (fc.control != null)
+                    fc.control.rotation = rotation;
+            }
+            catch { }
+        }
     }
 
     private void MoveControl(FreeControllerV3 fc, Vector3 target, bool immediate)
@@ -11604,6 +13602,7 @@ public class TargetGrabber : MVRScript
         RestoreTemporaryRelaxLinkedIK();
         RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
+        RestoreChestHoldNippleIKStabilize("release");
         StopSwoonDrop(true, "release");
 
         // 今回このプラグインがONにしたControlだけを、Release/復帰対象として退避する。
