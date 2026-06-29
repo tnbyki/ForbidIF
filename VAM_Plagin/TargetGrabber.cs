@@ -1,3 +1,17 @@
+// V117_CHEST_HOLD_GRASP_FIX_DEBUG_LOGS_BUILD 2026-06-30: Based on v116 FIX. Keeps Front/Back Chest Hold L/R Hand Grasp boost (+0.35) with about-1-second delayed restore, but moves the Grasp diagnostic logs behind Debug Log so normal use stays quiet.
+// V116_FRONT_BACK_LR_GRASP_HALF_DELAYED_RESTORE_BUILD 2026-06-30: Based on v115. Applies the same L/R Hand Grasp boost (+0.35) and about-1-second delayed restore to Chest Hold Back as well as Front. Back route keeps existing step2/step3, Wrist In, Wrist In2, near-wrist skip, and nipple follow behavior unchanged.
+// V115_FRONT_LR_GRASP_HALF_DELAYED_RESTORE_BUILD 2026-06-30: Based on v114. Keeps Front Chest Hold L/R Hand Grasp boost at +0.35, but restores the original L/R grasp values automatically about 1 second after the boost. Release/defaults also restore immediately if still boosted.
+// V114_FRONT_LR_GRASP_HALF_RESTORE_ON_RELEASE_BUILD 2026-06-30: Based on v113. Reduces Front Chest Hold L/R Hand Grasp boost from +0.70 to +0.35, keeps the grasp during the hold, and restores the original L/R grasp values only on Release/Target Release/Self IK Defaults/Self Load User Defaults. No wrist/final delayed restore.
+// V113_FRONT_LR_GRASP_VERY_STRONG_WATCH_NO_RESTORE_BUILD 2026-06-30: Based on v112. For verification, increases Front Chest Hold L/R Hand Grasp boost to +0.70 so original 0.10 becomes 0.80 and visual change should be obvious. Keeps no automatic restore and post-apply watch logs.
+// V112_FRONT_LR_GRASP_STRONG_WATCH_NO_RESTORE_BUILD 2026-06-30: Based on v111. For visual verification, increases Front Chest Hold L/R Hand Grasp boost from +0.10 to +0.40 and adds a short post-apply watch log to confirm whether another VaM morph/pose/plugin overwrites the value after TargetGrabber writes it. Still no automatic restore and no repeated stacking.
+// V111_FRONT_LR_GRASP_ENSURE_NO_RESTORE_BUILD 2026-06-30: Based on v110. Fixes noRestore carry guard: each new Front Chest Hold Grab re-checks the current L/R Hand Grasp value and re-applies the desired boosted value if VaM/defaults/other plugins reset it. Still no automatic restore and no repeated stacking.
+// V110_FRONT_LR_GRASP_NO_RESTORE_BUILD 2026-06-30: Based on v109. Chest Hold Front applies both Left Hand Grasp and Right Hand Grasp after step2. Temporary grasp boost is not automatically restored; Release/Target Release carry boosted state to avoid repeated stacking, while Self IK Defaults/Self Load User Defaults only clear internal state.
+// V109_FRONT_LEFT_GRASP_KEEP_ACROSS_GRAB_BUILD 2026-06-30: Based on v108. Do not restore Left Hand Grasp at the next Grab start; keep the temporary boost across repeated Grab presses and restore only by delayed timer/release/defaults. Adds Update-based delayed restore so restore-pending can fire even after the grab route stops.
+// V107_FRONT_LEFT_GRASP_SERIAL_ONCE_BUILD 2026-06-30: Based on v106/v96 stable. Chest Hold Front Left Hand Grasp uses a run serial from Grab start; boost and restore can each fire only once per run, even if L/R/front route code is evaluated multiple times.
+// V106_FRONT_LEFT_GRASP_ONE_SHOT_BUILD 2026-06-30: Based on v105. Chest Hold Front Left Hand Grasp boost/restore is one-shot per Grab to prevent repeated t=1.0 boost/restore loops; reset only on new grab/release/defaults.
+// V105_FRONT_LEFT_GRASP_GEOMETRY_ONLY_LOGS_BUILD 2026-06-30: Based on v104. Chest Hold Front Left Hand Grasp now targets only geometry JSON + DAZMorph, not other plugin sliders/storables, and logs per-target before/after to verify values.
+// V104_FRONT_LEFT_GRASP_FROM_TESTER_BUILD 2026-06-30: Based on v103/v96 stable. Integrates the HandMorphTester_v001 working hand-morph resolver/writer into Chest Hold Front only: after step2, Left Hand Grasp +=0.1; after Wrist Up/final, restore original. Back and rotations unchanged.
+// V103_REVERT_V96_STABLE_BUILD 2026-06-30: Reverts v97-v102 Left Hand Grasp experiments. Restores v96 FIX behavior exactly for Chest Hold Front/Back rotation stability.
 // V95_BACK_FOLLOW_SKIP_NEAR_WRIST_RESET_BUILD 2026-06-30: Based on v94. Back Chest Hold also arms 3s nipple hand follow. When Back hand is already near its step3 nipple-side final position, Grab Hand skips the initial temporary wrist-rotation restore/off cycle for that hand; Wrist In and Wrist In2 final steps are preserved.
 // V93_FRONT_STEP2_IN5_FOLLOW_NIPPLE_3S_BUILD 2026-06-29: Based on v92. Chest Hold Front step2 inward is 5cm while final inward stays 3cm. After Chest Hold Grab Hand final, self hands follow the assigned target nipple controls for 3 seconds, preserving the final hand-to-nipple offset.
 // V92_CHEST_HOLD_NIPPLE_NO_LOCK_HALF_MOVE_BUILD 2026-06-29: Based on v91. Chest Hold Grab Hand never locks target nipple IK; if nipple IK was locked, release/forget it on grab start. Chest Hold nipple Pull/Push/Up/Down/Left/Right move nipples at 1/2 distance and chest drag uses actual moved nipple offset.
@@ -346,6 +360,10 @@ public class TargetGrabber : MVRScript
     private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_INWARD = 0.05f; // v93: step2 moves 5cm inward toward nipple pair center
     private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_INWARD = 0.03f; // v88/v93: step3/final keeps 3cm inward toward nipple pair center
     private const float CHEST_HOLD_NIPPLE_HAND_FOLLOW_SECONDS = 3.0f; // v95: after Chest Hold Grab Hand, hands follow assigned nipple controls briefly
+    private const float CHEST_HOLD_FRONT_STEP2_SWITCH_T = 0.70f; // v104: same split as MoveChestHoldBackStep2Step3Control. Boost after step2 is reached.
+    private const float CHEST_HOLD_FRONT_LEFT_GRASP_BOOST = 0.35f; // v115: half of v113 visual test. Front Chest Hold L/R Hand Grasp boost after step2.
+    private const float CHEST_HOLD_FRONT_RIGHT_GRASP_BOOST = CHEST_HOLD_FRONT_LEFT_GRASP_BOOST; // v115: symmetric Right Hand Grasp boost after step2.
+    private const float CHEST_HOLD_FRONT_LEFT_GRASP_RESTORE_DELAY = 1.00f; // v115: restore the temporary Front Chest Hold L/R Hand Grasp about 1 second after boost.
     private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_DISTANCE = 0.085f; // v95: already-near Back hand skips initial wrist reset/off cycle
     private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_LATERAL = 0.060f;
     private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_VERTICAL = 0.080f;
@@ -511,6 +529,95 @@ public class TargetGrabber : MVRScript
     private Vector3 chestHoldFollowLeftOffset = Vector3.zero;
     private Vector3 chestHoldFollowRightOffset = Vector3.zero;
     private string chestHoldNippleHandFollowRoute = "";
+    private readonly List<HandMorphTarget> chestHoldFrontLeftGraspTargets = new List<HandMorphTarget>();
+    private readonly List<HandMorphTarget> chestHoldFrontRightGraspTargets = new List<HandMorphTarget>();
+    // v107/v110: run-serial guard. TargetGrabber can evaluate the Front route many times while one Grab is active.
+    // Boost must be scoped to the Grab run, not to one function call or one hand branch.
+    private int chestHoldFrontLeftGraspRunSerial = 0;
+    private int chestHoldFrontLeftGraspBoostedSerial = -1;
+    private int chestHoldFrontLeftGraspRestoredSerial = -1; // v115: delayed restore guard.
+    private bool chestHoldFrontLeftGraspBoostActive = false;
+    private bool chestHoldFrontLeftGraspHasOriginal = false;
+    private float chestHoldFrontLeftGraspOriginal = 0.0f;
+    private int chestHoldFrontLeftGraspRestorePendingSerial = -1; // v115: pending delayed restore serial.
+    private float chestHoldFrontLeftGraspRestoreDueTime = -999.0f; // v115: Time.time when delayed restore should fire.
+    private int chestHoldFrontRightGraspRunSerial = 0;
+    private int chestHoldFrontRightGraspBoostedSerial = -1;
+    private int chestHoldFrontRightGraspRestoredSerial = -1; // v115: delayed restore guard.
+    private bool chestHoldFrontRightGraspBoostActive = false;
+    private bool chestHoldFrontRightGraspHasOriginal = false;
+    private float chestHoldFrontRightGraspOriginal = 0.0f;
+    private int chestHoldFrontRightGraspRestorePendingSerial = -1; // v115: pending delayed restore serial.
+    private float chestHoldFrontRightGraspRestoreDueTime = -999.0f; // v115: Time.time when delayed restore should fire.
+    private int chestHoldFrontLeftGraspWatchSerial = -1;
+    private int chestHoldFrontLeftGraspWatchFrames = 0;
+    private float chestHoldFrontLeftGraspWatchDesired = 0.0f;
+    private float chestHoldFrontLeftGraspWatchLast = -999.0f;
+    private int chestHoldFrontRightGraspWatchSerial = -1;
+    private int chestHoldFrontRightGraspWatchFrames = 0;
+    private float chestHoldFrontRightGraspWatchDesired = 0.0f;
+    private float chestHoldFrontRightGraspWatchLast = -999.0f;
+    // v116: same grasp engine is shared by Front and Back Chest Hold.
+    // Store the active route label only for clearer logs and delayed-restore/watch messages.
+    private string chestHoldLeftGraspRouteLabel = "FRONT";
+    private string chestHoldRightGraspRouteLabel = "FRONT";
+
+    private readonly string[] chestHoldLeftHandGraspNames = new string[]
+    {
+        "Left Hand Grasp",
+        "Items Left Hand Grasp",
+        "Left hand Grasp",
+        "Left hand grasp",
+        "LeftHandGrasp",
+        "leftHandGrasp",
+        "lHandGrasp",
+        "L Hand Grasp"
+    };
+
+    private readonly string[] chestHoldRightHandGraspNames = new string[]
+    {
+        "Right Hand Grasp",
+        "Items Right Hand Grasp",
+        "Right hand Grasp",
+        "Right hand grasp",
+        "RightHandGrasp",
+        "rightHandGrasp",
+        "rHandGrasp",
+        "R Hand Grasp"
+    };
+
+    private class HandMorphTarget
+    {
+        public string label;
+        public JSONStorableFloat jsonFloat;
+        public DAZMorph morph;
+
+        public bool IsJSON()
+        {
+            return jsonFloat != null;
+        }
+
+        public float ReadValue()
+        {
+            if (jsonFloat != null) return jsonFloat.val;
+            if (morph != null) return morph.morphValue;
+            return 0.0f;
+        }
+
+        public void WriteValue(float value)
+        {
+            if (jsonFloat != null)
+            {
+                try { jsonFloat.SetVal(value); }
+                catch { jsonFloat.val = value; }
+                return;
+            }
+
+            if (morph != null)
+                morph.morphValue = value;
+        }
+    }
+
     // v17: Chest Hold Grab Hand開始時だけ、target nipple L/R のPositionStateを一時Onにする。
     // Utility nipple moveでは新規Onしない。Release/Target reset/defaultsで元の状態へ戻す。
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> chestHoldNippleStabilizePositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
@@ -1986,6 +2093,8 @@ public class TargetGrabber : MVRScript
     {
         RestoreHeldTargetHandFollowLocks("self-load-user-defaults");
         ClearPendingWristHandLocks();
+        ResetChestHoldFrontLeftGraspBoostState("self-load-user-defaults");
+        ResetChestHoldFrontRightGraspBoostState("self-load-user-defaults");
         ReleaseSelectedTargetNippleIK("self-load-user-defaults");
 
         string[] actionNames =
@@ -2023,6 +2132,8 @@ public class TargetGrabber : MVRScript
         RestoreHeldTargetHandFollowLocks("self-ik-default");
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
+        ResetChestHoldFrontLeftGraspBoostState("self-ik-default");
+        ResetChestHoldFrontRightGraspBoostState("self-ik-default");
         grabElapsed = 0.0f;
         activeMoveTimeMultiplier = 1.0f;
         activeIncludeHead = false;
@@ -2708,6 +2819,10 @@ public class TargetGrabber : MVRScript
         UpdateSwoonDrop();
         UpdateReleaseButtonColors();
         UpdateChestHoldNippleHandFollow();
+        UpdateChestHoldFrontLeftGraspDelayedRestore();
+        UpdateChestHoldFrontRightGraspDelayedRestore();
+        UpdateChestHoldFrontLeftGraspWatch();
+        UpdateChestHoldFrontRightGraspWatch();
 
         if (jobRunning)
         {
@@ -5595,6 +5710,8 @@ public class TargetGrabber : MVRScript
 
     private void ReleaseTarget()
     {
+        ResetChestHoldFrontLeftGraspBoostState("target-release");
+        ResetChestHoldFrontRightGraspBoostState("target-release");
         RestoreSelfFollowParentLinks();
         // v5bj: Target-side release must also unblock HBA/HLA immediately.
         // Do this before restoring saved target positions, then ResetTargetGrabberRuntimeState cleans any remaining runtime state.
@@ -7324,6 +7441,8 @@ public class TargetGrabber : MVRScript
         StopSwoonDrop(true, "grab-start");
         ClearPendingWristHandLocks();
         ClearChestHoldNippleHandFollow("grab-start");
+        BeginChestHoldFrontLeftGraspRun("grab-start");
+        BeginChestHoldFrontRightGraspRun("grab-start");
 
         RestoreSelfFollowParentLinks();
 
@@ -8347,6 +8466,7 @@ public class TargetGrabber : MVRScript
                     Vector3 step2 = hasChestHoldBackReachTargets ? chestHoldBackStep2Left : GetChestHoldBackPassOffsetTargetWithOffset(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false, 0.0f);
                     Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Left : GetChestHoldBackPassOffsetTarget(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false);
                     MoveChestHoldBackStep2Step3Control(lHandControl, step2, step3, immediate);
+                    MaybeBoostChestHoldBackLeftGrasp(immediate);
                     ApplyChestHoldBackWristInAtStep4(lHandControl, leftHandTarget, false, immediate);
                     chestHoldBackFollowLeftActive = true;
                     moved++;
@@ -8372,6 +8492,7 @@ public class TargetGrabber : MVRScript
                     Vector3 step2 = hasChestHoldBackReachTargets ? chestHoldBackStep2Right : GetChestHoldBackPassOffsetTargetWithOffset(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true, 0.0f);
                     Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Right : GetChestHoldBackPassOffsetTarget(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true);
                     MoveChestHoldBackStep2Step3Control(rHandControl, step2, step3, immediate);
+                    MaybeBoostChestHoldBackRightGrasp(immediate);
                     ApplyChestHoldBackWristInAtStep4(rHandControl, rightHandTarget, true, immediate);
                     chestHoldBackFollowRightActive = true;
                     moved++;
@@ -8842,6 +8963,718 @@ public class TargetGrabber : MVRScript
         return axis.normalized;
     }
 
+    private void BeginChestHoldFrontLeftGraspRun(string reason)
+    {
+        BeginChestHoldFrontHandGraspRun(
+            false,
+            reason,
+            ref chestHoldFrontLeftGraspRunSerial,
+            ref chestHoldFrontLeftGraspBoostedSerial,
+            ref chestHoldFrontLeftGraspRestoredSerial,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspOriginal,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime,
+            chestHoldFrontLeftGraspTargets
+        );
+    }
+
+    private void BeginChestHoldFrontRightGraspRun(string reason)
+    {
+        BeginChestHoldFrontHandGraspRun(
+            true,
+            reason,
+            ref chestHoldFrontRightGraspRunSerial,
+            ref chestHoldFrontRightGraspBoostedSerial,
+            ref chestHoldFrontRightGraspRestoredSerial,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspOriginal,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime,
+            chestHoldFrontRightGraspTargets
+        );
+    }
+
+    private void BeginChestHoldFrontHandGraspRun(bool rightHand, string reason, ref int runSerial, ref int boostedSerial, ref int restoredSerial, ref bool boostActive, ref bool hasOriginal, ref float original, ref int restorePendingSerial, ref float restoreDueTime, List<HandMorphTarget> targets)
+    {
+        // v115: Do not restore at Grab start. If a previous boost is still active, keep the
+        // original baseline, but do NOT mark this new serial as boosted yet. MaybeBoost will
+        // re-check the actual morph value after step2 and re-apply the desired boost if VaM,
+        // defaults, or another plugin reset the morph value, then schedule a fresh delayed restore.
+        bool carryActiveBoost = boostActive && hasOriginal;
+
+        runSerial++;
+        int serial = runSerial;
+        restoredSerial = -1;
+        boostedSerial = -1;
+        restorePendingSerial = -1;
+        restoreDueTime = -999.0f;
+
+        if (carryActiveBoost)
+        {
+            LogChestHoldFrontHandGrasp(rightHand, "carry / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+                " / reason=" + (reason ?? "") +
+                " / original=" + original.ToString("F3", CultureInfo.InvariantCulture) +
+                " / willEnsureAfterStep2=1" +
+                " / restoreDelay=" + CHEST_HOLD_FRONT_LEFT_GRASP_RESTORE_DELAY.ToString("F3", CultureInfo.InvariantCulture));
+            return;
+        }
+
+        boostActive = false;
+        hasOriginal = false;
+        original = 0.0f;
+        if (targets != null)
+            targets.Clear();
+    }
+
+    private void MaybeBoostChestHoldFrontLeftGrasp(bool immediate)
+    {
+        chestHoldLeftGraspRouteLabel = "FRONT";
+        MaybeBoostChestHoldFrontHandGrasp(
+            false,
+            immediate,
+            chestHoldFrontLeftGraspTargets,
+            ref chestHoldFrontLeftGraspRunSerial,
+            ref chestHoldFrontLeftGraspBoostedSerial,
+            ref chestHoldFrontLeftGraspRestoredSerial,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspOriginal,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime
+        );
+    }
+
+    private void MaybeBoostChestHoldFrontRightGrasp(bool immediate)
+    {
+        chestHoldRightGraspRouteLabel = "FRONT";
+        MaybeBoostChestHoldFrontHandGrasp(
+            true,
+            immediate,
+            chestHoldFrontRightGraspTargets,
+            ref chestHoldFrontRightGraspRunSerial,
+            ref chestHoldFrontRightGraspBoostedSerial,
+            ref chestHoldFrontRightGraspRestoredSerial,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspOriginal,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime
+        );
+    }
+
+    private void MaybeBoostChestHoldBackLeftGrasp(bool immediate)
+    {
+        chestHoldLeftGraspRouteLabel = "BACK";
+        MaybeBoostChestHoldFrontHandGrasp(
+            false,
+            immediate,
+            chestHoldFrontLeftGraspTargets,
+            ref chestHoldFrontLeftGraspRunSerial,
+            ref chestHoldFrontLeftGraspBoostedSerial,
+            ref chestHoldFrontLeftGraspRestoredSerial,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspOriginal,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime
+        );
+    }
+
+    private void MaybeBoostChestHoldBackRightGrasp(bool immediate)
+    {
+        chestHoldRightGraspRouteLabel = "BACK";
+        MaybeBoostChestHoldFrontHandGrasp(
+            true,
+            immediate,
+            chestHoldFrontRightGraspTargets,
+            ref chestHoldFrontRightGraspRunSerial,
+            ref chestHoldFrontRightGraspBoostedSerial,
+            ref chestHoldFrontRightGraspRestoredSerial,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspOriginal,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime
+        );
+    }
+
+    private void MaybeBoostChestHoldFrontHandGrasp(bool rightHand, bool immediate, List<HandMorphTarget> targets, ref int runSerial, ref int boostedSerial, ref int restoredSerial, ref bool boostActive, ref bool hasOriginal, ref float original, ref int restorePendingSerial, ref float restoreDueTime)
+    {
+        int serial = runSerial;
+        if (serial <= 0) return;
+        if (boostedSerial == serial) return;
+        if (restoredSerial == serial) return; // legacy guard; v111 does not restore automatically.
+
+        float t = immediate ? 1.0f : GetMoveTLinear();
+        if (t < CHEST_HOLD_FRONT_STEP2_SWITCH_T)
+            return;
+
+        ResolveChestHoldFrontHandGraspTargets(rightHand, targets);
+        if (targets == null || targets.Count == 0)
+        {
+            LogChestHoldFrontHandGrasp(rightHand, "boost-miss / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+                " / reason=no-target / t=" + t.ToString("F3", CultureInfo.InvariantCulture));
+            return;
+        }
+
+        float add = rightHand ? CHEST_HOLD_FRONT_RIGHT_GRASP_BOOST : CHEST_HOLD_FRONT_LEFT_GRASP_BOOST;
+
+        if (boostActive && hasOriginal)
+        {
+            // v111: restoreOnRelease carry means the morph should remain boosted, but in practice VaM
+            // defaults, pose loads, or another plugin can reset the visible morph while our guard
+            // is still active. Re-apply original+add without stacking.
+            float desired = Mathf.Clamp01(original + add);
+            float current = ReadPreferredHandMorphValue(targets, original);
+            ApplyHandMorphTargets(targets, desired, "ensure-" + (rightHand ? "R" : "L"), rightHand);
+            ArmChestHoldFrontHandGraspWatch(rightHand, serial, desired);
+            ScheduleChestHoldFrontHandGraspDelayedRestore(rightHand, serial, ref restorePendingSerial, ref restoreDueTime, "ensure");
+            boostedSerial = serial;
+            LogChestHoldFrontHandGrasp(rightHand, "ensure / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+                " / t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+                " / original=" + original.ToString("F3", CultureInfo.InvariantCulture) +
+                " / add=" + add.ToString("F3", CultureInfo.InvariantCulture) +
+                " / current=" + current.ToString("F3", CultureInfo.InvariantCulture) +
+                " / desired=" + desired.ToString("F3", CultureInfo.InvariantCulture) +
+                " / targets=" + targets.Count.ToString(CultureInfo.InvariantCulture) +
+                " / atom=" + (selectedPerson != null ? selectedPerson.uid : containingAtom != null ? containingAtom.uid : "<null>") +
+                " / first=" + GetFirstHandMorphTargetLabel(targets) +
+                " / delayedRestore=1");
+            return;
+        }
+
+        original = ReadPreferredHandMorphValue(targets, 0.0f);
+        hasOriginal = true;
+        float next = Mathf.Clamp01(original + add);
+        ApplyHandMorphTargets(targets, next, "boost-" + (rightHand ? "R" : "L"), rightHand);
+        ArmChestHoldFrontHandGraspWatch(rightHand, serial, next);
+        ScheduleChestHoldFrontHandGraspDelayedRestore(rightHand, serial, ref restorePendingSerial, ref restoreDueTime, "boost");
+        boostActive = true;
+        boostedSerial = serial;
+
+        LogChestHoldFrontHandGrasp(rightHand, "boost / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+            " / t=" + t.ToString("F3", CultureInfo.InvariantCulture) +
+            " / original=" + original.ToString("F3", CultureInfo.InvariantCulture) +
+            " / add=" + add.ToString("F3", CultureInfo.InvariantCulture) +
+            " / next=" + next.ToString("F3", CultureInfo.InvariantCulture) +
+            " / targets=" + targets.Count.ToString(CultureInfo.InvariantCulture) +
+            " / atom=" + (selectedPerson != null ? selectedPerson.uid : containingAtom != null ? containingAtom.uid : "<null>") +
+            " / first=" + GetFirstHandMorphTargetLabel(targets) +
+            " / delayedRestore=1");
+    }
+
+    private void MaybeRestoreChestHoldFrontLeftGraspAfterWrist(bool immediate)
+    {
+        // v115: restore is scheduled by MaybeBoost/Ensure after step2. Do not reschedule every wrist/final frame.
+    }
+
+    private void MaybeRestoreChestHoldFrontRightGraspAfterWrist(bool immediate)
+    {
+        // v115: restore is scheduled by MaybeBoost/Ensure after step2. Do not reschedule every wrist/final frame.
+    }
+
+    private void ScheduleChestHoldFrontHandGraspDelayedRestore(bool rightHand, int serial, ref int restorePendingSerial, ref float restoreDueTime, string reason)
+    {
+        if (serial <= 0) return;
+
+        restorePendingSerial = serial;
+        restoreDueTime = Time.time + CHEST_HOLD_FRONT_LEFT_GRASP_RESTORE_DELAY;
+
+        LogChestHoldFrontHandGrasp(rightHand, "restore-scheduled / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+            " / reason=" + (reason ?? "") +
+            " / dueIn=" + CHEST_HOLD_FRONT_LEFT_GRASP_RESTORE_DELAY.ToString("F3", CultureInfo.InvariantCulture) +
+            " / dueTime=" + restoreDueTime.ToString("F3", CultureInfo.InvariantCulture));
+    }
+
+    private void UpdateChestHoldFrontLeftGraspDelayedRestore()
+    {
+        UpdateChestHoldFrontHandGraspDelayedRestore(
+            false,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime,
+            ref chestHoldFrontLeftGraspRunSerial,
+            ref chestHoldFrontLeftGraspBoostedSerial,
+            ref chestHoldFrontLeftGraspRestoredSerial,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspOriginal,
+            ref chestHoldFrontLeftGraspWatchSerial,
+            ref chestHoldFrontLeftGraspWatchFrames,
+            chestHoldFrontLeftGraspTargets
+        );
+    }
+
+    private void UpdateChestHoldFrontRightGraspDelayedRestore()
+    {
+        UpdateChestHoldFrontHandGraspDelayedRestore(
+            true,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime,
+            ref chestHoldFrontRightGraspRunSerial,
+            ref chestHoldFrontRightGraspBoostedSerial,
+            ref chestHoldFrontRightGraspRestoredSerial,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspOriginal,
+            ref chestHoldFrontRightGraspWatchSerial,
+            ref chestHoldFrontRightGraspWatchFrames,
+            chestHoldFrontRightGraspTargets
+        );
+    }
+
+    private void UpdateChestHoldFrontHandGraspDelayedRestore(bool rightHand, ref int restorePendingSerial, ref float restoreDueTime, ref int runSerial, ref int boostedSerial, ref int restoredSerial, ref bool boostActive, ref bool hasOriginal, ref float original, ref int watchSerial, ref int watchFrames, List<HandMorphTarget> targets)
+    {
+        if (restorePendingSerial <= 0) return;
+        if (restoreDueTime <= -100.0f)
+        {
+            restorePendingSerial = -1;
+            return;
+        }
+        if (Time.time < restoreDueTime) return;
+
+        int pendingSerial = restorePendingSerial;
+        RestoreChestHoldFrontHandGraspBoost(
+            rightHand,
+            "delayed-1s",
+            ref runSerial,
+            ref boostedSerial,
+            ref restoredSerial,
+            ref boostActive,
+            ref hasOriginal,
+            ref original,
+            ref restorePendingSerial,
+            ref restoreDueTime,
+            ref watchSerial,
+            ref watchFrames,
+            targets
+        );
+
+        LogChestHoldFrontHandGrasp(rightHand, "delayed-restore-fired / serial=" + pendingSerial.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private void ArmChestHoldFrontHandGraspWatch(bool rightHand, int serial, float desired)
+    {
+        if (rightHand)
+        {
+            chestHoldFrontRightGraspWatchSerial = serial;
+            chestHoldFrontRightGraspWatchFrames = 20;
+            chestHoldFrontRightGraspWatchDesired = Mathf.Clamp01(desired);
+            chestHoldFrontRightGraspWatchLast = -999.0f;
+        }
+        else
+        {
+            chestHoldFrontLeftGraspWatchSerial = serial;
+            chestHoldFrontLeftGraspWatchFrames = 20;
+            chestHoldFrontLeftGraspWatchDesired = Mathf.Clamp01(desired);
+            chestHoldFrontLeftGraspWatchLast = -999.0f;
+        }
+    }
+
+    private void UpdateChestHoldFrontLeftGraspWatch()
+    {
+        UpdateChestHoldFrontHandGraspWatch(
+            false,
+            ref chestHoldFrontLeftGraspWatchSerial,
+            ref chestHoldFrontLeftGraspWatchFrames,
+            ref chestHoldFrontLeftGraspWatchDesired,
+            ref chestHoldFrontLeftGraspWatchLast,
+            chestHoldFrontLeftGraspTargets
+        );
+    }
+
+    private void UpdateChestHoldFrontRightGraspWatch()
+    {
+        UpdateChestHoldFrontHandGraspWatch(
+            true,
+            ref chestHoldFrontRightGraspWatchSerial,
+            ref chestHoldFrontRightGraspWatchFrames,
+            ref chestHoldFrontRightGraspWatchDesired,
+            ref chestHoldFrontRightGraspWatchLast,
+            chestHoldFrontRightGraspTargets
+        );
+    }
+
+    private void UpdateChestHoldFrontHandGraspWatch(bool rightHand, ref int watchSerial, ref int watchFrames, ref float watchDesired, ref float watchLast, List<HandMorphTarget> targets)
+    {
+        if (watchFrames <= 0) return;
+        if (watchSerial <= 0)
+        {
+            watchFrames = 0;
+            return;
+        }
+
+        ResolveChestHoldFrontHandGraspTargets(rightHand, targets);
+        float current = ReadPreferredHandMorphValue(targets, -1.0f);
+        bool changed = Mathf.Abs(current - watchLast) > 0.001f;
+        bool milestone = watchFrames == 20 || watchFrames == 15 || watchFrames == 10 || watchFrames == 5 || watchFrames == 1;
+        if (changed || milestone)
+        {
+            LogChestHoldFrontHandGrasp(rightHand, "watch / serial=" + watchSerial.ToString(CultureInfo.InvariantCulture) +
+                " / framesLeft=" + watchFrames.ToString(CultureInfo.InvariantCulture) +
+                " / current=" + current.ToString("F3", CultureInfo.InvariantCulture) +
+                " / desired=" + watchDesired.ToString("F3", CultureInfo.InvariantCulture) +
+                " / delta=" + (current - watchDesired).ToString("F3", CultureInfo.InvariantCulture) +
+                " / targets=" + (targets != null ? targets.Count : 0).ToString(CultureInfo.InvariantCulture) +
+                " / first=" + GetFirstHandMorphTargetLabel(targets));
+            watchLast = current;
+        }
+
+        watchFrames--;
+        if (watchFrames <= 0)
+        {
+            LogChestHoldFrontHandGrasp(rightHand, "watch-end / serial=" + watchSerial.ToString(CultureInfo.InvariantCulture) +
+                " / current=" + current.ToString("F3", CultureInfo.InvariantCulture) +
+                " / desired=" + watchDesired.ToString("F3", CultureInfo.InvariantCulture) +
+                " / overwritten=" + Bool01(Mathf.Abs(current - watchDesired) > 0.001f));
+        }
+    }
+
+    private void RestoreChestHoldFrontLeftGraspBoost(string reason)
+    {
+        RestoreChestHoldFrontHandGraspBoost(
+            false,
+            reason,
+            ref chestHoldFrontLeftGraspRunSerial,
+            ref chestHoldFrontLeftGraspBoostedSerial,
+            ref chestHoldFrontLeftGraspRestoredSerial,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspOriginal,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime,
+            ref chestHoldFrontLeftGraspWatchSerial,
+            ref chestHoldFrontLeftGraspWatchFrames,
+            chestHoldFrontLeftGraspTargets
+        );
+    }
+
+    private void RestoreChestHoldFrontRightGraspBoost(string reason)
+    {
+        RestoreChestHoldFrontHandGraspBoost(
+            true,
+            reason,
+            ref chestHoldFrontRightGraspRunSerial,
+            ref chestHoldFrontRightGraspBoostedSerial,
+            ref chestHoldFrontRightGraspRestoredSerial,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspOriginal,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime,
+            ref chestHoldFrontRightGraspWatchSerial,
+            ref chestHoldFrontRightGraspWatchFrames,
+            chestHoldFrontRightGraspTargets
+        );
+    }
+
+    private void RestoreChestHoldFrontHandGraspBoost(bool rightHand, string reason, ref int runSerial, ref int boostedSerial, ref int restoredSerial, ref bool boostActive, ref bool hasOriginal, ref float original, ref int restorePendingSerial, ref float restoreDueTime, ref int watchSerial, ref int watchFrames, List<HandMorphTarget> targets)
+    {
+        int serial = runSerial;
+
+        if (!boostActive && !hasOriginal)
+        {
+            LogChestHoldFrontHandGrasp(rightHand, "restore-skip / reason=" + (reason ?? "") + " / reason2=no-active-boost / delayedRestore=1");
+            return;
+        }
+
+        if (!hasOriginal)
+        {
+            boostActive = false;
+            restorePendingSerial = -1;
+            restoreDueTime = -999.0f;
+            watchSerial = -1;
+            watchFrames = 0;
+            if (targets != null) targets.Clear();
+            LogChestHoldFrontHandGrasp(rightHand, "restore-skip / reason=" + (reason ?? "") + " / reason2=no-original / delayedRestore=1");
+            return;
+        }
+
+        float restore = Mathf.Clamp01(original);
+        ResolveChestHoldFrontHandGraspTargets(rightHand, targets);
+        ApplyHandMorphTargets(targets, restore, "restore-" + (reason ?? ""), rightHand);
+
+        LogChestHoldFrontHandGrasp(rightHand, "restore / serial=" + serial.ToString(CultureInfo.InvariantCulture) +
+            " / reason=" + (reason ?? "") +
+            " / value=" + restore.ToString("F3", CultureInfo.InvariantCulture) +
+            " / targets=" + (targets != null ? targets.Count : 0).ToString(CultureInfo.InvariantCulture) +
+            " / atom=" + (selectedPerson != null ? selectedPerson.uid : containingAtom != null ? containingAtom.uid : "<null>") +
+            " / first=" + GetFirstHandMorphTargetLabel(targets) +
+            " / delayedRestore=1");
+
+        boostActive = false;
+        hasOriginal = false;
+        original = 0.0f;
+        restorePendingSerial = -1;
+        restoreDueTime = -999.0f;
+        watchSerial = -1;
+        watchFrames = 0;
+        if (serial > 0)
+            restoredSerial = serial;
+        if (targets != null)
+            targets.Clear();
+    }
+
+    private void ResetChestHoldFrontLeftGraspBoostState(string reason)
+    {
+        ResetChestHoldFrontHandGraspBoostState(
+            false,
+            reason,
+            ref chestHoldFrontLeftGraspBoostActive,
+            ref chestHoldFrontLeftGraspHasOriginal,
+            ref chestHoldFrontLeftGraspRestorePendingSerial,
+            ref chestHoldFrontLeftGraspRestoreDueTime,
+            chestHoldFrontLeftGraspTargets
+        );
+    }
+
+    private void ResetChestHoldFrontRightGraspBoostState(string reason)
+    {
+        ResetChestHoldFrontHandGraspBoostState(
+            true,
+            reason,
+            ref chestHoldFrontRightGraspBoostActive,
+            ref chestHoldFrontRightGraspHasOriginal,
+            ref chestHoldFrontRightGraspRestorePendingSerial,
+            ref chestHoldFrontRightGraspRestoreDueTime,
+            chestHoldFrontRightGraspTargets
+        );
+    }
+
+    private void ResetChestHoldFrontHandGraspBoostState(bool rightHand, string reason, ref bool boostActive, ref bool hasOriginal, ref int restorePendingSerial, ref float restoreDueTime, List<HandMorphTarget> targets)
+    {
+        // v115: normal restore is delayed about 1 second after boost.
+        // Release/default buttons still restore immediately if the delayed restore has not fired yet.
+        bool restoreForExit = string.Equals(reason, "release", StringComparison.Ordinal) ||
+            string.Equals(reason, "target-release", StringComparison.Ordinal) ||
+            string.Equals(reason, "self-load-user-defaults", StringComparison.Ordinal) ||
+            string.Equals(reason, "self-ik-default", StringComparison.Ordinal);
+
+        if (restoreForExit)
+        {
+            if (rightHand)
+                RestoreChestHoldFrontRightGraspBoost(reason);
+            else
+                RestoreChestHoldFrontLeftGraspBoost(reason);
+            return;
+        }
+
+        restorePendingSerial = -1;
+        restoreDueTime = -999.0f;
+        LogChestHoldFrontHandGrasp(rightHand, "reset-state / reason=" + (reason ?? "") + " / carry=1 / restore=0 / delayedRestore=1");
+    }
+
+    private void ResolveChestHoldFrontLeftGraspTargets()
+    {
+        ResolveChestHoldFrontHandGraspTargets(false, chestHoldFrontLeftGraspTargets);
+    }
+
+    private void ResolveChestHoldFrontRightGraspTargets()
+    {
+        ResolveChestHoldFrontHandGraspTargets(true, chestHoldFrontRightGraspTargets);
+    }
+
+    private void ResolveChestHoldFrontHandGraspTargets(bool rightHand, List<HandMorphTarget> targets)
+    {
+        if (targets == null) return;
+        targets.Clear();
+
+        Atom atom = selectedPerson != null ? selectedPerson : containingAtom;
+        string[] names = rightHand ? chestHoldRightHandGraspNames : chestHoldLeftHandGraspNames;
+        // v105/v110: do NOT scan all storables here. If HandMorphTester is installed on the same Person,
+        // scanning all storables finds its slider JSONStorableFloat and SetVal triggers tester callbacks.
+        // Chest Hold should write only the actual geometry hand-grasp controls.
+        AddHandMorphJSONTargets(atom, names, targets, false);
+        AddHandMorphDAZMorphTargets(atom, names, targets);
+    }
+
+    private void AddHandMorphJSONTargets(Atom atom, string[] names, List<HandMorphTarget> output, bool scanAllStorables)
+    {
+        if (atom == null || names == null || output == null) return;
+
+        JSONStorable geometry = null;
+        try { geometry = atom.GetStorableByID("geometry"); } catch { geometry = null; }
+        AddHandMorphJSONTargetsFromStorable(geometry, "geometry", names, output);
+
+        if (!scanAllStorables) return;
+
+        List<string> ids = null;
+        try { ids = atom.GetStorableIDs(); } catch { ids = null; }
+        if (ids == null) return;
+
+        for (int i = 0; i < ids.Count; i++)
+        {
+            string sid = ids[i];
+            if (string.IsNullOrEmpty(sid)) continue;
+            if (sid == "geometry") continue;
+
+            JSONStorable st = null;
+            try { st = atom.GetStorableByID(sid); } catch { st = null; }
+            if (st == null || st == this) continue;
+            AddHandMorphJSONTargetsFromStorable(st, sid, names, output);
+        }
+    }
+
+    private void AddHandMorphJSONTargetsFromStorable(JSONStorable storable, string storableId, string[] names, List<HandMorphTarget> output)
+    {
+        if (storable == null || names == null || output == null) return;
+
+        for (int n = 0; n < names.Length; n++)
+        {
+            string name = names[n];
+            if (string.IsNullOrEmpty(name)) continue;
+
+            JSONStorableFloat f = null;
+            try { f = storable.GetFloatJSONParam(name); } catch { f = null; }
+            if (f == null) continue;
+            if (ContainsHandMorphJSONTarget(output, f)) continue;
+
+            HandMorphTarget target = new HandMorphTarget();
+            target.label = (storableId ?? "") + ":" + name;
+            target.jsonFloat = f;
+            output.Add(target);
+        }
+    }
+
+    private void AddHandMorphDAZMorphTargets(Atom atom, string[] names, List<HandMorphTarget> output)
+    {
+        if (atom == null || names == null || output == null) return;
+
+        DAZCharacterSelector dcs = null;
+        try { dcs = atom.GetStorableByID("geometry") as DAZCharacterSelector; } catch { dcs = null; }
+        if (dcs == null || dcs.morphsControlUI == null) return;
+
+        GenerateDAZMorphsControlUI morphUI = dcs.morphsControlUI;
+        for (int n = 0; n < names.Length; n++)
+        {
+            string name = names[n];
+            if (string.IsNullOrEmpty(name)) continue;
+
+            DAZMorph morph = null;
+            try { morph = morphUI.GetMorphByDisplayName(name); } catch { morph = null; }
+            if (morph == null) continue;
+            if (ContainsHandMorphDAZMorphTarget(output, morph)) continue;
+
+            HandMorphTarget target = new HandMorphTarget();
+            target.label = "DAZMorph:" + name;
+            target.morph = morph;
+            output.Add(target);
+        }
+    }
+
+    private bool ContainsHandMorphJSONTarget(List<HandMorphTarget> list, JSONStorableFloat f)
+    {
+        if (list == null || f == null) return false;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] != null && list[i].jsonFloat == f) return true;
+        }
+        return false;
+    }
+
+    private bool ContainsHandMorphDAZMorphTarget(List<HandMorphTarget> list, DAZMorph morph)
+    {
+        if (list == null || morph == null) return false;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] != null && list[i].morph == morph) return true;
+        }
+        return false;
+    }
+
+    private float ReadPreferredHandMorphValue(List<HandMorphTarget> targets, float fallback)
+    {
+        if (targets == null || targets.Count == 0) return fallback;
+
+        for (int i = 0; i < targets.Count; i++)
+        {
+            if (targets[i] != null && targets[i].jsonFloat != null)
+                return Mathf.Clamp01(targets[i].jsonFloat.val);
+        }
+
+        for (int i = 0; i < targets.Count; i++)
+        {
+            if (targets[i] != null && targets[i].morph != null)
+                return Mathf.Clamp01(targets[i].morph.morphValue);
+        }
+
+        return fallback;
+    }
+
+    private void ApplyHandMorphTargets(List<HandMorphTarget> targets, float value, string reason)
+    {
+        ApplyHandMorphTargets(targets, value, reason, false);
+    }
+
+    private void ApplyHandMorphTargets(List<HandMorphTarget> targets, float value, string reason, bool rightHand)
+    {
+        if (targets == null) return;
+        float v = Mathf.Clamp01(value);
+        for (int i = 0; i < targets.Count; i++)
+        {
+            HandMorphTarget target = targets[i];
+            if (target == null) continue;
+
+            float before = 0.0f;
+            float after = 0.0f;
+            bool ok = true;
+            try { before = target.ReadValue(); } catch { before = -999.0f; ok = false; }
+            try { target.WriteValue(v); } catch { ok = false; }
+            try { after = target.ReadValue(); } catch { after = -999.0f; ok = false; }
+
+            // v105/v110: normal one-shot diagnostic for this temporary Front grasp experiment.
+            // No reflection/GetType; type is determined from stored fields only.
+            LogChestHoldFrontHandGrasp(rightHand, "target / reason=" + (reason ?? "") +
+                " / index=" + i.ToString(CultureInfo.InvariantCulture) +
+                " / label=" + SafeHandMorphLabel(target.label) +
+                " / type=" + (target.IsJSON() ? "JSONStorableFloat" : "DAZMorph") +
+                " / before=" + before.ToString("F3", CultureInfo.InvariantCulture) +
+                " / requested=" + v.ToString("F3", CultureInfo.InvariantCulture) +
+                " / after=" + after.ToString("F3", CultureInfo.InvariantCulture) +
+                " / ok=" + Bool01(ok));
+        }
+    }
+
+    private string GetFirstHandMorphTargetLabel(List<HandMorphTarget> targets)
+    {
+        if (targets == null || targets.Count == 0) return "none";
+        for (int i = 0; i < targets.Count; i++)
+        {
+            if (targets[i] != null && !string.IsNullOrEmpty(targets[i].label))
+                return targets[i].label.Replace("\n", " ").Replace("\r", " ");
+        }
+        return "none";
+    }
+
+    private string SafeHandMorphLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return "";
+        return label.Replace("\n", " ").Replace("\r", " ");
+    }
+
+    private void LogChestHoldFrontLeftGrasp(string message)
+    {
+        LogChestHoldFrontHandGrasp(false, message);
+    }
+
+    private void LogChestHoldFrontRightGrasp(string message)
+    {
+        LogChestHoldFrontHandGrasp(true, message);
+    }
+
+    private void LogChestHoldFrontHandGrasp(bool rightHand, string message)
+    {
+        // v117 FIX: Chest Hold Grasp diagnostics are noisy during normal use.
+        // Keep them available only when Debug Log is ON.
+        if (debugLogJSON == null || !debugLogJSON.val) return;
+
+        string route = rightHand ? chestHoldRightGraspRouteLabel : chestHoldLeftGraspRouteLabel;
+        if (string.IsNullOrEmpty(route)) route = "FRONT";
+        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD " + route + " " + (rightHand ? "RIGHT" : "LEFT") + " GRASP] " + (message ?? ""));
+    }
+
     private int ApplyChestHoldFrontSimpleCrossHandGrab(bool immediate, Vector3 targetLeftNipple, Vector3 targetRightNipple, Vector3 center, Vector3 side)
     {
         int moved = 0;
@@ -8918,7 +9751,9 @@ public class TargetGrabber : MVRScript
             Vector3 leftRoot = GetHandRootPosition(false);
             LogHoldHandTarget("Chest Hold", "front-simple-cross", false, leftFinal, leftStep2, leftFinal, leftRoot, side, true, center, immediate);
             MoveChestHoldBackStep2Step3Control(lHandControl, leftStep2, leftFinal, immediate);
+            MaybeBoostChestHoldFrontLeftGrasp(immediate);
             ApplyChestHoldFrontUpBackInWrist(lHandControl, leftFinal, false, immediate, true);
+            MaybeRestoreChestHoldFrontLeftGraspAfterWrist(immediate);
             LogChestHoldFinalHandNipplePosition(lHandControl, leftFinal, leftFinal, false, immediate, true);
             leftFollowActive = true;
             moved++;
@@ -8930,7 +9765,9 @@ public class TargetGrabber : MVRScript
             Vector3 rightRoot = GetHandRootPosition(true);
             LogHoldHandTarget("Chest Hold", "front-simple-cross", true, rightFinal, rightStep2, rightFinal, rightRoot, side, false, center, immediate);
             MoveChestHoldBackStep2Step3Control(rHandControl, rightStep2, rightFinal, immediate);
+            MaybeBoostChestHoldFrontRightGrasp(immediate);
             ApplyChestHoldFrontUpBackInWrist(rHandControl, rightFinal, true, immediate, true);
+            MaybeRestoreChestHoldFrontRightGraspAfterWrist(immediate);
             LogChestHoldFinalHandNipplePosition(rHandControl, rightFinal, rightFinal, true, immediate, true);
             rightFollowActive = true;
             moved++;
@@ -12838,21 +13675,20 @@ public class TargetGrabber : MVRScript
         EnsurePositionStateOn(fc);
 
         float t = immediate ? 1.0f : GetMoveTLinear();
-        const float step2SwitchT = 0.70f;
 
         Vector3 start;
         if (!grabStartPositions.TryGetValue(fc, out start))
             start = fc.control != null ? fc.control.position : fc.transform.position;
 
         Vector3 next;
-        if (t <= step2SwitchT)
+        if (t <= CHEST_HOLD_FRONT_STEP2_SWITCH_T)
         {
-            float a = Mathf.Clamp01(t / step2SwitchT);
+            float a = Mathf.Clamp01(t / CHEST_HOLD_FRONT_STEP2_SWITCH_T);
             next = Vector3.Lerp(start, step2Target, a);
         }
         else
         {
-            float b = Mathf.Clamp01((t - step2SwitchT) / Mathf.Max(0.001f, 1.0f - step2SwitchT));
+            float b = Mathf.Clamp01((t - CHEST_HOLD_FRONT_STEP2_SWITCH_T) / Mathf.Max(0.001f, 1.0f - CHEST_HOLD_FRONT_STEP2_SWITCH_T));
             next = Vector3.Lerp(step2Target, step3Target, b);
         }
 
@@ -14106,6 +14942,8 @@ public class TargetGrabber : MVRScript
         ResetHugBodyHdcHipUpperState("release");
         hasActiveGrab = false;
         ClearChestHoldNippleHandFollow("release");
+        ResetChestHoldFrontLeftGraspBoostState("release");
+        ResetChestHoldFrontRightGraspBoostState("release");
         RestoreHeldTargetHandFollowLocks("release");
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
