@@ -1,3 +1,8 @@
+// V95_BACK_FOLLOW_SKIP_NEAR_WRIST_RESET_BUILD 2026-06-30: Based on v94. Back Chest Hold also arms 3s nipple hand follow. When Back hand is already near its step3 nipple-side final position, Grab Hand skips the initial temporary wrist-rotation restore/off cycle for that hand; Wrist In and Wrist In2 final steps are preserved.
+// V93_FRONT_STEP2_IN5_FOLLOW_NIPPLE_3S_BUILD 2026-06-29: Based on v92. Chest Hold Front step2 inward is 5cm while final inward stays 3cm. After Chest Hold Grab Hand final, self hands follow the assigned target nipple controls for 3 seconds, preserving the final hand-to-nipple offset.
+// V92_CHEST_HOLD_NIPPLE_NO_LOCK_HALF_MOVE_BUILD 2026-06-29: Based on v91. Chest Hold Grab Hand never locks target nipple IK; if nipple IK was locked, release/forget it on grab start. Chest Hold nipple Pull/Push/Up/Down/Left/Right move nipples at 1/2 distance and chest drag uses actual moved nipple offset.
+// V89_NIPPLE_RELEASE_CHEST_DRAG_BUILD 2026-06-29: Based on v88 FIX. Release/Self IK Default/Self Load User Defaults also release target nipple IK. Chest Hold nipple Pull/Push/Up/Down/Left/Right add chest drag feedback only when nipple controls actually move.
+// V91_GEN_FINAL_WRIST_DOWN_BUILD 2026-06-29: Based on v90. Gen target applies Wrist Down as the final hand step after position movement; hand position stays locked and palm-auto is skipped for Gen.
 // V88_CHEST_HOLD_FRONT_STEP2_STEP3_INWARD_BUILD 2026-06-29: Based on v87. Chest Hold Front only: step2 = assigned nipple 10cm down + 1cm hand-forward + 3cm inward; step3/final = assigned nipple 8cm down + 6cm hand-forward + 3cm inward. Back FIX unchanged.
 // V87_CHEST_HOLD_FRONT_STABLE_BODY_AXIS_BUILD 2026-06-29: Front simple cross forward axis no longer uses current/grab-start hand position. Uses stable self body/chest anchor -> assigned nipple so repeated Grab does not drift. Based on v86.
 // V86_CHEST_HOLD_FRONT_HAND_FORWARD_AXIS_BUILD 2026-06-29: Front simple cross uses each hand's actual reach direction (grab-start hand -> assigned nipple) for step2/final forward offsets. Based on v85.
@@ -334,11 +339,17 @@ public class TargetGrabber : MVRScript
     private const float CHEST_HOLD_PALM_CENTER_REACH_BACK = 0.08f;
     private const float CHEST_HOLD_FRONT_NIPPLE_DOWN = 0.08f;
     private const float CHEST_HOLD_FRONT_NIPPLE_INWARD = 0.04f;
-    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN = 0.10f; // v88: step2 is 10cm below assigned nipple
-    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN = 0.08f; // v88: step3/final is 8cm below assigned nipple
-    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD = 0.01f; // v88: step2 is 1cm forward along stable hand route
-    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD = 0.06f; // v88: step3/final is 6cm forward along stable hand route
-    private const float CHEST_HOLD_FRONT_SIMPLE_INWARD = 0.03f; // v88: both step2 and step3/final move 3cm inward toward nipple pair center
+    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN = 0.13f; // v90: step2 is 13cm below assigned nipple
+    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN = 0.11f; // v90: step3/final is 11cm below assigned nipple
+    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD = 0.06f; // v94: step2 is 6cm forward along stable hand route
+    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD = 0.01f; // v94: step3/final is 1cm forward along stable hand route
+    private const float CHEST_HOLD_FRONT_SIMPLE_STEP2_INWARD = 0.05f; // v93: step2 moves 5cm inward toward nipple pair center
+    private const float CHEST_HOLD_FRONT_SIMPLE_FINAL_INWARD = 0.03f; // v88/v93: step3/final keeps 3cm inward toward nipple pair center
+    private const float CHEST_HOLD_NIPPLE_HAND_FOLLOW_SECONDS = 3.0f; // v95: after Chest Hold Grab Hand, hands follow assigned nipple controls briefly
+    private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_DISTANCE = 0.085f; // v95: already-near Back hand skips initial wrist reset/off cycle
+    private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_LATERAL = 0.060f;
+    private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_VERTICAL = 0.080f;
+    private const float CHEST_HOLD_BACK_NEAR_WRIST_SKIP_NIPPLE_DISTANCE = 0.140f;
     private const float CHEST_HOLD_BACK_VIA_OUTSIDE = 0.12f;
     private const float CHEST_HOLD_BACK_VIA_FORWARD = 0.18f;
     private const float CHEST_HOLD_BACK_VIA_UP = 0.00f;
@@ -346,6 +357,10 @@ public class TargetGrabber : MVRScript
     private const float CHEST_HOLD_BACK_PASS_THROUGH = 0.35f; // back-side reach depth; keep v61 distance feeling
     private const float CHEST_HOLD_BACK_PASS_SIDE_OFFSET = 0.05f; // v71: side clearance 5cm. R hand right of R nipple, L hand left of L nipple
     private const float CHEST_HOLD_BACK_REACH_FRONT_ADJUST_DEFAULT = -0.03f; // v73: step3 default. Step2 is always nipple offset 0.000; step3 uses this slider value.
+    private const float CHEST_HOLD_NIPPLE_DRAG_CHEST_PULL_PUSH_POS_SCALE = 0.35f; // v89: Pull/Push nipple movement drags chest position a little.
+    private const float CHEST_HOLD_NIPPLE_DRAG_CHEST_DEGREES_PER_METER = 35.0f; // v89: nipple utility movement rotates chest for pulled feeling.
+    private const float CHEST_HOLD_NIPPLE_UTILITY_MOVE_SCALE = 0.50f; // v92: Pull/Push/Up/Down/Left/Right nipple movement is half strength.
+    private const float CHEST_HOLD_NIPPLE_DRAG_CHEST_MAX_DEGREES = 6.0f;
     private const float CHEST_HOLD_MUTUAL_FACE_DOT = 0.35f;
     private const float CHEST_HOLD_MUTUAL_ROOT_OPPOSITE_DOT = -0.35f;
     private const float HEAD_FINAL_GRAB_WIDTH = 0.15f;
@@ -486,6 +501,16 @@ public class TargetGrabber : MVRScript
     // v5bl: Chest Hold nipple utility moves must not turn nipple IK ON.
     // Controls in this set are restored by direct transform assignment, not MoveControl/LockTargetIKControl.
     private readonly HashSet<FreeControllerV3> chestHoldNoIkNippleMoveControls = new HashSet<FreeControllerV3>();
+    private bool chestHoldNippleHandFollowPending = false;
+    private bool chestHoldNippleHandFollowActive = false;
+    private float chestHoldNippleHandFollowElapsed = 0.0f;
+    private FreeControllerV3 chestHoldFollowLeftHand = null;
+    private FreeControllerV3 chestHoldFollowRightHand = null;
+    private FreeControllerV3 chestHoldFollowLeftNipple = null;
+    private FreeControllerV3 chestHoldFollowRightNipple = null;
+    private Vector3 chestHoldFollowLeftOffset = Vector3.zero;
+    private Vector3 chestHoldFollowRightOffset = Vector3.zero;
+    private string chestHoldNippleHandFollowRoute = "";
     // v17: Chest Hold Grab Hand開始時だけ、target nipple L/R のPositionStateを一時Onにする。
     // Utility nipple moveでは新規Onしない。Release/Target reset/defaultsで元の状態へ戻す。
     private readonly Dictionary<FreeControllerV3, FreeControllerV3.PositionState> chestHoldNippleStabilizePositionStates = new Dictionary<FreeControllerV3, FreeControllerV3.PositionState>();
@@ -1961,6 +1986,7 @@ public class TargetGrabber : MVRScript
     {
         RestoreHeldTargetHandFollowLocks("self-load-user-defaults");
         ClearPendingWristHandLocks();
+        ReleaseSelectedTargetNippleIK("self-load-user-defaults");
 
         string[] actionNames =
         {
@@ -2008,6 +2034,8 @@ public class TargetGrabber : MVRScript
         RestoreTemporaryRelaxLinkedIK();
         RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
+        RestoreChestHoldNippleIKStabilize("self-ik-default-nipple-stabilize");
+        ReleaseSelectedTargetNippleIK("self-ik-default");
         StopSwoonDrop(true, "self-ik-default");
         pendingAutoSnapIKControls.Clear();
 
@@ -2115,6 +2143,7 @@ public class TargetGrabber : MVRScript
         RestoreTemporaryRelaxLinkedIK();
         RestoreTemporaryHandRotationOffStates();
         int restoredNippleStabilize = RestoreChestHoldNippleIKStabilize(reason + "-nipple-stabilize");
+        int releasedTargetNippleIK = ReleaseSelectedTargetNippleIK(reason + "-target-nipple-ik");
         StopSwoonDrop(true, reason);
 
         int restoredLocks = RestoreTargetLocks();
@@ -2145,12 +2174,14 @@ public class TargetGrabber : MVRScript
         DebugLog("[TARGET RUNTIME RESET] reason=" + reason +
             " / heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
             " / nippleStabilize=" + restoredNippleStabilize.ToString(CultureInfo.InvariantCulture) +
+            " / nippleIK=" + releasedTargetNippleIK.ToString(CultureInfo.InvariantCulture) +
             " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
             " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture) +
             " / clearSnapshots=" + Bool01(clearTargetSnapshots));
 
         return "heldHandLocks=" + restoredHeldHandLocks.ToString(CultureInfo.InvariantCulture) +
             " / nippleStabilize=" + restoredNippleStabilize.ToString(CultureInfo.InvariantCulture) +
+            " / nippleIK=" + releasedTargetNippleIK.ToString(CultureInfo.InvariantCulture) +
             " / locks=" + restoredLocks.ToString(CultureInfo.InvariantCulture) +
             " / comply=" + restoredComply.ToString(CultureInfo.InvariantCulture);
     }
@@ -2339,6 +2370,7 @@ public class TargetGrabber : MVRScript
         // direct route actions also use that chooser and should remain the owner of their selection.
         ClearHeldTargetGrabState();
         RestoreChestHoldNippleIKStabilize(reason + "-nipple-stabilize");
+        ReleaseSelectedTargetNippleIK(reason + "-target-nipple-ik");
         pendingAutoSnapIKControls.Clear();
         hugBodyWristReferencePositions.Clear();
         hugBodyHandSnapAnchorPositions.Clear();
@@ -2448,6 +2480,9 @@ public class TargetGrabber : MVRScript
             targetLockRotationStates.Clear();
             targetLockControls.Clear();
         }
+
+        if (selfSide || targetSide)
+            ReleaseSelectedTargetNippleIK(reason + "-target-nipple-ik");
 
         DebugLog("[POSE LOAD RESYNC] clear snapshots / reason=" + reason +
             " / self=" + Bool01(selfSide) +
@@ -2672,6 +2707,7 @@ public class TargetGrabber : MVRScript
         UpdateReleaseRestoreIK();
         UpdateSwoonDrop();
         UpdateReleaseButtonColors();
+        UpdateChestHoldNippleHandFollow();
 
         if (jobRunning)
         {
@@ -2695,6 +2731,8 @@ public class TargetGrabber : MVRScript
             UpdatePufupufuAnimation();
             return;
         }
+
+        ActivatePendingChestHoldNippleHandFollow();
 
         if (followTarget)
         {
@@ -4332,9 +4370,9 @@ public class TargetGrabber : MVRScript
 
     private bool ShouldStabilizeChestHoldNippleIKOnGrabStart(bool includeHands, bool useFinalGrabWidth)
     {
-        // v22: 通常の Chest Hold Grab Hand 開始だけでONにする。
-        // IsNipplePairMode() ではなく IsChestHoldTarget() で厳密判定し、Hug Body へ漏らさない。
-        // Grab Hand Pull/Push/Open/Close等のUtility後の再Grabは useFinalGrabWidth=true なので新規ONしない。
+        // v92: 通常の Chest Hold Grab Hand 開始だけを検出する。
+        // ここでは nipple IK をONにせず、逆にロック済みなら解除する。
+        // Grab Hand Pull/Push/Open/Close等のUtility後の再Grabは useFinalGrabWidth=true なので対象外。
         return includeHands && !useFinalGrabWidth && IsChestHoldTarget();
     }
 
@@ -4344,11 +4382,16 @@ public class TargetGrabber : MVRScript
 
         if (ShouldStabilizeChestHoldNippleIKOnGrabStart(includeHands, useFinalGrabWidth))
         {
-            StabilizeChestHoldNippleIKOnGrabStart();
+            // v92: Chest Hold Grab Hand must not lock/stabilize nipple IK.
+            // If an older route or previous state locked it, force-release target nipple IK now.
+            RestoreChestHoldNippleIKStabilize("chest-hold-grab-no-nipple-lock-restore");
+            int released = ReleaseSelectedTargetNippleIK("chest-hold-grab-no-nipple-lock");
+            chestHoldNoIkNippleMoveControls.Clear();
+            DebugLog("[CHEST HOLD NIPPLE NO LOCK] grab-start / released=" + released.ToString(CultureInfo.InvariantCulture));
             return;
         }
 
-        // Chest Hold utility再Grabでは既存の一時ONを保持する。
+        // Chest Hold utility再Grabでは既存の直接移動状態を保持する。
         // 別ターゲット/別モードへ移る場合だけ戻す。
         if (!chestHoldMode)
             RestoreChestHoldNippleIKStabilize("grab-start-non-chest-hold");
@@ -4356,46 +4399,12 @@ public class TargetGrabber : MVRScript
 
     private void StabilizeChestHoldNippleIKOnGrabStart()
     {
-        List<FreeControllerV3> controls;
-        FreeControllerV3 left;
-        FreeControllerV3 right;
-        if (!TryGetChestHoldNippleIKControls(out controls, out left, out right) || controls == null || controls.Count == 0)
-        {
-            DebugLog("[CHEST HOLD NIPPLE STABILIZE] skip / reason=no-nipple-controls");
-            return;
-        }
-
-        int changed = 0;
-        int total = 0;
-        for (int i = 0; i < controls.Count; i++)
-        {
-            FreeControllerV3 fc = controls[i];
-            if (fc == null)
-                continue;
-
-            total++;
-            if (!chestHoldNippleStabilizePositionStates.ContainsKey(fc))
-            {
-                try { chestHoldNippleStabilizePositionStates[fc] = fc.currentPositionState; } catch { }
-                try { chestHoldNippleStabilizeRotationStates[fc] = fc.currentRotationState; } catch { }
-                chestHoldNippleStabilizeControls.Add(fc);
-            }
-
-            try
-            {
-                if (fc.currentPositionState != FreeControllerV3.PositionState.On)
-                    changed++;
-                fc.currentPositionState = FreeControllerV3.PositionState.On;
-            }
-            catch { }
-
-            // 回転は暴れ防止目的では触らない。元状態だけ保存しておく。
-        }
-
-        DebugLog("[CHEST HOLD NIPPLE STABILIZE] on-grab / total=" + total.ToString(CultureInfo.InvariantCulture) +
-            " / changed=" + changed.ToString(CultureInfo.InvariantCulture) +
-            " / left=" + Bool01(left != null) +
-            " / right=" + Bool01(right != null));
+        // v92: Chest Hold must not turn target nipple IK On during Grab Hand.
+        int released = ReleaseSelectedTargetNippleIK("chest-hold-stabilize-disabled");
+        chestHoldNippleStabilizeControls.Clear();
+        chestHoldNippleStabilizePositionStates.Clear();
+        chestHoldNippleStabilizeRotationStates.Clear();
+        DebugLog("[CHEST HOLD NIPPLE STABILIZE] disabled / released=" + released.ToString(CultureInfo.InvariantCulture));
     }
 
     private int RestoreChestHoldNippleIKStabilize(string reason)
@@ -4433,6 +4442,66 @@ public class TargetGrabber : MVRScript
         DebugLog("[CHEST HOLD NIPPLE STABILIZE] restore / reason=" + reason +
             " / restored=" + restored.ToString(CultureInfo.InvariantCulture));
         return restored;
+    }
+
+    private int ReleaseSelectedTargetNippleIK(string reason)
+    {
+        ClearChestHoldNippleHandFollow(reason + "-target-nipple-release");
+
+        if (selectedTargetPerson == null)
+            return 0;
+
+        List<FreeControllerV3> controls = new List<FreeControllerV3>();
+        HashSet<FreeControllerV3> seen = new HashSet<FreeControllerV3>();
+        string[][] aliasGroups = new string[][]
+        {
+            new string[] { "lNippleControl", "leftNippleControl", "lNipple", "lnipple", "leftNipple", "LeftNipple", "nipple_l", "nippleL" },
+            new string[] { "rNippleControl", "rightNippleControl", "rNipple", "rnipple", "rightNipple", "RightNipple", "nipple_r", "nippleR" },
+            new string[] { LRNIPPLE, "lrNipple", "nipplePair", "pairNipple", "nipple" }
+        };
+
+        for (int g = 0; g < aliasGroups.Length; g++)
+        {
+            string[] names = aliasGroups[g];
+            if (names == null)
+                continue;
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                FreeControllerV3 fc = GetControlFromAtom(selectedTargetPerson, names[i]);
+                if (fc == null || seen.Contains(fc))
+                    continue;
+
+                seen.Add(fc);
+                controls.Add(fc);
+                break;
+            }
+        }
+
+        int released = 0;
+        for (int i = 0; i < controls.Count; i++)
+        {
+            FreeControllerV3 fc = controls[i];
+            if (fc == null)
+                continue;
+
+            // If this nipple was registered in any lock/auto-snap bookkeeping, forget that lock too.
+            targetLockControls.Remove(fc);
+            targetLockPositionStates.Remove(fc);
+            targetLockRotationStates.Remove(fc);
+            pendingAutoSnapIKControls.Remove(fc);
+            temporaryRelaxPositionStates.Remove(fc);
+            temporaryRelaxRotationStates.Remove(fc);
+
+            try { fc.currentPositionState = FreeControllerV3.PositionState.Off; } catch { }
+            try { fc.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+            released++;
+        }
+
+        if (released > 0)
+            DebugLog("[TARGET NIPPLE IK RELEASE] reason=" + reason + " / released=" + released.ToString(CultureInfo.InvariantCulture));
+
+        return released;
     }
 
     private List<FreeControllerV3> GetChestHoldUtilityControls()
@@ -4531,28 +4600,119 @@ public class TargetGrabber : MVRScript
         MoveChestHoldNippleControlByOffsetNoIKOn(right, rightOffset);
     }
 
+    private Vector3 ScaleChestHoldNippleUtilityOffset(Vector3 offset)
+    {
+        return offset * CHEST_HOLD_NIPPLE_UTILITY_MOVE_SCALE;
+    }
+
     private int ApplyChestHoldNippleOffset(List<FreeControllerV3> controls, Vector3 offset)
     {
+        Vector3 actualAverageOffset;
+        return ApplyChestHoldNippleOffset(controls, offset, out actualAverageOffset);
+    }
+
+    private int ApplyChestHoldNippleOffset(List<FreeControllerV3> controls, Vector3 offset, out Vector3 actualAverageOffset)
+    {
+        actualAverageOffset = Vector3.zero;
+
         if (controls == null || controls.Count == 0 || offset.sqrMagnitude < 0.0001f)
             return 0;
 
         PrepareTemporaryRelaxLinkedIK(controls);
 
         int moved = 0;
+        Vector3 actualTotalOffset = Vector3.zero;
         foreach (FreeControllerV3 fc in controls)
         {
             if (fc == null)
                 continue;
 
+            Vector3 before = GetControlPosition(fc);
             MoveChestHoldNippleControlByOffsetNoIKOn(fc, offset);
+            Vector3 after = GetControlPosition(fc);
+            Vector3 actualOffset = after - before;
+
+            if (actualOffset.sqrMagnitude > 0.000001f)
+            {
+                actualTotalOffset += actualOffset;
+                moved++;
+            }
+
             if (IsDebugEnabled())
                 DebugLog("[CHEST HOLD NIPPLE MOVE NO IK] control=" + fc.name +
-                    " offset=" + FormatVector3(offset) +
-                    " next=" + FormatVector3(GetControlPosition(fc)));
-            moved++;
+                    " request=" + FormatVector3(offset) +
+                    " actual=" + FormatVector3(actualOffset) +
+                    " next=" + FormatVector3(after));
         }
 
+        if (moved > 0)
+            actualAverageOffset = actualTotalOffset / (float)moved;
+
         return moved;
+    }
+
+    private int ApplyChestHoldChestDragFeedback(Vector3 nippleOffset, string reason, bool moveChestPosition)
+    {
+        if (selectedTargetPerson == null || nippleOffset.sqrMagnitude < 0.0001f)
+            return 0;
+
+        FreeControllerV3 chest = GetTargetPersonControlByAliases("chestControl", "chest");
+        if (chest == null)
+            return 0;
+
+        Vector3 pos = GetControlPosition(chest);
+        Quaternion rot = chest.control != null ? chest.control.rotation : chest.transform.rotation;
+        Vector3 chestMove = moveChestPosition ? nippleOffset * CHEST_HOLD_NIPPLE_DRAG_CHEST_PULL_PUSH_POS_SCALE : Vector3.zero;
+
+        Vector3 dir = nippleOffset;
+        if (dir.sqrMagnitude < 0.0001f)
+            return 0;
+        dir.Normalize();
+
+        Vector3 targetForward = GetTargetPersonForwardAxis();
+        targetForward.y = 0.0f;
+        if (targetForward.sqrMagnitude < 0.0001f)
+            targetForward = Vector3.forward;
+        targetForward.Normalize();
+
+        Vector3 targetRight = GetTargetPersonRightAxis();
+        targetRight.y = 0.0f;
+        if (targetRight.sqrMagnitude < 0.0001f)
+            targetRight = Vector3.right;
+        targetRight.Normalize();
+
+        Vector3 rotAxis = Vector3.Cross(targetForward, dir);
+        if (rotAxis.sqrMagnitude < 0.0001f)
+        {
+            float depth = Vector3.Dot(dir, targetForward);
+            if (Mathf.Abs(depth) > 0.0001f)
+                rotAxis = (depth >= 0.0f ? -targetRight : targetRight);
+            else
+                rotAxis = Vector3.up;
+        }
+        rotAxis.Normalize();
+
+        float angle = Mathf.Min(CHEST_HOLD_NIPPLE_DRAG_CHEST_MAX_DEGREES,
+            nippleOffset.magnitude * CHEST_HOLD_NIPPLE_DRAG_CHEST_DEGREES_PER_METER);
+        if (angle <= 0.0001f && chestMove.sqrMagnitude < 0.0001f)
+            return 0;
+
+        Quaternion deltaRot = Quaternion.AngleAxis(angle, rotAxis);
+        Quaternion nextRot = deltaRot * rot;
+        Vector3 nextPos = pos + chestMove;
+
+        CaptureTargetOriginal(chest);
+        MoveControl(chest, nextPos, nextRot, false, true);
+        LockTargetIKControl(chest);
+
+        if (IsDebugEnabled())
+            DebugLog("[CHEST HOLD CHEST DRAG] reason=" + reason +
+                " nippleOffset=" + FormatVector3(nippleOffset) +
+                " chestMove=" + FormatVector3(chestMove) +
+                " angle=" + angle.ToString("F2", CultureInfo.InvariantCulture) +
+                " axis=" + FormatVector3(rotAxis));
+
+        return 1;
     }
 
     private void FinishChestHoldNippleButton(bool moved)
@@ -4573,16 +4733,20 @@ public class TargetGrabber : MVRScript
         List<FreeControllerV3> movedControls;
         if (!TryGetChestHoldNippleMoveControls(out movedControls))
         {
-            SetStatus("Chest Hold Pull needs nipple IK");
+            SetStatus("Chest Hold Pull needs nipple control");
             return true;
         }
 
-        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        Vector3 nippleOffset = ScaleChestHoldNippleUtilityOffset(offset);
+        Vector3 actualNippleOffset;
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, nippleOffset, out actualNippleOffset);
         bool moved = movedCount > 0;
+        int chestMoved = moved ? ApplyChestHoldChestDragFeedback(actualNippleOffset, "Pull", true) : 0;
         FinishChestHoldNippleButton(moved);
 
-        SetStatus("Chest Hold Pull / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+        SetStatus("Chest Hold Pull / amount=" + nippleOffset.magnitude.ToString("F3", CultureInfo.InvariantCulture) +
             " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / chest=" + chestMoved.ToString(CultureInfo.InvariantCulture) +
             " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
         return true;
     }
@@ -4598,16 +4762,20 @@ public class TargetGrabber : MVRScript
         List<FreeControllerV3> movedControls;
         if (!TryGetChestHoldNippleMoveControls(out movedControls))
         {
-            SetStatus("Chest Hold Push needs nipple IK");
+            SetStatus("Chest Hold Push needs nipple control");
             return true;
         }
 
-        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        Vector3 nippleOffset = ScaleChestHoldNippleUtilityOffset(offset);
+        Vector3 actualNippleOffset;
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, nippleOffset, out actualNippleOffset);
         bool moved = movedCount > 0;
+        int chestMoved = moved ? ApplyChestHoldChestDragFeedback(actualNippleOffset, "Push", true) : 0;
         FinishChestHoldNippleButton(moved);
 
-        SetStatus("Chest Hold Push / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) +
+        SetStatus("Chest Hold Push / amount=" + nippleOffset.magnitude.ToString("F3", CultureInfo.InvariantCulture) +
             " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
+            " / chest=" + chestMoved.ToString(CultureInfo.InvariantCulture) +
             " / handSnap=" + snappedHands.ToString(CultureInfo.InvariantCulture));
         return true;
     }
@@ -4620,20 +4788,24 @@ public class TargetGrabber : MVRScript
         List<FreeControllerV3> movedControls;
         if (!TryGetChestHoldNippleMoveControls(out movedControls))
         {
-            SetStatus(up ? "Chest Hold Up needs nipple IK" : "Chest Hold Down needs nipple IK");
+            SetStatus(up ? "Chest Hold Up needs nipple control" : "Chest Hold Down needs nipple control");
             return true;
         }
 
         float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_VERTICAL_DISTANCE * GetGrabPullDistanceScale());
         Vector3 offset = new Vector3(0.0f, up ? moveDistance : -moveDistance, 0.0f);
-        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        Vector3 nippleOffset = ScaleChestHoldNippleUtilityOffset(offset);
+        Vector3 actualNippleOffset;
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, nippleOffset, out actualNippleOffset);
         bool moved = movedCount > 0;
+        int chestMoved = moved ? ApplyChestHoldChestDragFeedback(actualNippleOffset, up ? "Up" : "Down", false) : 0;
 
         FinishChestHoldNippleButton(moved);
 
         SetStatus((up ? "Chest Hold Up" : "Chest Hold Down") +
             " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
-            " / y=" + offset.y.ToString("F3", CultureInfo.InvariantCulture));
+            " / chest=" + chestMoved.ToString(CultureInfo.InvariantCulture) +
+            " / y=" + nippleOffset.y.ToString("F3", CultureInfo.InvariantCulture));
         return true;
     }
 
@@ -4645,7 +4817,7 @@ public class TargetGrabber : MVRScript
         List<FreeControllerV3> movedControls;
         if (!TryGetChestHoldNippleMoveControls(out movedControls))
         {
-            SetStatus(right ? "Chest Hold Right needs nipple IK" : "Chest Hold Left needs nipple IK");
+            SetStatus(right ? "Chest Hold Right needs nipple control" : "Chest Hold Left needs nipple control");
             return true;
         }
 
@@ -4658,14 +4830,18 @@ public class TargetGrabber : MVRScript
 
         float moveDistance = Mathf.Min(GRAB_PULL_MAX_DISTANCE, GRAB_HAND_HORIZONTAL_DISTANCE * GetGrabPullDistanceScale());
         Vector3 offset = (right ? side.normalized : -side.normalized) * moveDistance;
-        int movedCount = ApplyChestHoldNippleOffset(movedControls, offset);
+        Vector3 nippleOffset = ScaleChestHoldNippleUtilityOffset(offset);
+        Vector3 actualNippleOffset;
+        int movedCount = ApplyChestHoldNippleOffset(movedControls, nippleOffset, out actualNippleOffset);
         bool moved = movedCount > 0;
+        int chestMoved = moved ? ApplyChestHoldChestDragFeedback(actualNippleOffset, right ? "Right" : "Left", false) : 0;
 
         FinishChestHoldNippleButton(moved);
 
         SetStatus((right ? "Chest Hold Right" : "Chest Hold Left") +
             " / nipple=" + movedCount.ToString(CultureInfo.InvariantCulture) +
-            " / x=" + moveDistance.ToString("F3", CultureInfo.InvariantCulture));
+            " / chest=" + chestMoved.ToString(CultureInfo.InvariantCulture) +
+            " / x=" + nippleOffset.magnitude.ToString("F3", CultureInfo.InvariantCulture));
         return true;
     }
 
@@ -4679,13 +4855,13 @@ public class TargetGrabber : MVRScript
         FreeControllerV3 right;
         if (!TryGetChestHoldNippleIKControls(out movedControls, out left, out right))
         {
-            SetStatus(open ? "Chest Hold Open needs nipple IK" : "Chest Hold Close needs nipple IK");
+            SetStatus(open ? "Chest Hold Open needs nipple control" : "Chest Hold Close needs nipple control");
             return true;
         }
 
         if (left == null || right == null || left == right)
         {
-            SetStatus(open ? "Chest Hold Open needs L/R nipple IK" : "Chest Hold Close needs L/R nipple IK");
+            SetStatus(open ? "Chest Hold Open needs L/R nipple control" : "Chest Hold Close needs L/R nipple control");
             return true;
         }
 
@@ -7044,18 +7220,119 @@ public class TargetGrabber : MVRScript
         StartTimedGrab(true, true);
     }
 
+
+    private HashSet<FreeControllerV3> BuildChestHoldBackNearWristResetSkipControls(bool includeHands, bool useFinalGrabWidth)
+    {
+        HashSet<FreeControllerV3> result = new HashSet<FreeControllerV3>();
+
+        // v95: Only normal Chest Hold Grab Hand should suppress the initial wrist reset/off cycle.
+        // Utility moves use useFinalGrabWidth=true and must keep their existing behavior.
+        if (!includeHands || useFinalGrabWidth || !IsChestHoldTarget())
+            return result;
+
+        Vector3 targetLeftNipple;
+        Vector3 targetRightNipple;
+        if (!TryGetTargetNipplePositions(out targetLeftNipple, out targetRightNipple))
+            return result;
+
+        Vector3 leftSideTarget;
+        Vector3 rightSideTarget;
+        string mode;
+        if (!TryGetAssignedNippleTargets(out leftSideTarget, out rightSideTarget, out mode))
+            return result;
+
+        if (mode != "back")
+            return result;
+
+        Vector3 zOffset = GetNipplePairZOffsetVector();
+        targetLeftNipple += zOffset;
+        targetRightNipple += zOffset;
+        leftSideTarget += zOffset;
+        rightSideTarget += zOffset;
+
+        Vector3 pairCenter = (targetLeftNipple + targetRightNipple) * 0.5f;
+        Vector3 sideAxis = GetChestHoldNippleSideAxis(targetLeftNipple, targetRightNipple, Vector3.right);
+        if (sideAxis.sqrMagnitude < 0.0001f)
+            sideAxis = GetTargetPersonRightAxis();
+        sideAxis.y = 0.0f;
+        if (sideAxis.sqrMagnitude < 0.0001f)
+            sideAxis = Vector3.right;
+        sideAxis.Normalize();
+
+        if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
+        {
+            Vector3 leftFinal = GetChestHoldBackPassOffsetTarget(lHandControl, leftSideTarget, pairCenter, sideAxis, false);
+            if (IsChestHoldBackHandNearFinalForWristResetSkip(lHandControl, leftSideTarget, leftFinal, sideAxis, false))
+                result.Add(lHandControl);
+        }
+
+        if (rightHandJSON != null && rightHandJSON.val && rHandControl != null)
+        {
+            Vector3 rightFinal = GetChestHoldBackPassOffsetTarget(rHandControl, rightSideTarget, pairCenter, sideAxis, true);
+            if (IsChestHoldBackHandNearFinalForWristResetSkip(rHandControl, rightSideTarget, rightFinal, sideAxis, true))
+                result.Add(rHandControl);
+        }
+
+        return result;
+    }
+
+    private bool IsChestHoldBackHandNearFinalForWristResetSkip(FreeControllerV3 handControl, Vector3 nippleTarget, Vector3 finalTarget, Vector3 sideAxis, bool rightHand)
+    {
+        if (handControl == null)
+            return false;
+
+        Vector3 current = GetControlPosition(handControl);
+        Vector3 delta = current - finalTarget;
+        float distance = delta.magnitude;
+        float vertical = Mathf.Abs(delta.y);
+        float nippleDistance = Vector3.Distance(current, nippleTarget);
+
+        Vector3 lateralAxis = sideAxis;
+        lateralAxis.y = 0.0f;
+        if (lateralAxis.sqrMagnitude < 0.0001f)
+            lateralAxis = Vector3.right;
+        lateralAxis.Normalize();
+        if (!rightHand)
+            lateralAxis = -lateralAxis;
+
+        float lateral = Mathf.Abs(Vector3.Dot(delta, lateralAxis));
+
+        bool near = distance <= CHEST_HOLD_BACK_NEAR_WRIST_SKIP_DISTANCE &&
+            lateral <= CHEST_HOLD_BACK_NEAR_WRIST_SKIP_LATERAL &&
+            vertical <= CHEST_HOLD_BACK_NEAR_WRIST_SKIP_VERTICAL &&
+            nippleDistance <= CHEST_HOLD_BACK_NEAR_WRIST_SKIP_NIPPLE_DISTANCE;
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[CHEST HOLD BACK NEAR WRIST CHECK] hand=" + (rightHand ? "R" : "L") +
+                " / near=" + Bool01(near) +
+                " / distance=" + distance.ToString("F3", CultureInfo.InvariantCulture) +
+                " / lateral=" + lateral.ToString("F3", CultureInfo.InvariantCulture) +
+                " / vertical=" + vertical.ToString("F3", CultureInfo.InvariantCulture) +
+                " / nippleDistance=" + nippleDistance.ToString("F3", CultureInfo.InvariantCulture) +
+                " / current=" + FormatVector3(current) +
+                " / final=" + FormatVector3(finalTarget) +
+                " / nipple=" + FormatVector3(nippleTarget));
+        }
+
+        return near;
+    }
+
     private void StartTimedGrab(bool includeHands, bool includeFeet, bool keepTemporaryRelaxLinkedIK = false, bool includeHead = false, bool useFinalGrabWidth = false)
     {
         ResolveControls();
         StopSwoonDrop(true, "grab-start");
         ClearPendingWristHandLocks();
+        ClearChestHoldNippleHandFollow("grab-start");
 
         RestoreSelfFollowParentLinks();
+
+        HashSet<FreeControllerV3> chestHoldBackNearWristSkipControls = BuildChestHoldBackNearWristResetSkipControls(includeHands, useFinalGrabWidth);
 
         if (!keepTemporaryRelaxLinkedIK)
             RestoreTemporaryRelaxLinkedIK();
         RestoreTargetNoneBodyRelaxIK();
-        RestoreTemporaryHandRotationOffStates();
+        RestoreTemporaryHandRotationOffStates(chestHoldBackNearWristSkipControls);
 
         if (includeHead)
             RelaxKissChestIK();
@@ -7097,7 +7374,7 @@ public class TargetGrabber : MVRScript
 
         UpdateChestHoldNippleIKStabilizeOnGrabStart(includeHands, useFinalGrabWidth);
 
-        ApplyTemporaryHandRotationOffIfNeeded(includeHands);
+        ApplyTemporaryHandRotationOffIfNeeded(includeHands, chestHoldBackNearWristSkipControls);
 
         CaptureControlStart(lHandControl);
         CaptureControlStart(rHandControl);
@@ -7646,6 +7923,7 @@ public class TargetGrabber : MVRScript
                     MoveHandControlThenRotateViaMidpoint(rHandControl, midTarget, target, center, pathRightSide, true, immediate, handRoute.useActorMidpointRoute);
                 moved++;
             }
+
         }
 
         if (includeFeet)
@@ -7927,7 +8205,7 @@ public class TargetGrabber : MVRScript
             if (!chestHoldModeLogged)
             {
                 chestHoldModeLogged = true;
-                SuperController.LogMessage("[TargetGrabber] [CHEST HOLD MODE] mode=face / modeFront=1 / modeBack=0 / relation=mutual-facing" +
+                DebugLog("[CHEST HOLD MODE] mode=face / modeFront=1 / modeBack=0 / relation=mutual-facing" +
                     " / selfFacingTarget=" + Bool01(selfFacingTarget) +
                     " / targetFacingSelf=" + Bool01(targetFacingSelf) +
                     " / selfLooksTarget=" + selfLooksTarget.ToString("F3", CultureInfo.InvariantCulture) +
@@ -8006,7 +8284,7 @@ public class TargetGrabber : MVRScript
             if (!chestHoldModeLogged)
             {
                 chestHoldModeLogged = true;
-                SuperController.LogMessage("[TargetGrabber] [CHEST HOLD MODE]" +
+                DebugLog("[CHEST HOLD MODE]" +
                     " mode=" + (mode ?? "") +
                     " / modeFront=" + Bool01(chestHoldFrontSide) +
                     " / modeBack=" + Bool01(chestHoldBackMode) +
@@ -8044,6 +8322,8 @@ public class TargetGrabber : MVRScript
             Vector3 chestHoldBackStep3Left = Vector3.zero;
             Vector3 chestHoldBackStep3Right = Vector3.zero;
             bool hasChestHoldBackReachTargets = false;
+            bool chestHoldBackFollowLeftActive = false;
+            bool chestHoldBackFollowRightActive = false;
             if (chestHoldBackMode)
             {
                 // v73 steps:
@@ -8068,6 +8348,7 @@ public class TargetGrabber : MVRScript
                     Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Left : GetChestHoldBackPassOffsetTarget(lHandControl, leftHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, false);
                     MoveChestHoldBackStep2Step3Control(lHandControl, step2, step3, immediate);
                     ApplyChestHoldBackWristInAtStep4(lHandControl, leftHandTarget, false, immediate);
+                    chestHoldBackFollowLeftActive = true;
                     moved++;
                 }
                 else
@@ -8092,6 +8373,7 @@ public class TargetGrabber : MVRScript
                     Vector3 step3 = hasChestHoldBackReachTargets ? chestHoldBackStep3Right : GetChestHoldBackPassOffsetTarget(rHandControl, rightHandTarget, chestHoldPairCenter, chestHoldTargetSideAxis, true);
                     MoveChestHoldBackStep2Step3Control(rHandControl, step2, step3, immediate);
                     ApplyChestHoldBackWristInAtStep4(rHandControl, rightHandTarget, true, immediate);
+                    chestHoldBackFollowRightActive = true;
                     moved++;
                 }
                 else
@@ -8105,6 +8387,26 @@ public class TargetGrabber : MVRScript
                     ApplyChestHoldFrontUpBackInWrist(rHandControl, rightPalmTarget, true, immediate, chestHoldFrontSide);
                     LogChestHoldFinalHandNipplePosition(rHandControl, rightHandTarget, rightPalmTarget, true, immediate, chestHoldFrontSide);
                     moved++;
+                }
+            }
+
+            if (chestHoldBackMode && (chestHoldBackFollowLeftActive || chestHoldBackFollowRightActive))
+            {
+                FreeControllerV3 targetLeftNippleControl;
+                FreeControllerV3 targetRightNippleControl;
+                List<FreeControllerV3> nippleControls;
+                if (TryGetChestHoldNippleIKControls(out nippleControls, out targetLeftNippleControl, out targetRightNippleControl))
+                {
+                    ArmChestHoldNippleHandFollow(
+                        chestHoldBackFollowLeftActive,
+                        chestHoldBackFollowRightActive,
+                        targetLeftNippleControl,
+                        targetRightNippleControl,
+                        chestHoldBackStep3Left,
+                        chestHoldBackStep3Right,
+                        immediate,
+                        "back"
+                    );
                 }
             }
         }
@@ -8555,20 +8857,22 @@ public class TargetGrabber : MVRScript
         Vector3 step2DownOffset = Vector3.down * CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN;
         Vector3 finalDownOffset = Vector3.down * CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN;
 
-        // v88 Front contract:
+        // v93 Front contract:
         // R hand -> target left nipple. L hand -> target right nipple.
-        // step2: assigned nipple + 10cm down + 1cm stable hand-forward + 3cm inward.
-        // step3/final: assigned nipple + 8cm down + 6cm stable hand-forward + 3cm inward.
+        // step2: assigned nipple + 13cm down + 1cm stable hand-forward + 5cm inward.
+        // step3/final: assigned nipple + 11cm down + 6cm stable hand-forward + 3cm inward.
         // "front" is stable self-body/chest anchor -> assigned nipple route.
         // It must not use current hand IK position, or repeated Grab changes the axis.
         Vector3 frontNippleSideAxis = GetChestHoldNippleSideAxis(targetLeftNipple, targetRightNipple, side);
-        Vector3 rightInward = frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_INWARD;   // target left nipple -> pair center/right nipple
-        Vector3 leftInward = -frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_INWARD;   // target right nipple -> pair center/left nipple
+        Vector3 rightStep2Inward = frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_STEP2_INWARD;   // target left nipple -> pair center/right nipple
+        Vector3 leftStep2Inward = -frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_STEP2_INWARD;   // target right nipple -> pair center/left nipple
+        Vector3 rightFinalInward = frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_FINAL_INWARD;   // target left nipple -> pair center/right nipple
+        Vector3 leftFinalInward = -frontNippleSideAxis * CHEST_HOLD_FRONT_SIMPLE_FINAL_INWARD;   // target right nipple -> pair center/left nipple
 
-        Vector3 leftStep2Base = targetRightNipple + step2DownOffset + leftInward;
-        Vector3 leftFinalBase = targetRightNipple + finalDownOffset + leftInward;
-        Vector3 rightStep2Base = targetLeftNipple + step2DownOffset + rightInward;
-        Vector3 rightFinalBase = targetLeftNipple + finalDownOffset + rightInward;
+        Vector3 leftStep2Base = targetRightNipple + step2DownOffset + leftStep2Inward;
+        Vector3 leftFinalBase = targetRightNipple + finalDownOffset + leftFinalInward;
+        Vector3 rightStep2Base = targetLeftNipple + step2DownOffset + rightStep2Inward;
+        Vector3 rightFinalBase = targetLeftNipple + finalDownOffset + rightFinalInward;
 
         Vector3 leftFrontAxis = GetChestHoldFrontHandForwardAxis(false, leftFinalBase, fallbackFrontAxis);
         Vector3 rightFrontAxis = GetChestHoldFrontHandForwardAxis(true, rightFinalBase, fallbackFrontAxis);
@@ -8580,20 +8884,23 @@ public class TargetGrabber : MVRScript
 
         if (IsDebugEnabled())
         {
-            DebugLog("[CHEST HOLD FRONT SIMPLE] assign=R->targetL/L->targetR / route=stable-body-axis-step2-down10-front1-in3-step3-down8-front6-in3" +
+            DebugLog("[CHEST HOLD FRONT SIMPLE] assign=R->targetL/L->targetR / route=stable-body-axis-step2-down13-front6-in5-step3-down11-front1-in3-follow3s" +
                 " / center=" + FormatVector3(center) +
                 " / targetL=" + FormatVector3(targetLeftNipple) +
                 " / targetR=" + FormatVector3(targetRightNipple) +
                 " / side=" + FormatVector3(side) +
                 " / frontNippleSideAxis=" + FormatVector3(frontNippleSideAxis) +
-                " / rightInward=" + FormatVector3(rightInward) +
-                " / leftInward=" + FormatVector3(leftInward) +
+                " / rightStep2Inward=" + FormatVector3(rightStep2Inward) +
+                " / leftStep2Inward=" + FormatVector3(leftStep2Inward) +
+                " / rightFinalInward=" + FormatVector3(rightFinalInward) +
+                " / leftFinalInward=" + FormatVector3(leftFinalInward) +
                 " / axisSource=self-body-anchor / fallbackFrontAxis=" + FormatVector3(fallbackFrontAxis) +
                 " / rightFrontAxis=" + FormatVector3(rightFrontAxis) +
                 " / leftFrontAxis=" + FormatVector3(leftFrontAxis) +
                 " / step2Down=" + CHEST_HOLD_FRONT_SIMPLE_STEP2_DOWN.ToString("F3", CultureInfo.InvariantCulture) +
                 " / finalDown=" + CHEST_HOLD_FRONT_SIMPLE_FINAL_DOWN.ToString("F3", CultureInfo.InvariantCulture) +
-                " / inward=" + CHEST_HOLD_FRONT_SIMPLE_INWARD.ToString("F3", CultureInfo.InvariantCulture) +
+                " / step2Inward=" + CHEST_HOLD_FRONT_SIMPLE_STEP2_INWARD.ToString("F3", CultureInfo.InvariantCulture) +
+                " / finalInward=" + CHEST_HOLD_FRONT_SIMPLE_FINAL_INWARD.ToString("F3", CultureInfo.InvariantCulture) +
                 " / step2Front=" + CHEST_HOLD_FRONT_SIMPLE_STEP2_FORWARD.ToString("F3", CultureInfo.InvariantCulture) +
                 " / finalFront=" + CHEST_HOLD_FRONT_SIMPLE_FINAL_FORWARD.ToString("F3", CultureInfo.InvariantCulture) +
                 " / rightStep2=" + FormatVector3(rightStep2) +
@@ -8601,6 +8908,9 @@ public class TargetGrabber : MVRScript
                 " / leftStep2=" + FormatVector3(leftStep2) +
                 " / leftFinal=" + FormatVector3(leftFinal));
         }
+
+        bool leftFollowActive = false;
+        bool rightFollowActive = false;
 
         // L hand goes to target right nipple route.
         if (leftHandJSON != null && leftHandJSON.val && lHandControl != null)
@@ -8610,6 +8920,7 @@ public class TargetGrabber : MVRScript
             MoveChestHoldBackStep2Step3Control(lHandControl, leftStep2, leftFinal, immediate);
             ApplyChestHoldFrontUpBackInWrist(lHandControl, leftFinal, false, immediate, true);
             LogChestHoldFinalHandNipplePosition(lHandControl, leftFinal, leftFinal, false, immediate, true);
+            leftFollowActive = true;
             moved++;
         }
 
@@ -8621,10 +8932,139 @@ public class TargetGrabber : MVRScript
             MoveChestHoldBackStep2Step3Control(rHandControl, rightStep2, rightFinal, immediate);
             ApplyChestHoldFrontUpBackInWrist(rHandControl, rightFinal, true, immediate, true);
             LogChestHoldFinalHandNipplePosition(rHandControl, rightFinal, rightFinal, true, immediate, true);
+            rightFollowActive = true;
             moved++;
         }
 
+        if (moved > 0)
+            ArmChestHoldNippleHandFollow(leftFollowActive, rightFollowActive, leftFinal, rightFinal, immediate);
+
         return moved;
+    }
+
+    private void ArmChestHoldNippleHandFollow(bool leftActive, bool rightActive, Vector3 leftFinal, Vector3 rightFinal, bool immediate)
+    {
+        FreeControllerV3 targetLeftNippleControl;
+        FreeControllerV3 targetRightNippleControl;
+        List<FreeControllerV3> nippleControls;
+        if (!TryGetChestHoldNippleIKControls(out nippleControls, out targetLeftNippleControl, out targetRightNippleControl))
+            return;
+
+        // Front route: L hand follows target R nipple, R hand follows target L nipple.
+        ArmChestHoldNippleHandFollow(leftActive, rightActive, targetRightNippleControl, targetLeftNippleControl, leftFinal, rightFinal, immediate, "front");
+    }
+
+    private void ArmChestHoldNippleHandFollow(bool leftActive, bool rightActive, FreeControllerV3 leftFollowNippleControl, FreeControllerV3 rightFollowNippleControl, Vector3 leftFinal, Vector3 rightFinal, bool immediate, string route)
+    {
+        bool any = false;
+        if (leftActive && lHandControl != null && leftFollowNippleControl != null)
+        {
+            chestHoldFollowLeftHand = lHandControl;
+            chestHoldFollowLeftNipple = leftFollowNippleControl;
+            chestHoldFollowLeftOffset = leftFinal - GetControlPosition(leftFollowNippleControl);
+            any = true;
+        }
+        else
+        {
+            chestHoldFollowLeftHand = null;
+            chestHoldFollowLeftNipple = null;
+            chestHoldFollowLeftOffset = Vector3.zero;
+        }
+
+        if (rightActive && rHandControl != null && rightFollowNippleControl != null)
+        {
+            chestHoldFollowRightHand = rHandControl;
+            chestHoldFollowRightNipple = rightFollowNippleControl;
+            chestHoldFollowRightOffset = rightFinal - GetControlPosition(rightFollowNippleControl);
+            any = true;
+        }
+        else
+        {
+            chestHoldFollowRightHand = null;
+            chestHoldFollowRightNipple = null;
+            chestHoldFollowRightOffset = Vector3.zero;
+        }
+
+        if (!any)
+            return;
+
+        chestHoldNippleHandFollowPending = !immediate;
+        chestHoldNippleHandFollowActive = immediate;
+        chestHoldNippleHandFollowElapsed = 0.0f;
+        chestHoldNippleHandFollowRoute = route ?? "";
+
+        if (IsDebugEnabled())
+            DebugLog("[CHEST HOLD NIPPLE HAND FOLLOW] arm / route=" + chestHoldNippleHandFollowRoute +
+                " / pending=" + Bool01(chestHoldNippleHandFollowPending) +
+                " / active=" + Bool01(chestHoldNippleHandFollowActive) +
+                " / seconds=" + CHEST_HOLD_NIPPLE_HAND_FOLLOW_SECONDS.ToString("F2", CultureInfo.InvariantCulture) +
+                " / left=" + Bool01(chestHoldFollowLeftHand != null && chestHoldFollowLeftNipple != null) +
+                " / right=" + Bool01(chestHoldFollowRightHand != null && chestHoldFollowRightNipple != null));
+    }
+
+    private void ActivatePendingChestHoldNippleHandFollow()
+    {
+        if (!chestHoldNippleHandFollowPending)
+            return;
+
+        chestHoldNippleHandFollowPending = false;
+        chestHoldNippleHandFollowActive = true;
+        chestHoldNippleHandFollowElapsed = 0.0f;
+
+        if (IsDebugEnabled())
+            DebugLog("[CHEST HOLD NIPPLE HAND FOLLOW] start / route=" + chestHoldNippleHandFollowRoute + " / seconds=" + CHEST_HOLD_NIPPLE_HAND_FOLLOW_SECONDS.ToString("F2", CultureInfo.InvariantCulture));
+    }
+
+    private void ClearChestHoldNippleHandFollow(string reason)
+    {
+        if (!chestHoldNippleHandFollowPending && !chestHoldNippleHandFollowActive &&
+            chestHoldFollowLeftHand == null && chestHoldFollowRightHand == null &&
+            chestHoldFollowLeftNipple == null && chestHoldFollowRightNipple == null)
+            return;
+
+        string oldRoute = chestHoldNippleHandFollowRoute;
+
+        chestHoldNippleHandFollowPending = false;
+        chestHoldNippleHandFollowActive = false;
+        chestHoldNippleHandFollowElapsed = 0.0f;
+        chestHoldFollowLeftHand = null;
+        chestHoldFollowRightHand = null;
+        chestHoldFollowLeftNipple = null;
+        chestHoldFollowRightNipple = null;
+        chestHoldFollowLeftOffset = Vector3.zero;
+        chestHoldFollowRightOffset = Vector3.zero;
+        chestHoldNippleHandFollowRoute = "";
+
+        if (IsDebugEnabled())
+            DebugLog("[CHEST HOLD NIPPLE HAND FOLLOW] clear / route=" + oldRoute + " / reason=" + reason);
+    }
+
+    private bool UpdateChestHoldNippleHandFollow()
+    {
+        if (!chestHoldNippleHandFollowActive)
+            return false;
+
+        chestHoldNippleHandFollowElapsed += Time.deltaTime;
+        bool any = false;
+
+        if (chestHoldFollowLeftHand != null && chestHoldFollowLeftNipple != null)
+        {
+            Vector3 next = GetControlPosition(chestHoldFollowLeftNipple) + chestHoldFollowLeftOffset;
+            SetControlPositionDirect(chestHoldFollowLeftHand, next);
+            any = true;
+        }
+
+        if (chestHoldFollowRightHand != null && chestHoldFollowRightNipple != null)
+        {
+            Vector3 next = GetControlPosition(chestHoldFollowRightNipple) + chestHoldFollowRightOffset;
+            SetControlPositionDirect(chestHoldFollowRightHand, next);
+            any = true;
+        }
+
+        if (!any || chestHoldNippleHandFollowElapsed >= CHEST_HOLD_NIPPLE_HAND_FOLLOW_SECONDS)
+            ClearChestHoldNippleHandFollow(any ? "timeout" : "lost-control");
+
+        return any;
     }
 
     private int ApplyChestHoldMutualFrontExactHandGrab(bool immediate, Vector3 targetLeftNipple, Vector3 targetRightNipple, Vector3 center, Vector3 fallbackSide)
@@ -9311,7 +9751,7 @@ public class TargetGrabber : MVRScript
         if (selectedTargetPerson == null)
         {
             SetStatus("Intimate scan needs Target Person");
-            SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] no Target Person");
+            DebugLog("[INTIMATE SCAN] no Target Person");
             return;
         }
 
@@ -9329,17 +9769,17 @@ public class TargetGrabber : MVRScript
         });
         Transform anus = FindAnusTargetTransform(selectedTargetPerson);
 
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] target=" + selectedTargetPerson.uid +
+        DebugLog("[INTIMATE SCAN] target=" + selectedTargetPerson.uid +
             " / focused=pelvis triggers + _JointAl/Debug");
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] Gen candidate=" +
+        DebugLog("[INTIMATE SCAN] Gen candidate=" +
             FormatTransformCandidate(gen));
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] Vagina candidate=" +
+        DebugLog("[INTIMATE SCAN] Vagina candidate=" +
             FormatTransformCandidate(vagina));
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] Deep Vagina candidate=" +
+        DebugLog("[INTIMATE SCAN] Deep Vagina candidate=" +
             FormatTransformCandidate(deepVagina));
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] Deeper Vagina candidate=" +
+        DebugLog("[INTIMATE SCAN] Deeper Vagina candidate=" +
             FormatTransformCandidate(deeperVagina));
-        SuperController.LogMessage("[TargetGrabber] [INTIMATE SCAN] Anus candidate=" +
+        DebugLog("[INTIMATE SCAN] Anus candidate=" +
             FormatTransformCandidate(anus));
 
         SetStatus("Intimate scan / Gen=" + Bool01(gen != null) +
@@ -12614,7 +13054,7 @@ public class TargetGrabber : MVRScript
         float rightReachFromPair = Vector3.Distance(reachRightTarget, pairCenter);
         float leftReachFromPair = Vector3.Distance(reachLeftTarget, pairCenter);
 
-        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD INPUT]" +
+        DebugLog("[CHEST HOLD INPUT]" +
             " selfRoot=" + FormatVector3(selfRoot) +
             " / rHand=" + FormatVector3(rightHandPos) +
             " / lHand=" + FormatVector3(leftHandPos) +
@@ -12623,7 +13063,7 @@ public class TargetGrabber : MVRScript
             " / lNipple=" + FormatVector3(finalLeftTarget) +
             " / pairCenter=" + FormatVector3(pairCenter));
 
-        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD TARGETS]" +
+        DebugLog("[CHEST HOLD TARGETS]" +
             " reachBaseR=" + FormatVector3(baseReachRightTarget) +
             " / reachBaseL=" + FormatVector3(baseReachLeftTarget) +
             " / reachAdjR=" + FormatVector3(reachRightTarget) +
@@ -12667,7 +13107,7 @@ public class TargetGrabber : MVRScript
         float rightReachSideFromPair = Vector3.Dot(reachRightTarget - pairCenter, nippleSideAxisForAdjust);
         float leftReachSideFromPair = Vector3.Dot(reachLeftTarget - pairCenter, nippleSideAxisForAdjust);
 
-        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD ELBOW]" +
+        DebugLog("[CHEST HOLD ELBOW]" +
             " rElbow=" + FormatVector3(rightElbowPos) +
             " / lElbow=" + FormatVector3(leftElbowPos) +
             " / rElbowOutFromHand=" + rightElbowOutFromHand.ToString("F3", CultureInfo.InvariantCulture) +
@@ -12681,7 +13121,7 @@ public class TargetGrabber : MVRScript
             " / rReachSidePair=" + rightReachSideFromPair.ToString("F3", CultureInfo.InvariantCulture) +
             " / lReachSidePair=" + leftReachSideFromPair.ToString("F3", CultureInfo.InvariantCulture));
 
-        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD FRONT ADJUST]" +
+        DebugLog("[CHEST HOLD FRONT ADJUST]" +
             " targetForward=" + FormatVector3(targetForwardAxisForAdjust) +
             " / sliderAxis=" + FormatVector3(sliderAxisForAdjust) +
             " / nippleSideAxis=" + FormatVector3(nippleSideAxisForAdjust) +
@@ -12739,7 +13179,7 @@ public class TargetGrabber : MVRScript
         float reachCenterForward = Vector3.Dot(pairToReachCenter, targetForwardAxis);
         float reachCenterBack = Vector3.Dot(pairToReachCenter, -targetForwardAxis);
 
-        SuperController.LogMessage("[TargetGrabber] [CHEST HOLD AXIS]" +
+        DebugLog("[CHEST HOLD AXIS]" +
             " targetRight=" + FormatVector3(targetRightAxis) +
             " / targetForward=" + FormatVector3(targetForwardAxis) +
             " / nippleRight=" + FormatVector3(nippleRightAxis) +
@@ -13280,6 +13720,36 @@ public class TargetGrabber : MVRScript
         MoveControl(handControl, movedPosition, rotation, true, true);
     }
 
+
+    private bool ApplyGenFinalWristDownAtFinalStep(FreeControllerV3 handControl, bool actualRightHand, Vector3 target, Vector3 center)
+    {
+        if (!IsGenTarget())
+            return false;
+
+        if (handControl == null)
+            return true;
+
+        WristArmPose pose = GetWristButtonArmPose("Down");
+        if (pose == null)
+            return true;
+
+        Quaternion targetLocalRot = actualRightHand ? pose.RHand.LocalRot : pose.LHand.LocalRot;
+        int applied = ApplyWristButtonHandLocked(handControl, actualRightHand, "Down", targetLocalRot);
+
+        if (IsDebugEnabled())
+        {
+            DebugLog("[GEN FINAL WRIST DOWN] hand=" + (actualRightHand ? "R" : "L") +
+                " applied=" + applied.ToString(CultureInfo.InvariantCulture) +
+                " positionLocked=1" +
+                " target=" + FormatVector3(target) +
+                " current=" + FormatVector3(GetControlPosition(handControl)) +
+                " center=" + FormatVector3(center));
+        }
+
+        // Gen uses this fixed final wrist step instead of the generic palm-auto rotation.
+        return true;
+    }
+
     private void MoveHandControlThenRotateViaMidpoint(FreeControllerV3 handControl, Vector3 midTarget, Vector3 finalTarget, Vector3 center, bool pathRightSide, bool actualRightHand, bool immediate, bool useMidpointRoute)
     {
         if (handControl == null)
@@ -13373,6 +13843,9 @@ public class TargetGrabber : MVRScript
         if (IsPeniMode())
             return;
 
+        if (ApplyGenFinalWristDownAtFinalStep(handControl, actualRightHand, finalTarget, center))
+            return;
+
         if (!ShouldAlignHandPalm())
         {
             LogWristAutoSkipDebug("align-hand-palm-off", GetControlPosition(handControl), center, pathRightSide, actualRightHand, false);
@@ -13402,6 +13875,23 @@ public class TargetGrabber : MVRScript
                 DebugLog("[WRIST PENI SKIP] rotation-off=1 hand=" + (actualRightHand ? "R" : "L") +
                     " target=" + FormatVector3(target) +
                     " center=" + FormatVector3(center));
+            return;
+        }
+
+        if (IsGenTarget())
+        {
+            if (!immediate && GetMoveTLinear() < 1.0f)
+            {
+                if (IsDebugEnabled())
+                    DebugLog("[WRIST AUTO WAIT] hand=" + (actualRightHand ? "R" : "L") +
+                        " mode=gen-final-down" +
+                        " t=" + GetMoveTLinear().ToString("F3", CultureInfo.InvariantCulture) +
+                        " target=" + FormatVector3(target) +
+                        " current=" + FormatVector3(GetControlPosition(handControl)));
+                return;
+            }
+
+            ApplyGenFinalWristDownAtFinalStep(handControl, actualRightHand, target, center);
             return;
         }
 
@@ -13497,15 +13987,36 @@ public class TargetGrabber : MVRScript
         catch { }
     }
 
-    private void ApplyTemporaryHandRotationOffIfNeeded(bool includeHands)
+    private void ApplyTemporaryHandRotationOffIfNeeded(bool includeHands, HashSet<FreeControllerV3> skipControls = null)
     {
         if (!includeHands)
             return;
 
         if (leftHandJSON != null && leftHandJSON.val)
-            TemporarilyTurnHandRotationOff(lHandControl, "L");
+        {
+            if (skipControls != null && lHandControl != null && skipControls.Contains(lHandControl))
+            {
+                if (IsDebugEnabled())
+                    DebugLog("[CHEST HOLD BACK NEAR WRIST SKIP] hand=L / skip=apply-rot-off");
+            }
+            else
+            {
+                TemporarilyTurnHandRotationOff(lHandControl, "L");
+            }
+        }
+
         if (rightHandJSON != null && rightHandJSON.val)
-            TemporarilyTurnHandRotationOff(rHandControl, "R");
+        {
+            if (skipControls != null && rHandControl != null && skipControls.Contains(rHandControl))
+            {
+                if (IsDebugEnabled())
+                    DebugLog("[CHEST HOLD BACK NEAR WRIST SKIP] hand=R / skip=apply-rot-off");
+            }
+            else
+            {
+                TemporarilyTurnHandRotationOff(rHandControl, "R");
+            }
+        }
     }
 
     private void TemporarilyTurnHandRotationOff(FreeControllerV3 handControl, string label)
@@ -13525,7 +14036,7 @@ public class TargetGrabber : MVRScript
         catch { }
     }
 
-    private void RestoreTemporaryHandRotationOffStates()
+    private void RestoreTemporaryHandRotationOffStates(HashSet<FreeControllerV3> skipControls = null)
     {
         if (temporaryHandRotationOffStates.Count == 0)
             return;
@@ -13537,6 +14048,14 @@ public class TargetGrabber : MVRScript
         {
             if (item.Key == null)
                 continue;
+
+            if (skipControls != null && skipControls.Contains(item.Key))
+            {
+                temporaryHandRotationOffStates[item.Key] = item.Value;
+                if (IsDebugEnabled())
+                    DebugLog("[CHEST HOLD BACK NEAR WRIST SKIP] hand=" + (item.Key == rHandControl ? "R" : item.Key == lHandControl ? "L" : "?") + " / skip=restore-rot-state");
+                continue;
+            }
 
             try
             {
@@ -13586,6 +14105,7 @@ public class TargetGrabber : MVRScript
     {
         ResetHugBodyHdcHipUpperState("release");
         hasActiveGrab = false;
+        ClearChestHoldNippleHandFollow("release");
         RestoreHeldTargetHandFollowLocks("release");
         ClearHeldTargetGrabState();
         ClearPendingWristHandLocks();
@@ -13603,6 +14123,7 @@ public class TargetGrabber : MVRScript
         RestoreTargetNoneBodyRelaxIK();
         RestoreTemporaryHandRotationOffStates();
         RestoreChestHoldNippleIKStabilize("release");
+        ReleaseSelectedTargetNippleIK("release");
         StopSwoonDrop(true, "release");
 
         // 今回このプラグインがONにしたControlだけを、Release/復帰対象として退避する。
