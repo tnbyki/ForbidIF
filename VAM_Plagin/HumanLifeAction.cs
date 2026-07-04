@@ -1,3 +1,9 @@
+// HLA_V093_LEG_MOTION_COOPERATIVE: Life Leg Motion now defaults to rotation-only cooperative thigh sway, leaves thigh PositionState untouched unless optional Position Assist is enabled, and yields briefly when external pose/root motion moves the thighs.
+// HLA_V091_SHOULDER_SWAY_BREATH: Adds optional Life Shoulder Sway driven by the Breath loop using small l/r elbow offsets to make breathing visible without touching hand IK or chest position; keeps v090 Breath Scale max 50 and v089 surface cover/return snap behavior.
+// HLA_V090_BREATH_SCALE_MAX50_VISIBLE: Raises Life Breath Scale slider max from 10.0 to 50.0 so rotation-only breath can be visibly verified; keeps v089 surface cover and rotation-only breath behavior.
+// HLA_V089_SURFACE_COVER_ROTATION_BREATH: RandomCover uses shoulder/upper-chest/belly/thigh body-surface points instead of Head/Chest/Hip IK-center targets; Life Breath is chest rotation-only and never restores chest position.
+// HLA_V088_TARGET_COVER_RETURN_SNAP_BACK_GUARD: Target Cover still stretches toward the selected target point, but target-side final snap is skipped for Target* labels and the hand IK controller snaps back to the captured self hand position before restoring states; random Target Cover is suppressed for mutual-back facing.
+// HLA_V087_LEG_BASE_DOCKING_HANDOFF_RELEASE: Life Leg Motion now also pauses on external TargetLinePerson Docking Pose Assist and releases Life-owned thigh base motion to Position=Comply / Rotation=Off during handoff, preventing thigh On residue after docking/pose interruption.
 // HLA_V086_EXTERNAL_COVER_ACTIONS: Adds stable external Action aliases for HBA/HDU delegation: HLA_Cover_SelfHead and HLA_Cover_SelfHip, while keeping existing test/manual buttons.
 // HLA_V085_SELF_HEAD_ELBOW_LOOSE_FINAL: Self Head/Face/Mouth keeps larger chest avoidance, but after the outward bypass the same-side elbow becomes loose/Comply at the final head touch so large chest poses do not pull the elbow inward.
 // HLA_V084_HEAD_CHEST_AVOID_BIGGER_HEAD_FORWARD: Self Head/Face/Mouth chest avoidance is larger, tilted body poses get extra avoid boost, and Self Head cover point moves 0.040m forward.
@@ -76,6 +82,7 @@ public class HumanLifeAction : MVRScript
     JSONStorableBool lookCameraEnabled;
     JSONStorableBool randomCoverEnabled;
     JSONStorableBool lifeLegMotionEnabled;
+    JSONStorableBool lifeLegPositionAssistEnabled;
     JSONStorableBool autoPauseLegOnHbaActive;
     JSONStorableBool autoPauseGesturesOnHbaActive;
     JSONStorableBool respectExistingHandIk;
@@ -86,6 +93,8 @@ public class HumanLifeAction : MVRScript
     JSONStorableFloat lifeStrength;
     JSONStorableFloat breathAmount;
     JSONStorableFloat breathScale;
+    JSONStorableBool shoulderSwayEnabled;
+    JSONStorableFloat shoulderSwayScale;
     JSONStorableFloat legScale;
     JSONStorableFloat coverFrequency;
     JSONStorableFloat lookFrequency;
@@ -106,7 +115,8 @@ public class HumanLifeAction : MVRScript
     const float DefaultIntervalMax = 10.0f;
     const float DefaultLifeStrength = 1.0f;
     const float DefaultBreathAmount = 0.007f;
-    const float DefaultBreathScale = 5.00f;
+    const float DefaultBreathScale = 20.00f;
+    const float DefaultShoulderSwayScale = 5.00f;
     const float DefaultLegScale = 1.00f;
     const float DefaultCoverFrequency = 90.0f;
     const float DefaultLookFrequency = 50.0f;
@@ -119,6 +129,8 @@ public class HumanLifeAction : MVRScript
     const float TargetHeadCoverMaxDistance = 1.75f;
     const float HeadCoverSnapSeconds = 0.12f;
     const float CoverFinalSnapSeconds = 0.16f;
+    const float CoverReturnSnapSeconds = 0.12f;
+    const float TargetCoverMutualBackSuppressDot = -0.35f;
     const float CoverTouchHoldSwayScale = 0.20f;
     const float HeadCoverSurfaceOffset = 0.012f;
     const float SelfHeadCoverPointForwardOffset = 0.040f;
@@ -129,8 +141,11 @@ public class HumanLifeAction : MVRScript
     const float GestureLegMotionWeight = 14.0f;
     const float HbaProgressPauseThreshold = 0.005f;
     const float HbaLegResumeDelaySeconds = 0.75f;
+    const float LegExternalChangeResumeDelaySeconds = 0.75f;
     const float HbaBreathResumeDelaySeconds = 0.75f;
     const float HbaGestureResumeDelaySeconds = 0.45f;
+    const float ExternalDockingPoseAssistPauseWindowSeconds = 7.00f; // TargetLinePerson 5s assist + 2s settle suppress
+    const float ExternalDockingPoseAssistResolveInterval = 0.15f;
 
     const float GestureNoneWeight = 40.0f;
     const float GestureBreathWeight = 25.0f;
@@ -246,22 +261,33 @@ public class HumanLifeAction : MVRScript
     JSONStorable hbaStorable;
     JSONStorableFloat hbaProgressParam;
     JSONStorableBool hbaActiveParam;
+    JSONStorable externalDockingPoseAssistStorable;
+    JSONStorableBool externalDockingPoseAssistActiveParam;
+    JSONStorableFloat externalDockingPoseAssistLastEventTimeParam;
     JSONStorable targetGrabberStorable;
     JSONStorableBool tgHeldTargetLHandParam;
     JSONStorableBool tgHeldTargetRHandParam;
     bool tgHeldTargetLHandCached = false;
     bool tgHeldTargetRHandCached = false;
     string tgHeldTargetSourceCached = "";
+    bool externalDockingPoseAssistCached = false;
+    string externalDockingPoseAssistSourceCached = "";
+    float externalDockingPoseAssistElapsedCached = -1.0f;
     float nextHbaResolveTime = -999.0f;
+    float nextExternalDockingPoseAssistResolveTime = -999.0f;
     float nextTargetGrabberResolveTime = -999.0f;
     float hbaLegResumeAllowedTime = -999.0f;
+    float legExternalResumeAllowedTime = -999.0f;
     bool legPausedByHba = false;
+    bool legPausedByExternalDockingPoseAssist = false;
     float hbaBreathResumeAllowedTime = -999.0f;
     bool breathPausedByHba = false;
     float hbaGestureResumeAllowedTime = -999.0f;
     bool lifeGesturePausedByHba = false;
     bool forceCoverOnNextGesture = false;
     ControllerSnapshot activeBreathSnapshot;
+    ControllerSnapshot activeBreathLeftElbowSnapshot;
+    ControllerSnapshot activeBreathRightElbowSnapshot;
     ControllerSnapshot activeLookSnapshot;
     ControllerSnapshot activeEyeSnapshot;
     ControllerSnapshot activeCoverHandSnapshot;
@@ -385,6 +411,10 @@ public class HumanLifeAction : MVRScript
             RegisterBool(lifeLegMotionEnabled);
             CreateToggle(lifeLegMotionEnabled, false);
 
+            lifeLegPositionAssistEnabled = new JSONStorableBool("Life Leg Position Assist", false);
+            RegisterBool(lifeLegPositionAssistEnabled);
+            CreateToggle(lifeLegPositionAssistEnabled, false);
+
             autoPauseLegOnHbaActive = new JSONStorableBool("Auto Pause Leg On HBA Active", true);
             RegisterBool(autoPauseLegOnHbaActive);
             CreateToggle(autoPauseLegOnHbaActive, false);
@@ -427,9 +457,17 @@ public class HumanLifeAction : MVRScript
             RegisterFloat(breathAmount);
             // v003 simple UI: keep registered/default but hide tuning slider.
 
-            breathScale = new JSONStorableFloat("Life Breath Scale", DefaultBreathScale, 0.0f, 10.0f, true);
+            breathScale = new JSONStorableFloat("Life Breath Scale", DefaultBreathScale, 0.0f, 50.0f, true);
             RegisterFloat(breathScale);
             CreateSlider(breathScale, false);
+
+            shoulderSwayEnabled = new JSONStorableBool("Life Shoulder Sway", true);
+            RegisterBool(shoulderSwayEnabled);
+            CreateToggle(shoulderSwayEnabled, false);
+
+            shoulderSwayScale = new JSONStorableFloat("Life Shoulder Sway Scale", DefaultShoulderSwayScale, 0.0f, 50.0f, true);
+            RegisterFloat(shoulderSwayScale);
+            CreateSlider(shoulderSwayScale, false);
 
             legScale = new JSONStorableFloat("Life Leg Scale", DefaultLegScale, 0.0f, 5.0f, true);
             RegisterFloat(legScale);
@@ -729,7 +767,8 @@ public class HumanLifeAction : MVRScript
         float slowDriftPhase = UnityEngine.Random.Range(0.0f, Mathf.PI * 2.0f);
         float lastLog = -999.0f;
 
-        try { ctrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        // v089+: Breath must not own chest position. Holding chest PositionState.On can make
+        // chest stay behind when root/control is moved. Breath is now rotation-only for chest.
         try { ctrl.currentRotationState = FreeControllerV3.RotationState.On; } catch { }
 
         while (lifeEnabled != null && lifeEnabled.val && breathEnabled != null && breathEnabled.val && ctrl != null)
@@ -742,6 +781,7 @@ public class HumanLifeAction : MVRScript
                 lastAppliedRot = baseRot;
                 UpdateControllerSnapshotPose(snap, basePos, baseRot);
                 activeBreathSnapshot = snap;
+                RebaseBreathShoulderSwaySnapshots();
                 phase = 0.0f;
                 slowDriftPhase = UnityEngine.Random.Range(0.0f, Mathf.PI * 2.0f);
                 Log("Pose change safe / breath rebase / controller=" + (ctrl != null ? ctrl.name : "<none>"));
@@ -769,35 +809,54 @@ public class HumanLifeAction : MVRScript
             float exhaleWave = Mathf.Sin(phase);
             float sideWave = Mathf.Sin(slowDriftPhase);
 
-            float amount = EffectiveBreathAmount();
-            float swayAmount = EffectiveBreathBodySwayAmount();
+            // v089: rotation-only breath. Do not set chest position and do not keep
+            // PositionState.On just for breathing. This avoids chestControl being left behind
+            // when the Person root/control is moved while Life is active.
+            float amount = 0.0f;
+            float swayAmount = 0.0f;
             float rotAmount = EffectiveBreathRotationDegrees();
 
-            Vector3 breathOffset = ((up * amount * 0.62f) + (rootForward * amount * 0.38f)) * breathWave;
-            Vector3 bodySwayOffset = (rootForward * (swayAmount * 0.45f * exhaleWave)) + (rootRight * (swayAmount * 0.22f * sideWave));
             float pitch = rotAmount * 0.65f * breathWave;
             float lean = rotAmount * 0.20f * sideWave;
             Quaternion breathRot = Quaternion.AngleAxis(pitch, rootRight) * Quaternion.AngleAxis(lean, rootForward) * baseRot;
 
-            Vector3 applyPos = basePos + breathOffset + bodySwayOffset;
-            SetControllerPosition(ctrl, applyPos);
             SetControllerRotation(ctrl, breathRot);
-            lastAppliedPos = applyPos;
+            lastAppliedPos = GetControllerPosition(ctrl);
             lastAppliedRot = breathRot;
+
+            float shoulderAmount = 0.0f;
+            bool shoulderSwayOn = IsShoulderSwayEnabled();
+            bool shoulderSwaySuppressed = IsBreathShoulderSwaySuppressed();
+            if (shoulderSwayOn && !shoulderSwaySuppressed)
+            {
+                EnsureBreathShoulderSwaySnapshots();
+                shoulderAmount = EffectiveShoulderSwayAmount();
+                ApplyBreathShoulderSway(rootForward, rootRight, up, breathWave, exhaleWave, sideWave, shoulderAmount);
+            }
+            else if (!shoulderSwayOn && (activeBreathLeftElbowSnapshot != null || activeBreathRightElbowSnapshot != null))
+            {
+                RestoreBreathShoulderSway(true);
+            }
 
             if (debugLog != null && debugLog.val && Time.time - lastLog > 3.0f)
             {
                 lastLog = Time.time;
-                Log("Breath loop / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture) + " / sway=" + swayAmount.ToString("F3", CultureInfo.InvariantCulture) + " / rot=" + rotAmount.ToString("F2", CultureInfo.InvariantCulture));
+                Log("Breath loop / mode=rotation-only+shoulder-sway / amount=" + amount.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / sway=" + swayAmount.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / rot=" + rotAmount.ToString("F2", CultureInfo.InvariantCulture)
+                    + " / shoulder=" + shoulderAmount.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / shoulderOn=" + (shoulderSwayOn ? "1" : "0")
+                    + " / shoulderSuppressed=" + (shoulderSwaySuppressed ? "1" : "0"));
             }
 
             yield return null;
         }
 
-        RestoreController(snap);
+        RestoreBreathController(snap);
+        RestoreBreathShoulderSway(true);
         breathLoopRoutine = null;
         activeBreathSnapshot = null;
-        Log("Breath loop stop / source=" + source);
+        Log("Breath loop stop / source=" + source + " / mode=rotation-only+shoulder-sway");
     }
 
     void StopBreathLoop(string reason)
@@ -816,9 +875,91 @@ public class HumanLifeAction : MVRScript
 
         if (activeBreathSnapshot != null)
         {
-            if (restorePose) RestoreController(activeBreathSnapshot);
+            if (restorePose) RestoreBreathController(activeBreathSnapshot);
             else RestoreControllerStateOnly(activeBreathSnapshot);
             activeBreathSnapshot = null;
+        }
+
+        RestoreBreathShoulderSway(restorePose);
+    }
+
+    bool IsShoulderSwayEnabled()
+    {
+        return shoulderSwayEnabled != null && shoulderSwayEnabled.val && SafeFloat(shoulderSwayScale, DefaultShoulderSwayScale) > 0.0001f;
+    }
+
+    bool IsBreathShoulderSwaySuppressed()
+    {
+        // Do not fight RandomCover or other Life hand gestures that may temporarily own elbows.
+        return activeCoverHandSnapshot != null || activeCoverElbowSnapshot != null;
+    }
+
+    void EnsureBreathShoulderSwaySnapshots()
+    {
+        if (!IsShoulderSwayEnabled()) return;
+        ResolveControllers();
+
+        if (activeBreathLeftElbowSnapshot == null && lElbowControl != null)
+        {
+            activeBreathLeftElbowSnapshot = CaptureController(lElbowControl);
+            try { lElbowControl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        }
+        if (activeBreathRightElbowSnapshot == null && rElbowControl != null)
+        {
+            activeBreathRightElbowSnapshot = CaptureController(rElbowControl);
+            try { rElbowControl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+        }
+    }
+
+    void RebaseBreathShoulderSwaySnapshots()
+    {
+        if (activeBreathLeftElbowSnapshot != null && activeBreathLeftElbowSnapshot.controller != null)
+        {
+            activeBreathLeftElbowSnapshot.position = GetControllerPosition(activeBreathLeftElbowSnapshot.controller);
+            activeBreathLeftElbowSnapshot.rotation = GetControllerRotation(activeBreathLeftElbowSnapshot.controller);
+        }
+        if (activeBreathRightElbowSnapshot != null && activeBreathRightElbowSnapshot.controller != null)
+        {
+            activeBreathRightElbowSnapshot.position = GetControllerPosition(activeBreathRightElbowSnapshot.controller);
+            activeBreathRightElbowSnapshot.rotation = GetControllerRotation(activeBreathRightElbowSnapshot.controller);
+        }
+    }
+
+    void ApplyBreathShoulderSway(Vector3 rootForward, Vector3 rootRight, Vector3 up, float breathWave, float exhaleWave, float sideWave, float shoulderAmount)
+    {
+        if (shoulderAmount <= 0.0001f) return;
+
+        // v091: Shoulder Sway intentionally does not touch hand IK. It only nudges elbows
+        // slightly so the shoulder/upper-arm area reads as breathing while chest position stays free.
+        Vector3 common = up * (shoulderAmount * 0.28f * breathWave)
+            + rootForward * (shoulderAmount * 0.10f * exhaleWave);
+        Vector3 microSide = rootRight * (shoulderAmount * 0.08f * sideWave);
+
+        if (activeBreathLeftElbowSnapshot != null && activeBreathLeftElbowSnapshot.controller != null)
+        {
+            Vector3 leftOffset = (-rootRight * (shoulderAmount * 0.62f * breathWave)) + common - microSide;
+            SetControllerPosition(activeBreathLeftElbowSnapshot.controller, activeBreathLeftElbowSnapshot.position + leftOffset);
+        }
+        if (activeBreathRightElbowSnapshot != null && activeBreathRightElbowSnapshot.controller != null)
+        {
+            Vector3 rightOffset = (rootRight * (shoulderAmount * 0.62f * breathWave)) + common + microSide;
+            SetControllerPosition(activeBreathRightElbowSnapshot.controller, activeBreathRightElbowSnapshot.position + rightOffset);
+        }
+    }
+
+    void RestoreBreathShoulderSway(bool restorePose)
+    {
+        if (activeBreathLeftElbowSnapshot != null)
+        {
+            if (restorePose) RestoreController(activeBreathLeftElbowSnapshot);
+            else RestoreControllerStateOnly(activeBreathLeftElbowSnapshot);
+            activeBreathLeftElbowSnapshot = null;
+        }
+        if (activeBreathRightElbowSnapshot != null)
+        {
+            if (restorePose) RestoreController(activeBreathRightElbowSnapshot);
+            else RestoreControllerStateOnly(activeBreathRightElbowSnapshot);
+            activeBreathRightElbowSnapshot = null;
         }
     }
 
@@ -837,6 +978,9 @@ public class HumanLifeAction : MVRScript
             StopLegBaseLoop("hba-active", false);
             return;
         }
+
+        if (Time.time < legExternalResumeAllowedTime)
+            return;
 
         if (legBaseLoopRoutine == null)
         {
@@ -880,16 +1024,23 @@ public class HumanLifeAction : MVRScript
         float slowPhase = UnityEngine.Random.Range(0.0f, Mathf.PI * 2.0f);
         float sideBias = UnityEngine.Random.value < 0.5f ? -1.0f : 1.0f;
         float lastLog = -999.0f;
+        bool positionAssist = IsLegPositionAssistEnabled();
 
         if (lCtrl != null)
         {
             try { lCtrl.currentRotationState = FreeControllerV3.RotationState.On; } catch { }
-            try { lCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            if (positionAssist)
+            {
+                try { lCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            }
         }
         if (rCtrl != null)
         {
             try { rCtrl.currentRotationState = FreeControllerV3.RotationState.On; } catch { }
-            try { rCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            if (positionAssist)
+            {
+                try { rCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            }
         }
 
         while (lifeEnabled != null && lifeEnabled.val && IsLegMotionEnabled())
@@ -901,26 +1052,16 @@ public class HumanLifeAction : MVRScript
                 if (rCtrl != null && ControllerExternallyMoved(rCtrl, rBasePos, rLastRot)) rebase = true;
                 if (rebase)
                 {
-                    if (lCtrl != null && lSnap != null)
-                    {
-                        lBasePos = GetControllerPosition(lCtrl);
-                        lBaseRot = GetControllerRotation(lCtrl);
-                        lLastRot = lBaseRot;
-                        UpdateControllerSnapshotPose(lSnap, lBasePos, lBaseRot);
-                    }
-                    if (rCtrl != null && rSnap != null)
-                    {
-                        rBasePos = GetControllerPosition(rCtrl);
-                        rBaseRot = GetControllerRotation(rCtrl);
-                        rLastRot = rBaseRot;
-                        UpdateControllerSnapshotPose(rSnap, rBasePos, rBaseRot);
-                    }
-                    phase = 0.0f;
-                    slowPhase = UnityEngine.Random.Range(0.0f, Mathf.PI * 2.0f);
-                    sideBias = UnityEngine.Random.value < 0.5f ? -1.0f : 1.0f;
-                    Log("Pose change safe / leg base rebase");
-                    yield return null;
-                    continue;
+                    // v093: Do not keep owning the thighs while another pose/root move is active.
+                    // Release only the Life-owned states, wait briefly, then resume from the new pose.
+                    legExternalResumeAllowedTime = Time.time + LegExternalChangeResumeDelaySeconds;
+                    RestoreControllerStateOnly(activeLegBaseLeftSnapshot);
+                    RestoreControllerStateOnly(activeLegBaseRightSnapshot);
+                    activeLegBaseLeftSnapshot = null;
+                    activeLegBaseRightSnapshot = null;
+                    legBaseLoopRoutine = null;
+                    Log("Pose change safe / leg base yield / resumeAfter=" + LegExternalChangeResumeDelaySeconds.ToString("F2", CultureInfo.InvariantCulture));
+                    yield break;
                 }
             }
 
@@ -939,7 +1080,7 @@ public class HumanLifeAction : MVRScript
             rootRight.Normalize();
 
             float amount = EffectiveLegBaseRotationDegrees();
-            float posAmount = EffectiveLegBasePositionAmount();
+            float posAmount = positionAssist ? EffectiveLegBasePositionAmount() : 0.0f;
             float openNorm = Mathf.Sin(phase);
             float relaxNorm = Mathf.Sin(slowPhase);
             float singleNorm = Mathf.Sin(slowPhase * 0.73f + 1.7f) * sideBias;
@@ -954,7 +1095,7 @@ public class HumanLifeAction : MVRScript
                     + rootRight * ((-openNorm + singleNorm * 0.45f) * posAmount)
                     + rootForward * (relaxNorm * posAmount * 0.35f);
                 SetControllerRotation(lCtrl, lApply);
-                SetControllerPosition(lCtrl, lPos);
+                if (positionAssist) SetControllerPosition(lCtrl, lPos);
                 lLastRot = lApply;
             }
             if (rCtrl != null)
@@ -964,7 +1105,7 @@ public class HumanLifeAction : MVRScript
                     + rootRight * ((openNorm + singleNorm * 0.45f) * posAmount)
                     + rootForward * (-relaxNorm * posAmount * 0.35f);
                 SetControllerRotation(rCtrl, rApply);
-                SetControllerPosition(rCtrl, rPos);
+                if (positionAssist) SetControllerPosition(rCtrl, rPos);
                 rLastRot = rApply;
             }
 
@@ -973,6 +1114,7 @@ public class HumanLifeAction : MVRScript
                 lastLog = Time.time;
                 Log("Leg base loop / amount=" + amount.ToString("F2", CultureInfo.InvariantCulture)
                     + " / pos=" + posAmount.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / posAssist=" + (positionAssist ? "1" : "0")
                     + " / cycle=" + cycleSeconds.ToString("F1", CultureInfo.InvariantCulture));
             }
 
@@ -1004,15 +1146,39 @@ public class HumanLifeAction : MVRScript
         if (activeLegBaseLeftSnapshot != null)
         {
             if (restorePose) RestoreController(activeLegBaseLeftSnapshot);
-            else RestoreControllerStateOnly(activeLegBaseLeftSnapshot);
+            else ReleaseLegBaseThighForHandoff(activeLegBaseLeftSnapshot, reason);
             activeLegBaseLeftSnapshot = null;
         }
         if (activeLegBaseRightSnapshot != null)
         {
             if (restorePose) RestoreController(activeLegBaseRightSnapshot);
-            else RestoreControllerStateOnly(activeLegBaseRightSnapshot);
+            else ReleaseLegBaseThighForHandoff(activeLegBaseRightSnapshot, reason);
             activeLegBaseRightSnapshot = null;
         }
+    }
+
+
+    void ReleaseLegBaseThighForHandoff(ControllerSnapshot snap, string reason)
+    {
+        if (snap == null || snap.controller == null) return;
+        FreeControllerV3 ctrl = snap.controller;
+        string beforePos = "?";
+        string beforeRot = "?";
+        try { beforePos = ctrl.currentPositionState.ToString(); } catch { }
+        try { beforeRot = ctrl.currentRotationState.ToString(); } catch { }
+
+        try { ctrl.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+        try { ctrl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+
+        string afterPos = "?";
+        string afterRot = "?";
+        try { afterPos = ctrl.currentPositionState.ToString(); } catch { }
+        try { afterRot = ctrl.currentRotationState.ToString(); } catch { }
+
+        NormalLog("Leg base thigh release for handoff / reason=" + reason
+            + " / controller=" + (ctrl != null ? ctrl.name : "<none>")
+            + " / pos=" + beforePos + "->" + afterPos
+            + " / rot=" + beforeRot + "->" + afterRot);
     }
 
 
@@ -1152,6 +1318,7 @@ public class HumanLifeAction : MVRScript
         if (!IsAutoPauseLegOnHbaActive())
         {
             legPausedByHba = false;
+            legPausedByExternalDockingPoseAssist = false;
             return false;
         }
 
@@ -1161,20 +1328,23 @@ public class HumanLifeAction : MVRScript
         if (TryReadHbaProgress(out progress)) hasHba = true;
         if (TryReadHbaActive(out active)) hasHba = true;
 
-        if (!hasHba)
-        {
-            legPausedByHba = false;
-            return false;
-        }
+        bool dockingPoseAssistActive = IsExternalDockingPoseAssistActive();
+        bool hbaNowActive = hasHba && (active || progress > HbaProgressPauseThreshold);
+        bool nowActive = hbaNowActive || dockingPoseAssistActive;
 
-        bool nowActive = active || progress > HbaProgressPauseThreshold;
         if (nowActive)
         {
             hbaLegResumeAllowedTime = Time.time + HbaLegResumeDelaySeconds;
-            if (!legPausedByHba)
+            if (!legPausedByHba || legPausedByExternalDockingPoseAssist != dockingPoseAssistActive)
             {
                 legPausedByHba = true;
-                Log("Leg auto pause by HBA / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture) + " / active=" + (active ? "1" : "0"));
+                legPausedByExternalDockingPoseAssist = dockingPoseAssistActive;
+                NormalLog("Leg auto pause / hba=" + (hbaNowActive ? "1" : "0")
+                    + " / dockingPoseAssist=" + (dockingPoseAssistActive ? "1" : "0")
+                    + " / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / active=" + (active ? "1" : "0")
+                    + " / dockingSource=" + (string.IsNullOrEmpty(externalDockingPoseAssistSourceCached) ? "-" : externalDockingPoseAssistSourceCached)
+                    + " / dockingElapsed=" + externalDockingPoseAssistElapsedCached.ToString("F2", CultureInfo.InvariantCulture));
             }
             return true;
         }
@@ -1187,9 +1357,86 @@ public class HumanLifeAction : MVRScript
         if (legPausedByHba)
         {
             legPausedByHba = false;
-            Log("Leg auto resume after HBA idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
+            legPausedByExternalDockingPoseAssist = false;
+            NormalLog("Leg auto resume after external idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
         }
         return false;
+    }
+
+    bool IsExternalDockingPoseAssistActive()
+    {
+        ResolveExternalDockingPoseAssistParams(false);
+        return externalDockingPoseAssistCached;
+    }
+
+    void ResolveExternalDockingPoseAssistParams(bool force)
+    {
+        if (!force && Time.time < nextExternalDockingPoseAssistResolveTime) return;
+        nextExternalDockingPoseAssistResolveTime = Time.time + ExternalDockingPoseAssistResolveInterval;
+
+        externalDockingPoseAssistStorable = null;
+        externalDockingPoseAssistActiveParam = null;
+        externalDockingPoseAssistLastEventTimeParam = null;
+        externalDockingPoseAssistCached = false;
+        externalDockingPoseAssistSourceCached = "";
+        externalDockingPoseAssistElapsedCached = -1.0f;
+
+        List<Atom> atoms = null;
+        try { atoms = SuperController.singleton != null ? SuperController.singleton.GetAtoms() : null; } catch { atoms = null; }
+        if (atoms == null) return;
+
+        for (int ai = 0; ai < atoms.Count; ai++)
+        {
+            Atom atom = atoms[ai];
+            if (atom == null) continue;
+
+            List<string> ids = null;
+            try { ids = atom.GetStorableIDs(); } catch { ids = null; }
+            if (ids == null) continue;
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                string sid = ids[i];
+                if (string.IsNullOrEmpty(sid)) continue;
+
+                JSONStorable st = null;
+                try { st = atom.GetStorableByID(sid); } catch { st = null; }
+                if (st == null) continue;
+
+                JSONStorableBool activeParam = null;
+                JSONStorableFloat lastEventParam = null;
+                try { activeParam = st.GetBoolJSONParam("DOCKING Pose Assist Active"); } catch { activeParam = null; }
+                if (activeParam == null) continue;
+                try { lastEventParam = st.GetFloatJSONParam("DOCKING Pose Assist Last Event Time"); } catch { lastEventParam = null; }
+
+                bool activeVal = false;
+                try { activeVal = activeParam.val; } catch { activeVal = false; }
+                if (!activeVal) continue;
+
+                float elapsed = -1.0f;
+                bool withinWindow = true;
+                if (lastEventParam != null)
+                {
+                    float lastEvent = -1.0f;
+                    try { lastEvent = lastEventParam.val; } catch { lastEvent = -1.0f; }
+                    if (lastEvent >= 0.0f)
+                    {
+                        elapsed = Time.time - lastEvent;
+                        withinWindow = elapsed >= 0.0f && elapsed <= ExternalDockingPoseAssistPauseWindowSeconds;
+                    }
+                }
+
+                if (!withinWindow) continue;
+
+                externalDockingPoseAssistStorable = st;
+                externalDockingPoseAssistActiveParam = activeParam;
+                externalDockingPoseAssistLastEventTimeParam = lastEventParam;
+                externalDockingPoseAssistCached = true;
+                externalDockingPoseAssistElapsedCached = elapsed;
+                externalDockingPoseAssistSourceCached = (atom != null ? atom.uid : "<atom>") + "/" + sid;
+                return;
+            }
+        }
     }
 
     bool TryReadHbaProgress(out float progress)
@@ -1719,13 +1966,13 @@ public class HumanLifeAction : MVRScript
     {
         ResolveControllers();
         Vector3 targetPos;
-        if (!TryGetSelfHeadPoint(out targetPos))
+        if (!TryGetSelfShoulderPoint(0, out targetPos))
         {
-            UpdateStatus("Test Self Head skipped: no self head point");
-            LogCover("Cover test skipped / target=Self Head / reason=no-self-head / source=" + source);
+            UpdateStatus("Test Self Head skipped: no self shoulder surface point");
+            LogCover("Cover test skipped / target=Self Shoulder / reason=no-self-shoulder / source=" + source);
             return;
         }
-        RequestFixedCoverTarget("Self Head", targetPos, "test-self-head:" + source);
+        RequestFixedCoverTarget("Self Shoulder", targetPos, "test-self-head-compat:" + source);
     }
 
     void RequestTestSelfHipCover(string source)
@@ -1746,13 +1993,13 @@ public class HumanLifeAction : MVRScript
         ResolveControllers();
         Atom target = GetSelectedTargetPerson();
         Vector3 targetPos;
-        if (target == null || !TryGetControllerPoint(target, out targetPos, "headControl", "head"))
+        if (target == null || !TryGetTargetShoulderPoint(target, 0, out targetPos))
         {
-            UpdateStatus("Test Target Head skipped: no target head point");
-            LogCover("Cover test skipped / target=Target Head / reason=no-target-head / source=" + source);
+            UpdateStatus("Test Target Head skipped: no target shoulder surface point");
+            LogCover("Cover test skipped / target=Target Shoulder / reason=no-target-shoulder / source=" + source);
             return;
         }
-        RequestFixedCoverTarget("Target Head", targetPos, "test-target-head:" + source);
+        RequestFixedCoverTarget("Target Shoulder", targetPos, "test-target-head-compat:" + source);
     }
 
     void RequestTestTargetHipCover(string source)
@@ -1760,13 +2007,13 @@ public class HumanLifeAction : MVRScript
         ResolveControllers();
         Atom target = GetSelectedTargetPerson();
         Vector3 targetPos;
-        if (target == null || !TryGetTargetHipPoint(target, out targetPos))
+        if (target == null || !TryGetTargetThighSurfacePoint(target, out targetPos))
         {
-            UpdateStatus("Test Target Hip skipped: no target hip point");
-            LogCover("Cover test skipped / target=Target Hip / reason=no-target-hip / source=" + source);
+            UpdateStatus("Test Target Hip skipped: no target thigh surface point");
+            LogCover("Cover test skipped / target=Target Thigh Surface / reason=no-target-thigh-surface / source=" + source);
             return;
         }
-        RequestFixedCoverTarget("Target Hip", targetPos, "test-target-hip:" + source);
+        RequestFixedCoverTarget("Target Thigh Surface", targetPos, "test-target-hip-compat:" + source);
     }
 
     void RequestTestLHandToLThigh(string source)
@@ -2618,7 +2865,7 @@ public class HumanLifeAction : MVRScript
             float e = Smoother01(t / returnSeconds);
             Vector3 applyPos = CubicBezier(from, returnC1, returnC2, looseReturn, e);
             SetControllerPosition(hand, applyPos);
-            if (elbow != null) SetControllerPosition(elbow, Vector3.Lerp(elbowFrom, elbowSnap.position, Smoother01(e)));
+            if (elbow != null && elbowSnap != null) SetControllerPosition(elbow, Vector3.Lerp(elbowFrom, elbowSnap.position, Smoother01(e)));
             yield return null;
         }
 
@@ -2826,9 +3073,11 @@ public class HumanLifeAction : MVRScript
         lastAppliedPos = currentHoldAnchor;
         lastAppliedRot = GetControllerRotation(hand);
 
-        // v051: every non-free cover target is allowed to stretch first, then snap the IK target
-        // to the exact surface goal. This avoids the visual "selected but gave up early" case
-        // caused by reach caps, soft arcs, chest-avoid arcs, or loose cover math.
+        // v088: Target* cover is a reach gesture, not a target-side snap/attach.
+        // It still stretches toward the selected target point, but the final snap is reserved
+        // for returning the hand IK controller back to the captured self hand position.
+        bool targetCoverLabel = IsTargetCoverLabel(targetLabel);
+        if (!targetCoverLabel)
         {
             Vector3 snapStart = currentHoldAnchor;
             Vector3 snapGoal = goal;
@@ -2873,6 +3122,22 @@ public class HumanLifeAction : MVRScript
                 + " / goal=" + snapGoal.ToString("F3")
                 + " / targetPos=" + targetPos.ToString("F3"));
         }
+        else
+        {
+            // The move phase already ended at holdAnchor/goal. Keep the reach gesture, but do not
+            // add an extra target-side snap. The hand IK will be return-snapped after hold.
+            currentHoldAnchor = GetControllerPosition(hand);
+            lastAppliedPos = currentHoldAnchor;
+            lastAppliedRot = GetControllerRotation(hand);
+            LogCover("Cover target reach / hand=" + GetHandLabel(hand)
+                + " / target=" + targetLabel
+                + " / targetFinalSnap=0"
+                + " / returnSnap=1"
+                + " / toTarget=" + Vector3.Distance(GetControllerPosition(hand), targetPos).ToString("F3", CultureInfo.InvariantCulture)
+                + " / toGoal=" + Vector3.Distance(GetControllerPosition(hand), goal).ToString("F3", CultureInfo.InvariantCulture)
+                + " / goal=" + goal.ToString("F3")
+                + " / targetPos=" + targetPos.ToString("F3"));
+        }
 
         float holdSeconds = UnityEngine.Random.Range(holdMin, holdMax);
         Vector3 swayA = coverArc.sqrMagnitude > 0.0001f ? coverArc.normalized : Vector3.up;
@@ -2908,7 +3173,7 @@ public class HumanLifeAction : MVRScript
             try { elbow.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
             elbowFrom = GetControllerPosition(elbow);
         }
-        Vector3 looseReturn = BuildLooseReturnPosition(snap.position, start, hand);
+        Vector3 looseReturn = targetCoverLabel ? snap.position : BuildLooseReturnPosition(snap.position, start, hand);
         Vector3 returnC1 = from + coverArc * 0.25f - dir * 0.010f;
         Vector3 returnC2 = ((from + looseReturn) * 0.5f) + (coverArc * CoverSoftReturnArcScale) - dir * Mathf.Min(0.035f, delta.magnitude * 0.10f);
         t = 0.0f;
@@ -2923,11 +3188,47 @@ public class HumanLifeAction : MVRScript
             float e = Smoother01(t / returnSeconds);
             Vector3 applyPos = CubicBezier(from, returnC1, returnC2, looseReturn, e);
             SetControllerPosition(hand, applyPos);
-            if (elbow != null) SetControllerPosition(elbow, Vector3.Lerp(elbowFrom, elbowSnap.position, Smoother01(e)));
+            if (elbow != null && elbowSnap != null) SetControllerPosition(elbow, Vector3.Lerp(elbowFrom, elbowSnap.position, Smoother01(e)));
             lastAppliedPos = applyPos;
             lastAppliedRot = GetControllerRotation(hand);
             yield return null;
         }
+
+        Vector3 returnSnapStart = GetControllerPosition(hand);
+        Vector3 returnSnapGoal = targetCoverLabel ? snap.position : looseReturn;
+        Vector3 elbowReturnSnapStart = (elbow != null && elbowSnap != null) ? GetControllerPosition(elbow) : Vector3.zero;
+        float returnSnapDist = Vector3.Distance(returnSnapStart, returnSnapGoal);
+        if (returnSnapDist > 0.0015f)
+        {
+            LogCover("Cover return snap / hand=" + GetHandLabel(hand)
+                + " / target=" + targetLabel
+                + " / targetCover=" + (targetCoverLabel ? "1" : "0")
+                + " / dist=" + returnSnapDist.ToString("F3", CultureInfo.InvariantCulture)
+                + " / seconds=" + CoverReturnSnapSeconds.ToString("F2", CultureInfo.InvariantCulture)
+                + " / goal=" + returnSnapGoal.ToString("F3"));
+
+            float returnSnapT = 0.0f;
+            while (returnSnapT < CoverReturnSnapSeconds)
+            {
+                if (IsPoseChangeSafeOn() && ControllerExternallyMovedPositionOnly(hand, lastAppliedPos))
+                {
+                    AbortGestureForPoseChange(snap, elbowSnap, "cover:return-snap");
+                    yield break;
+                }
+                returnSnapT += Time.deltaTime;
+                float e = Smoother01(returnSnapT / Mathf.Max(0.001f, CoverReturnSnapSeconds));
+                Vector3 applyPos = Vector3.Lerp(returnSnapStart, returnSnapGoal, e);
+                SetControllerPosition(hand, applyPos);
+                if (elbow != null && elbowSnap != null) SetControllerPosition(elbow, Vector3.Lerp(elbowReturnSnapStart, elbowSnap.position, Smoother01(e)));
+                lastAppliedPos = applyPos;
+                lastAppliedRot = GetControllerRotation(hand);
+                yield return null;
+            }
+        }
+
+        SetControllerPosition(hand, returnSnapGoal);
+        lastAppliedPos = returnSnapGoal;
+        lastAppliedRot = GetControllerRotation(hand);
 
         RestoreControllerStateOnly(snap);
         RestoreController(elbowSnap);
@@ -3441,6 +3742,47 @@ public class HumanLifeAction : MVRScript
         return hand != null && !IsHandBlockedByTargetGrabberHeldTargetHand(hand);
     }
 
+    bool IsTargetCoverLabel(string label)
+    {
+        return !string.IsNullOrEmpty(label) && label.IndexOf("Target", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    bool IsTargetCoverSuppressedForMutualBack(Atom target, out string reason)
+    {
+        reason = "";
+        if (target == null || containingAtom == null || containingAtom.transform == null || target.transform == null)
+            return false;
+
+        Vector3 selfPos = containingAtom.transform.position;
+        Vector3 targetPos = target.transform.position;
+        Vector3 selfToTarget = targetPos - selfPos;
+        selfToTarget.y = 0.0f;
+        if (selfToTarget.sqrMagnitude < 0.0001f)
+            return false;
+        selfToTarget.Normalize();
+        Vector3 targetToSelf = -selfToTarget;
+
+        Vector3 selfForward = containingAtom.transform.forward;
+        selfForward.y = 0.0f;
+        if (selfForward.sqrMagnitude < 0.0001f)
+            return false;
+        selfForward.Normalize();
+
+        Vector3 targetForward = target.transform.forward;
+        targetForward.y = 0.0f;
+        if (targetForward.sqrMagnitude < 0.0001f)
+            return false;
+        targetForward.Normalize();
+
+        float selfDot = Vector3.Dot(selfForward, selfToTarget);
+        float targetDot = Vector3.Dot(targetForward, targetToSelf);
+        bool mutualBack = selfDot <= TargetCoverMutualBackSuppressDot && targetDot <= TargetCoverMutualBackSuppressDot;
+        reason = "selfDot=" + selfDot.ToString("F2", CultureInfo.InvariantCulture)
+            + "/targetDot=" + targetDot.ToString("F2", CultureInfo.InvariantCulture)
+            + "/mutualBack=" + (mutualBack ? "1" : "0");
+        return mutualBack;
+    }
+
     bool TryPickCoverTarget(out Vector3 pos, out string label)
     {
         List<string> selfLabels = new List<string>();
@@ -3452,22 +3794,30 @@ public class HumanLifeAction : MVRScript
         List<float> targetWeights = new List<float>();
 
         Vector3 p;
-        // v023: weighted Life cover targets. Head is intentionally much easier to appear.
-        // v050: Head weight is 8 while Free Hand remains a low-weight filler inside the Cover branch.
-        if (TryGetSelfHeadPoint(out p)) { selfLabels.Add("Self Head"); selfPositions.Add(p); selfWeights.Add(8.0f); }
-        if (TryGetSelfChestPoint(out p)) { selfLabels.Add("Self Chest"); selfPositions.Add(p); selfWeights.Add(2.0f); }
-        if (TryGetSelfBellyPoint(out p)) { selfLabels.Add("Self Belly"); selfPositions.Add(p); selfWeights.Add(2.0f); }
-        if (TryGetSelfHipPoint(out p)) { selfLabels.Add("Self Hip"); selfPositions.Add(p); selfWeights.Add(2.0f); }
+        // v089: Life cover should not target Head/Chest/Hip IK centers.
+        // Use shoulder / upper chest / belly / thigh body-surface estimates instead.
+        if (TryGetSelfShoulderPoint(-1, out p)) { selfLabels.Add("Self L Shoulder"); selfPositions.Add(p); selfWeights.Add(4.0f); }
+        if (TryGetSelfShoulderPoint(1, out p)) { selfLabels.Add("Self R Shoulder"); selfPositions.Add(p); selfWeights.Add(4.0f); }
+        if (TryGetSelfUpperChestSurfacePoint(out p)) { selfLabels.Add("Self UpperChest Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
+        if (TryGetSelfBellySurfacePoint(out p)) { selfLabels.Add("Self Belly Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
+        if (TryGetSelfThighSurfacePoint(out p)) { selfLabels.Add("Self Thigh Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
         selfLabels.Add("Free Hand"); selfPositions.Add(Vector3.zero); selfWeights.Add(1.0f);
 
         Atom target = GetSelectedTargetPerson();
-        if (target != null)
+        string targetSuppressReason;
+        bool suppressTargetCover = IsTargetCoverSuppressedForMutualBack(target, out targetSuppressReason);
+        if (target != null && !suppressTargetCover)
         {
-            if (TryGetControllerPoint(target, out p, "headControl", "head")) { targetLabels.Add("Target Head"); targetPositions.Add(p); targetWeights.Add(8.0f); }
-            if (TryGetControllerPoint(target, out p, "chestControl", "chest")) { targetLabels.Add("Target Chest"); targetPositions.Add(p); targetWeights.Add(2.0f); }
-            if (TryGetTargetBellyPoint(target, out p)) { targetLabels.Add("Target Belly"); targetPositions.Add(p); targetWeights.Add(2.0f); }
-            if (TryGetTargetHipPoint(target, out p)) { targetLabels.Add("Target Hip"); targetPositions.Add(p); targetWeights.Add(2.0f); }
+            if (TryGetTargetShoulderPoint(target, -1, out p)) { targetLabels.Add("Target L Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f); }
+            if (TryGetTargetShoulderPoint(target, 1, out p)) { targetLabels.Add("Target R Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f); }
+            if (TryGetTargetUpperChestSurfacePoint(target, out p)) { targetLabels.Add("Target UpperChest Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
+            if (TryGetTargetBellySurfacePoint(target, out p)) { targetLabels.Add("Target Belly Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
+            if (TryGetTargetThighSurfacePoint(target, out p)) { targetLabels.Add("Target Thigh Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
             targetLabels.Add("Free Hand"); targetPositions.Add(Vector3.zero); targetWeights.Add(1.0f);
+        }
+        else if (target != null && suppressTargetCover)
+        {
+            LogCover("Cover target group suppressed / reason=" + targetSuppressReason + " / fallback=SelfOrFree");
         }
 
         bool preferSelf = UnityEngine.Random.Range(0.0f, 100.0f) < Mathf.Clamp(SafeFloat(coverSelfPercent, DefaultCoverSelfPercent), 0.0f, 100.0f);
@@ -3475,25 +3825,25 @@ public class HumanLifeAction : MVRScript
         if (preferSelf && TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
             Log("Cover target group / Self / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=head8 free1");
+                + " / weighted=surface-shoulder4x2 free1");
             return true;
         }
         if (!preferSelf && TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
             Log("Cover target group / Target / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=head8 free1");
+                + " / weighted=surface-shoulder4x2 free1");
             return true;
         }
 
         // Fallback to the other group when the preferred side has no point.
         if (TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Self / weighted=head8 free1");
+            Log("Cover target group fallback / Self / weighted=surface-shoulder4x2 free1");
             return true;
         }
         if (TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Target / weighted=head8 free1");
+            Log("Cover target group fallback / Target / weighted=surface-shoulder4x2 free1");
             return true;
         }
 
@@ -3550,6 +3900,68 @@ public class HumanLifeAction : MVRScript
         pos = positions[idx];
         label = labels[idx];
         return true;
+    }
+
+    bool TryGetBodySurfacePoint(Atom atom, float height, float sideOffset, float forwardOffset, out Vector3 pos)
+    {
+        pos = Vector3.zero;
+        if (atom == null || atom.transform == null) return false;
+
+        Vector3 forward = atom.transform.forward;
+        Vector3 right = atom.transform.right;
+        forward.y = 0.0f;
+        right.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        forward.Normalize();
+        right.Normalize();
+
+        pos = atom.transform.position + Vector3.up * height + right * sideOffset + forward * forwardOffset;
+        return true;
+    }
+
+    bool TryGetSelfShoulderPoint(int side, out Vector3 pos)
+    {
+        float s = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
+        return TryGetBodySurfacePoint(containingAtom, 1.38f, s, 0.055f, out pos);
+    }
+
+    bool TryGetTargetShoulderPoint(Atom atom, int side, out Vector3 pos)
+    {
+        float s = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
+        return TryGetBodySurfacePoint(atom, 1.38f, s, 0.055f, out pos);
+    }
+
+    bool TryGetSelfUpperChestSurfacePoint(out Vector3 pos)
+    {
+        return TryGetBodySurfacePoint(containingAtom, 1.24f, 0.0f, 0.065f, out pos);
+    }
+
+    bool TryGetTargetUpperChestSurfacePoint(Atom atom, out Vector3 pos)
+    {
+        return TryGetBodySurfacePoint(atom, 1.24f, 0.0f, 0.065f, out pos);
+    }
+
+    bool TryGetSelfBellySurfacePoint(out Vector3 pos)
+    {
+        return TryGetBodySurfacePoint(containingAtom, 1.02f, 0.0f, 0.060f, out pos);
+    }
+
+    bool TryGetTargetBellySurfacePoint(Atom atom, out Vector3 pos)
+    {
+        return TryGetBodySurfacePoint(atom, 1.02f, 0.0f, 0.060f, out pos);
+    }
+
+    bool TryGetSelfThighSurfacePoint(out Vector3 pos)
+    {
+        int side = UnityEngine.Random.value < 0.5f ? -1 : 1;
+        return TryGetBodySurfacePoint(containingAtom, 0.72f, 0.13f * side, 0.030f, out pos);
+    }
+
+    bool TryGetTargetThighSurfacePoint(Atom atom, out Vector3 pos)
+    {
+        int side = UnityEngine.Random.value < 0.5f ? -1 : 1;
+        return TryGetBodySurfacePoint(atom, 0.72f, 0.13f * side, 0.030f, out pos);
     }
 
     bool TryGetSelfChestPoint(out Vector3 pos)
@@ -3943,6 +4355,16 @@ public class HumanLifeAction : MVRScript
         return snap;
     }
 
+    void RestoreBreathController(ControllerSnapshot snap)
+    {
+        if (snap == null || snap.controller == null) return;
+        // v089: Breath is rotation-only. Restore rotation/state, but never push chest
+        // position back to the old snapshot position.
+        SetControllerRotation(snap.controller, snap.rotation);
+        try { snap.controller.currentPositionState = snap.positionState; } catch { }
+        try { snap.controller.currentRotationState = snap.rotationState; } catch { }
+    }
+
     void RestoreController(ControllerSnapshot snap)
     {
         if (snap == null || snap.controller == null) return;
@@ -4186,6 +4608,11 @@ public class HumanLifeAction : MVRScript
         return lifeLegMotionEnabled != null && lifeLegMotionEnabled.val;
     }
 
+    bool IsLegPositionAssistEnabled()
+    {
+        return lifeLegPositionAssistEnabled != null && lifeLegPositionAssistEnabled.val;
+    }
+
     float EffectiveLegMotionWeight()
     {
         string mode = CurrentMotionMode();
@@ -4284,6 +4711,15 @@ public class HumanLifeAction : MVRScript
         if (mode == LifeMotionSmall) baseDegrees = 0.55f;
         else if (mode == LifeMotionLarge) baseDegrees = 1.45f;
         return baseDegrees * Mathf.Max(0.0f, SafeFloat(breathScale, DefaultBreathScale));
+    }
+
+    float EffectiveShoulderSwayAmount()
+    {
+        string mode = CurrentMotionMode();
+        float baseAmount = 0.0040f;
+        if (mode == LifeMotionSmall) baseAmount = 0.0025f;
+        else if (mode == LifeMotionLarge) baseAmount = 0.0060f;
+        return baseAmount * Mathf.Max(0.0f, SafeFloat(shoulderSwayScale, DefaultShoulderSwayScale));
     }
 
     bool IsCover100Mode()
@@ -4395,7 +4831,7 @@ public class HumanLifeAction : MVRScript
     float EffectiveLegBasePositionAmount()
     {
         string mode = CurrentMotionMode();
-        // Tiny thigh-control position assist; this is why the leg base motion remains visible even when rotation IK is visually damped.
+        // Optional thigh-control position assist. v093 default keeps this OFF for better coexistence; enable only when you need clearly visible leg base sway.
         float baseAmount = 0.010f;
         if (mode == LifeMotionSmall) baseAmount = 0.005f;
         else if (mode == LifeMotionLarge) baseAmount = 0.018f;
@@ -4444,11 +4880,19 @@ public class HumanLifeAction : MVRScript
             + " / breath=" + (breathLoopRoutine != null ? "ON" : "OFF")
             + " / headLook=" + (IsHeadLookEnabled() ? "ON" : "OFF")
             + " / leg=" + (IsLegMotionEnabled() ? "ON" : "OFF")
+            + " / legPos=" + (IsLegPositionAssistEnabled() ? "ON" : "OFF")
             + " / legScale=" + SafeFloat(legScale, DefaultLegScale).ToString("F1", CultureInfo.InvariantCulture)
             + " / legBase=" + (legBaseLoopRoutine != null ? "ON" : "OFF")
             + " / hbaPause=" + (legPausedByHba ? "ON" : "OFF")
+            + " / dockingPause=" + (legPausedByExternalDockingPoseAssist ? "ON" : "OFF")
             + " / last=" + lastGesture
             + " / next=" + nextIn.ToString("F1", CultureInfo.InvariantCulture) + "s";
+    }
+
+
+    void NormalLog(string message)
+    {
+        SuperController.LogMessage("[HumanLifeAction] " + message);
     }
 
     void LogCover(string message)

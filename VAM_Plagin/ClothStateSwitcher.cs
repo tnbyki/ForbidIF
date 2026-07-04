@@ -1,4 +1,15 @@
-// V11F_IGNORE_PLUGIN_OFF_APPEARANCE_RESTORE: v11e + ignore plugin-caused clothing-active OFF in Appearance Watch and restore captured active items before WEAR ALL / manual SCAN.
+// V18_RIPPER_SELECTED_FALLBACK_DOWN_CONFIRM: v17 behavior + visible v18 ready/fallback logs to prevent accidentally testing older v16/v17 files.
+// V21_RIPPER_UNIFIED_EXCLUSION_UI: v20 base + PHTY RIPPER unified one-by-one mode, excludes RipAll auto mode, and adds SCAN CLOTH-based persistent exclusion UI.
+// V20_OFF_COMPANION_RIPPER_BUTTONS_HIDDEN: v19 base + OFF hide augments loose companion/string materials and hides ClothingRipper test buttons from UI.
+// V16_RIPPER_SELECTED_FUZZY_LABELS: v15 base + fuzzy ClothingRipper label matching for real dropdown names such as Reverse Bikini Panty / Wet Pussy / NT_Peach_Neck.
+// V14_RIPPER_SELECTED_NO_REFLECTION: v13 base + removes System.Reflection because VaM DynamicCSharp prohibits it. ClothingRipper busy check is not accessed directly; ClothingRipper's own coroutine queue/busy guard handles sequencing.
+// V15_RIPPER_SELECTED_STRICT_LABEL: v14 base + stricter ClothingRipper item label resolution. Never select invalid Ripper labels; prefer suffix labels without creator prefix.
+// V12_RIPPER_ALL_MODE_FIX: v11l FIX promoted to numeric version. Keeps PHTY RIPPER mode and WEAR ALL pre-restores ClothingRipper RestoreAll before ClothStateSwitcher restore.
+// V11L_RIPPER_ALL_MODE: v11k base + PHTY RIPPER mode and WEAR ALL pre-restores ClothingRipper RestoreAll before ClothStateSwitcher restore.
+// V11J_CLOTHINGRIPPER_TEST_BUTTONS: v11i base + shows ClothingRipper test buttons when detected and calls its Actions safely.
+// V11I_CLOTHINGRIPPER_FOUND_TOGGLE: v11h base + detects ClothingRipper plugin on the same Person and shows a checked read-only indicator only when found.
+// V17_RIPPER_SELECTED_FALLBACK_DOWN: v16 + RIPPER items that are not present/working in ClothingRipper fall back to existing PHTY DOWN.
+// V11H_RESTORE_ALPHA_TO_SCAN_VALUE: v11g/v11f base + Alpha Adjust nudge restores to SCAN-captured value instead of forcing 0.0, preserving user-defined transparency.
 // V11C_EMERGENCY_ROLLBACK_NO_ACTIVE_TOGGLE: rollback to safe v10x base; removes risky DAZCharacterSelector.SetActiveClothingItem clothing checkbox toggles from v11a/v11b.
 // ============================================================
 // ClothStateSwitcher.cs
@@ -46,12 +57,21 @@ public class ClothStateSwitcher : MVRScript
     private const string PHYS_OFF = "OFF";
     private const string PHYS_DOWN = "DOWN";
     private const string PHYS_UP = "UP";
+    private const string PHYS_RIPPER = "RIPPER";
+    // v21: old values are kept only for scene/trigger compatibility; both resolve to PHYS_RIPPER behavior.
+    private const string PHYS_RIPPER_ALL = "RIPPER ALL";
+    private const string PHYS_RIPPER_SELECTED = "RIPPER SELECTED";
+
+    private const string CLOTH_CHOICE_NONE = "<none>";
 
     private JSONStorableStringChooser personChooser;
     private JSONStorableStringChooser orderModeChooser;
     private JSONStorableStringChooser finalRuleChooser;
     private JSONStorableStringChooser autoModeChooser;
     private JSONStorableStringChooser physRemoveStyleChooser;
+    private JSONStorableStringChooser targetClothingChooser;
+    private JSONStorableStringChooser excludedClothingChooser;
+    private JSONStorableString excludedClothingPrefixesJSON;
 
     private JSONStorableBool protectBraJSON;
     private JSONStorableBool protectPantyJSON;
@@ -59,6 +79,8 @@ public class ClothStateSwitcher : MVRScript
     private JSONStorableBool bottomForceDownJSON;
     private JSONStorableBool stateReportEnabledJSON;
     private JSONStorableBool debugLogJSON;
+    // v11i: ClothingRipper presence indicator. This is a read-only detection result, not a user setting.
+    private JSONStorableBool clothingRipperFoundJSON;
     private JSONStorableFloat pyReportPortJSON;
     private JSONStorableFloat autoIntervalJSON;
     private JSONStorableFloat physDurationJSON;
@@ -98,6 +120,9 @@ public class ClothStateSwitcher : MVRScript
     private Atom selectedPerson;
     private readonly List<ClothItem> clothes = new List<ClothItem>();
     private readonly List<ClothItem> orderedClothes = new List<ClothItem>();
+    private readonly Dictionary<string, string> targetClothingPrefixByLabel = new Dictionary<string, string>();
+    private readonly Dictionary<string, string> excludedClothingPrefixByLabel = new Dictionary<string, string>();
+    private bool updatingExclusionChoices = false;
     private readonly Dictionary<string, List<SavedBool>> scanStates = new Dictionary<string, List<SavedBool>>();
     private readonly Dictionary<string, List<SavedPhysBool>> scanPhysBoolStates = new Dictionary<string, List<SavedPhysBool>>();
     private readonly Dictionary<string, List<SavedPhysFloat>> scanPhysFloatStates = new Dictionary<string, List<SavedPhysFloat>>();
@@ -112,6 +137,8 @@ public class ClothStateSwitcher : MVRScript
     // v8s: PHTYで脱がせたSIM服はPREVで無理に戻さない。
     // 物理脱衣後のSIM服をPREVで復元しようとすると、Material参照やSim状態が壊れやすいため。
     private readonly HashSet<string> phtyHiddenPrefixes = new HashSet<string>();
+    // v13: CSS-side bookkeeping for ClothingRipper one-by-one mode. We do not hideMaterial for ripped pieces; this set makes NEXT/PREV progress safely.
+    private readonly HashSet<string> ripperSelectedHiddenPrefixes = new HashSet<string>();
     // v11d: safe Clothing Item checkbox handling.
     // Capture only currently-active DAZClothingItem displayName at SCAN time, then toggle only that exact item.
     // This avoids the v11b bug where selectable/not-worn clothing was enabled by fuzzy matching.
@@ -127,6 +154,12 @@ public class ClothStateSwitcher : MVRScript
     private float appearanceWatchTimer = 0.0f;
     private Coroutine appearanceResetRoutine = null;
 
+    // v11i: cache the detected ClothingRipper storable so future integration can call its Actions safely.
+    private bool clothingRipperFound = false;
+    private string clothingRipperStorableId = "";
+    private JSONStorable clothingRipperStorable = null;
+    private float clothingRipperWatchTimer = 0.0f;
+
     private bool IsClothOperationBusy()
     {
         return wearNoneRoutine != null || physicalHideRoutine != null || restoreAllRoutine != null || physicalRemoveRunning > 0;
@@ -140,6 +173,8 @@ public class ClothStateSwitcher : MVRScript
     private List<PhysBoolBackup> activePhysBoolBackups = null;
     private List<PhysFloatBackup> activePhysFloatBackups = null;
     private List<FadeParamRef> activeFadeRefs = null;
+    // v17: temporary override used when RIPPER cannot handle an item and we fall back to PHTY DOWN.
+    private string physicalStyleOverride = null;
 
     private UIDynamicButton autoStopButton = null;
     private UIDynamicPopup autoModePopup = null;
@@ -150,7 +185,16 @@ public class ClothStateSwitcher : MVRScript
     private UIDynamicButton removeBraButton = null;
     private UIDynamicButton removePantyButton = null;
     private UIDynamicButton scanButton = null;
+    private UIDynamicButton excludeSelectedButton = null;
+    private UIDynamicButton removeExclusionButton = null;
     private UIDynamicButton resetRuntimeButton = null;
+    private UIDynamicToggle clothingRipperFoundToggle = null;
+    // v11j: ClothingRipper action test buttons. Created once, shown only when ClothingRipper is detected.
+    private UIDynamicButton ripperPreCutButton = null;
+    private UIDynamicButton ripperRipSelectedButton = null;
+    private UIDynamicButton ripperRipAllButton = null;
+    private UIDynamicButton ripperRestoreSelectedButton = null;
+    private UIDynamicButton ripperRestoreAllButton = null;
 
     private class SavedBool
     {
@@ -230,6 +274,36 @@ public class ClothStateSwitcher : MVRScript
         scanButton = CreateButton("SCAN CLOTH");
         scanButton.button.onClick.AddListener(RequestScanClothes);
 
+        // v21: target/exclusion UI is driven by SCAN CLOTH. The saved Prefix list is hidden but persisted in plugin data.
+        excludedClothingPrefixesJSON = new JSONStorableString("Excluded Clothing Prefixes", "");
+        RegisterString(excludedClothingPrefixesJSON);
+
+        targetClothingChooser = new JSONStorableStringChooser(
+            "Target Clothing",
+            new List<string> { CLOTH_CHOICE_NONE },
+            CLOTH_CHOICE_NONE,
+            "Target Clothing",
+            delegate(string value) { }
+        );
+        RegisterStringChooser(targetClothingChooser);
+        CreateFilterablePopup(targetClothingChooser);
+
+        excludeSelectedButton = CreateButton("Exclude Selected");
+        excludeSelectedButton.button.onClick.AddListener(ExcludeSelectedClothing);
+
+        excludedClothingChooser = new JSONStorableStringChooser(
+            "Excluded Clothing",
+            new List<string> { CLOTH_CHOICE_NONE },
+            CLOTH_CHOICE_NONE,
+            "Excluded Clothing",
+            delegate(string value) { }
+        );
+        RegisterStringChooser(excludedClothingChooser);
+        CreateFilterablePopup(excludedClothingChooser);
+
+        removeExclusionButton = CreateButton("Remove Exclusion");
+        removeExclusionButton.button.onClick.AddListener(RemoveSelectedClothingExclusion);
+
         finalRuleChooser = new JSONStorableStringChooser(
             "Last Clothing Rule",
             new List<string> { FINAL_NONE, FINAL_KEEP_BRA_PANTY_LAST, FINAL_PANTY_THEN_BRA, FINAL_BRA_THEN_PANTY },
@@ -256,7 +330,7 @@ public class ClothStateSwitcher : MVRScript
         // 初期値は DOWN。v9ではReloadを自動使用しない。PHTYはNEXT専用。
         physRemoveStyleChooser = new JSONStorableStringChooser(
             "PHTY",
-            new List<string> { PHYS_OFF, PHYS_DOWN, PHYS_UP },
+            new List<string> { PHYS_OFF, PHYS_DOWN, PHYS_UP, PHYS_RIPPER },
             PHYS_DOWN,
             "PHTY",
             delegate(string value) { UpdatePreview(); }
@@ -279,6 +353,10 @@ public class ClothStateSwitcher : MVRScript
         debugLogJSON = new JSONStorableBool("Debug Log", false);
         RegisterBool(debugLogJSON);
         // UI layout: Debug Log is created later on the right side.
+
+        clothingRipperFoundJSON = new JSONStorableBool("ClothingRipper Found", false);
+        RegisterBool(clothingRipperFoundJSON);
+        // UI layout: shown only when the plugin is detected on this same Person.
 
         pyReportPortJSON = new JSONStorableFloat("State Report Port", 9999f, 1024f, 65535f, true, true);
         RegisterFloat(pyReportPortJSON);
@@ -334,6 +412,25 @@ public class ClothStateSwitcher : MVRScript
         if (physPopup != null)
             physPopup.height = 60.0f;
 
+        clothingRipperFoundToggle = CreateToggle(clothingRipperFoundJSON, true);
+
+        ripperPreCutButton = CreateButton("Ripper Pre-Cut", true);
+        ripperPreCutButton.button.onClick.AddListener(RipperPreCut);
+
+        ripperRipSelectedButton = CreateButton("Ripper RIP Selected", true);
+        ripperRipSelectedButton.button.onClick.AddListener(RipperRipSelected);
+
+        ripperRipAllButton = CreateButton("Ripper RIP ALL", true);
+        ripperRipAllButton.button.onClick.AddListener(RipperRipAll);
+
+        ripperRestoreSelectedButton = CreateButton("Ripper Restore Selected", true);
+        ripperRestoreSelectedButton.button.onClick.AddListener(RipperRestoreSelected);
+
+        ripperRestoreAllButton = CreateButton("Ripper Restore All", true);
+        ripperRestoreAllButton.button.onClick.AddListener(RipperRestoreAll);
+
+        PrepareClothingRipperControls(false);
+
         autoModePopup = CreatePopup(autoModeChooser, true);
 
         autoStopButton = CreateButton("STOP / RESET AUTO", true);
@@ -358,11 +455,13 @@ public class ClothStateSwitcher : MVRScript
             previewField.height = 420.0f;
 
         UpdatePersonChoices();   // 最初に見つかったPersonを自動選択
+        UpdateExclusionChoices();
+        UpdateClothingRipperDetection("init");
         delayedScanRoutine = StartCoroutine(DelayedInitialScan()); // 服Storable生成待ち
         UpdateExternalState();
 
         UpdateButtonColors();
-        DebugLog("ready / v11g self-person fixed / v11f safe active restore / SIM_RESET_ONLY");
+        DebugLog("ready / v21 RIPPER unified + exclusion UI / Ripper test buttons hidden / SIM_RESET_ONLY");
     }
 
     private IEnumerator DelayedInitialScan()
@@ -524,6 +623,7 @@ public class ClothStateSwitcher : MVRScript
 
         forcedHiddenPrefixes.Clear();
         phtyHiddenPrefixes.Clear();
+        ripperSelectedHiddenPrefixes.Clear();
         stateCacheValid = false;
 
         if (wearNoneRoutine != null)
@@ -642,10 +742,23 @@ public class ClothStateSwitcher : MVRScript
         RegisterAction(new JSONStorableAction("Auto Random", StartAutoRandom));
         RegisterAction(new JSONStorableAction("Auto Loop", StartAutoLoop));
 
+        RegisterAction(new JSONStorableAction("Exclude Selected Clothing", ExcludeSelectedClothing));
+        RegisterAction(new JSONStorableAction("Remove Selected Clothing Exclusion", RemoveSelectedClothingExclusion));
+
         RegisterAction(new JSONStorableAction("Set Phys OFF", SetPhysOff));
         RegisterAction(new JSONStorableAction("Set Phys DOWN", SetPhysDown));
         RegisterAction(new JSONStorableAction("Set Phys UP", SetPhysUp));
+        RegisterAction(new JSONStorableAction("Set Phys RIPPER", SetPhysRipper));
+        // v21 compatibility aliases for older triggers. Both now select the unified one-by-one RIPPER mode.
+        RegisterAction(new JSONStorableAction("Set Phys RIPPER ALL", SetPhysRipperAll));
+        RegisterAction(new JSONStorableAction("Set Phys RIPPER SELECTED", SetPhysRipperSelected));
         RegisterAction(new JSONStorableAction("Phys Remove Next", NextHide));
+
+        RegisterAction(new JSONStorableAction("Ripper Pre-Cut", RipperPreCut));
+        RegisterAction(new JSONStorableAction("Ripper RIP Selected", RipperRipSelected));
+        RegisterAction(new JSONStorableAction("Ripper RIP ALL", RipperRipAll));
+        RegisterAction(new JSONStorableAction("Ripper Restore Selected", RipperRestoreSelected));
+        RegisterAction(new JSONStorableAction("Ripper Restore All", RipperRestoreAll));
     }
 
     private void RegisterExternalStates()
@@ -714,13 +827,41 @@ public class ClothStateSwitcher : MVRScript
         SetPhysMode(PHYS_UP);
     }
 
+    private void SetPhysRipper()
+    {
+        SetPhysMode(PHYS_RIPPER);
+    }
+
+    private void SetPhysRipperAll()
+    {
+        // v21: compatibility alias. Do not call RipAll automatically anymore.
+        SetPhysMode(PHYS_RIPPER);
+    }
+
+    private void SetPhysRipperSelected()
+    {
+        // v21: compatibility alias. Unified RIPPER behaves like old RIPPER.
+        SetPhysMode(PHYS_RIPPER);
+    }
+
     private void SetPhysMode(string mode)
     {
         if (physRemoveStyleChooser == null)
             return;
 
+        if (mode == PHYS_RIPPER_ALL || mode == PHYS_RIPPER_SELECTED)
+            mode = PHYS_RIPPER;
+
         physRemoveStyleChooser.val = mode;
-        SetStatus("Phys Remove Style: " + mode);
+        if (mode == PHYS_RIPPER)
+        {
+            bool found = UpdateClothingRipperDetection("set-phys-ripper");
+            SetStatus(found ? "Phys Remove Style: RIPPER" : "Phys Remove Style: RIPPER / ClothingRipper not found");
+        }
+        else
+        {
+            SetStatus("Phys Remove Style: " + mode);
+        }
         UpdatePreview();
     }
 
@@ -741,6 +882,7 @@ public class ClothStateSwitcher : MVRScript
     public void Update()
     {
         WatchAppearancePresetChange();
+        WatchClothingRipperPlugin();
 
         if (autoModeChooser == null || autoModeChooser.val == AUTO_OFF)
             return;
@@ -1117,8 +1259,9 @@ public class ClothStateSwitcher : MVRScript
 
         int before = item.Materials != null ? item.Materials.Count : 0;
         item.Materials = fresh;
-        DebugLog("[REFRESH MATERIALS] " + item.Name + " before=" + before.ToString(CultureInfo.InvariantCulture) + " after=" + fresh.Count.ToString(CultureInfo.InvariantCulture));
-        return fresh.Count;
+        int companionAdded = AddLooseCompanionMaterials(item, "REFRESH");
+        DebugLog("[REFRESH MATERIALS] " + item.Name + " before=" + before.ToString(CultureInfo.InvariantCulture) + " after=" + item.Materials.Count.ToString(CultureInfo.InvariantCulture) + " direct=" + fresh.Count.ToString(CultureInfo.InvariantCulture) + " companion=" + companionAdded.ToString(CultureInfo.InvariantCulture));
+        return item.Materials.Count;
     }
 
     private Atom GetSelfPersonAtom()
@@ -1170,11 +1313,13 @@ public class ClothStateSwitcher : MVRScript
 
         // Person自体を切り替えた場合は、次回SCAN後の状態を基準にする。
         lastAppearanceSignature = ComputeAppearanceSignature();
+        UpdateClothingRipperDetection("person");
     }
 
     private void ScanClothes()
     {
         DebugLog("[BUTTON] SCAN CLOTH BODY / begin");
+        UpdateClothingRipperDetection("scan");
         clothes.Clear();
         orderedClothes.Clear();
         stateCacheValid = false;
@@ -1184,6 +1329,7 @@ public class ClothStateSwitcher : MVRScript
         scanFadeFloatStates.Clear();
         forcedHiddenPrefixes.Clear();
         phtyHiddenPrefixes.Clear();
+        ripperSelectedHiddenPrefixes.Clear();
         activeDazClothingNameByPrefix.Clear();
         activeDazClothingItemByPrefix.Clear();
         activeDazClothingOffByPlugin.Clear();
@@ -1350,6 +1496,11 @@ public class ClothStateSwitcher : MVRScript
                 continue;
             }
 
+            // v20: some clothes keep strings/straps in Material storables whose internal names
+            // do not pass the normal prefix/accessory filters. Add safe same-item companion materials
+            // before the final accept/reject decision so OFF can hide the whole item.
+            AddLooseCompanionMaterials(item, "SCAN_FINAL");
+
             if (item.Materials.Count == 0)
             {
                 DebugLog("[SCAN TRACE][FINAL_REJECT][NO_MATERIALS] prefix=" + item.Prefix + " name=" + item.Name);
@@ -1474,6 +1625,7 @@ public class ClothStateSwitcher : MVRScript
 
         ApplyOrderMode();
         ApplyFinalRule();
+        UpdateExclusionChoices();
         UpdatePreview();
     }
 
@@ -1670,6 +1822,46 @@ public class ClothStateSwitcher : MVRScript
                 " sim=" + (sim ? "1" : "0") +
                 " mat=" + validMat.ToString(CultureInfo.InvariantCulture) + "/" + materialCount.ToString(CultureInfo.InvariantCulture));
 
+            if (IsRipperAllMode())
+            {
+                bool ok = CallRipperRipAllAction("PHTY RIPPER / NEXT");
+                if (ok)
+                {
+                    SetStatus("PHTY RIPPER: RipAll called by NEXT");
+                    PublishClothState("ripper_all", item, true);
+                    ResetAutoTimerAfterStep();
+                }
+                else
+                {
+                    SetStatus("PHTY RIPPER failed: ClothingRipper/RipAll not found");
+                    StopAutoIfMode(AUTO_NEXT);
+                    StopAutoIfMode(AUTO_RANDOM);
+                }
+                UpdateButtonColors();
+                UpdatePreview();
+                return;
+            }
+
+            if (IsRipperSelectedMode())
+            {
+                bool ok = CallRipperRipItemAction(item, "PHTY RIPPER / NEXT");
+                if (ok)
+                {
+                    MarkRipperSelectedHidden(item);
+                    SetStatus("PHTY RIPPER: " + item.Name);
+                    PublishClothState("ripper", item, true);
+                    ResetAutoTimerAfterStep();
+                    UpdateButtonColors();
+                    UpdatePreview();
+                    return;
+                }
+
+                DebugLog("[RIPPER FALLBACK DOWN V21] NEXT / item=" + item.Name + " / prefix=" + item.Prefix);
+                SetStatus("V21 RIPPER fallback DOWN: " + item.Name);
+                StartPhysicalHideWithStyle(item, "hide", PHYS_DOWN);
+                return;
+            }
+
             int prepFound = PrepareVisualStateForAction(item, "NEXT_PREP", false);
             if (prepFound <= 0)
             {
@@ -1746,6 +1938,19 @@ if (UsePhysicalRemove())
 
                 // PREVは状態復元を最優先。ReloadはMaterial参照を作り直して逆に不安定化することがあるため、
                 // ここでは行わない。必要なら別ボタンのRELOAD ALLを使う。
+                if (IsRipperSelectedHidden(item))
+                {
+                    bool ripperOk = CallRipperRestoreItemAction(item, "PHTY RIPPER / PREV");
+                    if (!ripperOk)
+                    {
+                        SetStatus("RIPPER restore failed: " + item.Name);
+                        UpdateButtonColors();
+                        UpdatePreview();
+                        return;
+                    }
+                    ClearRipperSelectedHidden(item);
+                }
+
                 DumpMaterialValues(item, "PREV_BEFORE_RESTORE_VISIBLE");
                 int found = RestoreVisibleForItemNoVisualRestore(item, "PREV");
                 DumpMaterialValues(item, "PREV_AFTER_RESTORE_VISIBLE");
@@ -1806,6 +2011,31 @@ UpdatePreview();
             SetStatus("No cloth list");
             UpdateExternalState();
             UpdatePreview();
+            return;
+        }
+
+        if (IsRipperAllMode())
+        {
+            bool ok = CallRipperRipAllAction("PHTY RIPPER / WEAR NONE");
+            if (ok)
+            {
+                SetStatus("PHTY RIPPER: RipAll called by WEAR NONE");
+                PublishClothState("ripper_all", null, true);
+                ResetAutoTimerAfterStep();
+            }
+            else
+            {
+                SetStatus("PHTY RIPPER failed: ClothingRipper/RipAll not found");
+            }
+            UpdateButtonColors();
+            UpdatePreview();
+            return;
+        }
+
+        if (IsRipperSelectedMode())
+        {
+            DebugLog("[WEAR NONE RIPPER V21] start ordered one-by-one routine");
+            wearNoneRoutine = StartCoroutine(WearNoneRipperSelectedRoutine());
             return;
         }
 
@@ -2073,7 +2303,8 @@ UpdatePreview();
             yield break;
         }
 
-        string requestedStyle = physRemoveStyleChooser != null ? physRemoveStyleChooser.val : PHYS_OFF;
+        string requestedStyle = !string.IsNullOrEmpty(physicalStyleOverride) ? physicalStyleOverride : (physRemoveStyleChooser != null ? physRemoveStyleChooser.val : PHYS_OFF);
+        physicalStyleOverride = null;
         float duration = physDurationJSON != null ? Mathf.Max(0.2f, physDurationJSON.val) : 3.0f;
         float fadeSeconds = fadeSecondsJSON != null ? Mathf.Clamp(fadeSecondsJSON.val, 0.0f, duration) : Mathf.Min(2.0f, duration);
 
@@ -2382,9 +2613,31 @@ UpdatePreview();
     }
 
 
+    private bool IsRipperAllMode()
+    {
+        // v21: automatic RipAll is intentionally disabled. Use manual hidden Action only if needed.
+        return false;
+    }
+
+    private bool IsRipperSelectedMode()
+    {
+        if (physRemoveStyleChooser == null)
+            return false;
+
+        string v = physRemoveStyleChooser.val;
+        return v == PHYS_RIPPER || v == PHYS_RIPPER_SELECTED || v == PHYS_RIPPER_ALL;
+    }
+
+    private bool IsAnyRipperMode()
+    {
+        return IsRipperSelectedMode();
+    }
+
     private bool UsePhysicalRemove()
     {
-        return physRemoveStyleChooser != null && physRemoveStyleChooser.val != PHYS_OFF;
+        return physRemoveStyleChooser != null &&
+            physRemoveStyleChooser.val != PHYS_OFF &&
+            !IsAnyRipperMode();
     }
 
     private string ResolvePhysicalStyleForItem(ClothItem item, string requestedStyle)
@@ -2428,10 +2681,38 @@ UpdatePreview();
         physicalHideRoutine = StartCoroutine(PhysicalHideRoutine(item, finalAction));
     }
 
+    private void StartPhysicalHideWithStyle(ClothItem item, string finalAction, string forcedStyle)
+    {
+        if (item == null)
+            return;
+
+        if (IsHidden(item))
+        {
+            UpdatePreview();
+            return;
+        }
+
+        if (physicalHideRoutine != null)
+        {
+            SetStatus("Physical remove is already running");
+            return;
+        }
+
+        physicalStyleOverride = forcedStyle;
+        physicalHideRoutine = StartCoroutine(PhysicalHideRoutine(item, finalAction));
+    }
+
+    private IEnumerator PhysicalHideDownDirectRoutine(ClothItem item, string finalAction)
+    {
+        physicalStyleOverride = PHYS_DOWN;
+        yield return StartCoroutine(PhysicalHideRoutine(item, finalAction));
+    }
+
     private IEnumerator PhysicalHideRoutine(ClothItem item, string finalAction)
     {
         physicalRemoveRunning++;
-        string requestedStyle = physRemoveStyleChooser != null ? physRemoveStyleChooser.val : PHYS_OFF;
+        string requestedStyle = !string.IsNullOrEmpty(physicalStyleOverride) ? physicalStyleOverride : (physRemoveStyleChooser != null ? physRemoveStyleChooser.val : PHYS_OFF);
+        physicalStyleOverride = null;
         string style = ResolvePhysicalStyleForItem(item, requestedStyle);
         float duration = physDurationJSON != null ? Mathf.Max(0.2f, physDurationJSON.val) : 3.0f;
         float fadeSeconds = fadeSecondsJSON != null ? Mathf.Clamp(fadeSecondsJSON.val, 0.0f, duration) : Mathf.Min(2.0f, duration);
@@ -2713,16 +2994,27 @@ UpdatePreview();
                     continue;
 
                 float before = fp.val;
-                bool wasChanged = Mathf.Abs(before - 0.0f) > 0.0001f;
+                float target;
+                bool hasSaved = TryGetSavedFadeFloatValue(item, ids[i], names[n], out target);
+                if (!hasSaved)
+                    target = before;
 
-                // VaM/Unity側のMaterial更新が0代入だけだと走らない服があるため、
-                // 一瞬だけ -0.001 に振ってから 0.000 に戻す。
-                fp.val = -0.001f;
-                fp.val = 0.0f;
+                bool wasChanged = Mathf.Abs(before - target) > 0.0001f;
+
+                // v11h: Do not force Alpha Adjust back to 0.0.
+                // Restore/nudge to the SCAN-captured value so intentionally transparent clothes
+                // keep their original user-defined transparency.
+                // VaM/Unity側のMaterial更新が同値代入だけだと走らない服があるため、
+                // 一瞬だけ target-0.001 に振ってから target に戻す。
+                float nudge = target - 0.001f;
+                fp.val = nudge;
+                fp.val = target;
 
                 DebugLog("[ALPHA NUDGE] " + item.Name + " / " + ids[i] + "/" + names[n] +
                     " : " + before.ToString("F3", CultureInfo.InvariantCulture) +
-                    " -> -0.001 -> 0.000" +
+                    " -> " + nudge.ToString("F3", CultureInfo.InvariantCulture) +
+                    " -> " + target.ToString("F3", CultureInfo.InvariantCulture) +
+                    (hasSaved ? " / saved" : " / current") +
                     (wasChanged ? " / changed" : " / refresh"));
 
                 if (wasChanged)
@@ -2731,6 +3023,33 @@ UpdatePreview();
         }
         DebugLog("[NUDGE EXIT] " + item.Name + " changed=" + changed.ToString(CultureInfo.InvariantCulture));
         return changed;
+    }
+
+    private bool TryGetSavedFadeFloatValue(ClothItem item, string storableId, string paramName, out float value)
+    {
+        value = 0.0f;
+
+        if (item == null || string.IsNullOrEmpty(item.Prefix) || string.IsNullOrEmpty(storableId) || string.IsNullOrEmpty(paramName))
+            return false;
+
+        List<SavedPhysFloat> floats;
+        if (!scanFadeFloatStates.TryGetValue(item.Prefix, out floats) || floats == null)
+            return false;
+
+        for (int i = 0; i < floats.Count; i++)
+        {
+            SavedPhysFloat saved = floats[i];
+            if (saved == null)
+                continue;
+
+            if (saved.StorableId == storableId && saved.ParamName == paramName)
+            {
+                value = saved.Value;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void DumpMaterialValues(ClothItem item, string tag)
@@ -3404,6 +3723,14 @@ private void StopAutoAndResetRunningNoRestore(string reason)
 }
     private IEnumerator RestoreAllVisibleRoutine()
     {
+        // v12/v11l: If ClothingRipper is present, restore its ripped pieces first, then let
+        // ClothStateSwitcher restore hideMaterial/physics/fade/alpha state.
+        bool ripperRestored = false;
+        if (UpdateClothingRipperDetection("restore-all-pre") && clothingRipperFound)
+            ripperRestored = CallRipperRestoreAllAction("WEAR ALL pre RestoreAll");
+        if (ripperRestored)
+            yield return new WaitForSeconds(0.35f);
+
         // v11f: First re-enable the real Clothing Item checkboxes that this plugin turned OFF.
         // Do this before clearing internal hidden flags; otherwise active-OFF clothes can lose their restore path.
         int activeRestored0 = RestoreCapturedDazClothingActiveAll("RESTORE_ALL_ACTIVE_PRE");
@@ -3412,6 +3739,7 @@ private void StopAutoAndResetRunningNoRestore(string reason)
 
         forcedHiddenPrefixes.Clear();
         phtyHiddenPrefixes.Clear();
+        ripperSelectedHiddenPrefixes.Clear();
         // WEAR ALL は「見た目を着ている状態に戻す」だけに集中する。
         // Reload All は環境によってMaterial参照が消えるため、自動では呼ばない。
         DumpAllSimState("RESTORE_ALL_BEFORE_PHYS_SCAN_PASS1");
@@ -3446,7 +3774,8 @@ private void StopAutoAndResetRunningNoRestore(string reason)
         int simResetAll = ResetSimForAllVisibleItems("RESTORE_ALL_FINAL_SIM_RESET");
 
         RebuildOrderOnly();
-        string msg = "Wear all visible / active=" + activeRestored0.ToString(CultureInfo.InvariantCulture) +
+        string msg = "Wear all visible / ripper=" + (ripperRestored ? "1" : "0") +
+            " / active=" + activeRestored0.ToString(CultureInfo.InvariantCulture) +
             " / phys=" + (physRestored1 + physRestored2).ToString(CultureInfo.InvariantCulture) +
             " / fade=" + (fadeRestored1 + fadeRestored2).ToString(CultureInfo.InvariantCulture) +
             " / alpha=" + (alphaRestored1 + alphaRestored2).ToString(CultureInfo.InvariantCulture) +
@@ -3471,6 +3800,11 @@ private void StopAutoAndResetRunningNoRestore(string reason)
     private bool IsHidden(ClothItem item)
     {
         if (selectedPerson == null || item == null)
+            return true;
+
+        // v13: ClothingRipper SELECTED rips do not necessarily touch hideMaterial.
+        // Treat our own per-item rip bookkeeping as hidden so NEXT/PREV can advance safely.
+        if (IsRipperSelectedHidden(item))
             return true;
 
         // v11e: when the real Clothing Item checkbox was turned OFF by this plugin,
@@ -3514,6 +3848,10 @@ private void StopAutoAndResetRunningNoRestore(string reason)
     {
         if (selectedPerson == null || item == null)
             return false;
+
+        // v13: Ripper SELECTED one-by-one bookkeeping counts as hidden for PREV/WEAR ALL state logic.
+        if (IsRipperSelectedHidden(item))
+            return true;
 
         // v11e: Clothing Item checkbox OFF means hidden even if hideMaterial storables are unloaded.
         if (!string.IsNullOrEmpty(item.Prefix) && activeDazClothingOffByPlugin.Contains(item.Prefix))
@@ -3611,6 +3949,12 @@ private void StopAutoAndResetRunningNoRestore(string reason)
         if (!hidden)
             activeToggleFound = SetCapturedDazClothingActive(item, true, "SET_VISIBLE_PRE");
 
+        // v20: OFF/hideMaterial mode can leave strings/straps when they live in a separate
+        // Material storable. Before validating refs, safely augment same-item companion materials.
+        int companionAddedBeforeSet = AddLooseCompanionMaterials(item, hidden ? "SET_HIDE_PRE" : "SET_VISIBLE_PRE");
+        if (companionAddedBeforeSet > 0)
+            DebugLog("[OFF COMPANION] augment before SetHidden / item=" + item.Name + " / hidden=" + (hidden ? "1" : "0") + " / added=" + companionAddedBeforeSet.ToString(CultureInfo.InvariantCulture));
+
         // 操作直前にMaterial参照を再確認。古ければ現在のStorableから再解決する。
         if (CountValidMaterials(item, false) == 0)
         {
@@ -3680,6 +4024,216 @@ private void StopAutoAndResetRunningNoRestore(string reason)
             " errors=" + errors.ToString(CultureInfo.InvariantCulture));
 
         return foundTotal;
+    }
+
+
+    // v20: OFF mode helper. Normal scan intentionally avoids broad accessory matching, but some
+    // clothing strings/straps are named like separate accessories or display-name variants.
+    // This augments only hideMaterial params that can be matched back to the same clothing item.
+    private bool ContainsSavedMaterialRef(ClothItem item, string storableId, string paramName)
+    {
+        if (item == null || item.Materials == null || string.IsNullOrEmpty(storableId) || string.IsNullOrEmpty(paramName))
+            return false;
+
+        for (int i = 0; i < item.Materials.Count; i++)
+        {
+            SavedBool saved = item.Materials[i];
+            if (saved == null)
+                continue;
+            if (string.Equals(saved.StorableId, storableId, StringComparison.Ordinal) &&
+                string.Equals(saved.ParamName, paramName, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
+    private bool LooksLikeLooseCompanionKeyword(string lowerId)
+    {
+        if (string.IsNullOrEmpty(lowerId))
+            return false;
+
+        return lowerId.IndexOf("string") >= 0 ||
+            lowerId.IndexOf("strap") >= 0 ||
+            lowerId.IndexOf("tie") >= 0 ||
+            lowerId.IndexOf("ribbon") >= 0 ||
+            lowerId.IndexOf("cord") >= 0 ||
+            lowerId.IndexOf("lace") >= 0 ||
+            lowerId.IndexOf("knot") >= 0 ||
+            lowerId.IndexOf("bow") >= 0 ||
+            lowerId.IndexOf("trim") >= 0 ||
+            lowerId.IndexOf("frill") >= 0 ||
+            lowerId.IndexOf("buckle") >= 0 ||
+            lowerId.IndexOf("metal") >= 0;
+    }
+
+    private string NormalizeLooseCompanionKey(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        string v = value;
+        int materialIndex = v.ToLowerInvariant().IndexOf("material");
+        if (materialIndex >= 0)
+            v = v.Substring(0, materialIndex);
+
+        v = StripVariantSuffixes(v);
+        return NormalizeRipperLabelSemanticKey(v);
+    }
+
+    private void AddLooseCompanionKey(List<string> keys, string value)
+    {
+        if (keys == null || string.IsNullOrEmpty(value))
+            return;
+
+        string key = NormalizeLooseCompanionKey(value);
+        if (string.IsNullOrEmpty(key))
+            return;
+
+        if (!keys.Contains(key))
+            keys.Add(key);
+    }
+
+    private List<string> BuildLooseCompanionItemKeys(ClothItem item)
+    {
+        List<string> keys = new List<string>();
+        if (item == null)
+            return keys;
+
+        AddLooseCompanionKey(keys, item.Prefix);
+        AddLooseCompanionKey(keys, item.Name);
+        AddLooseCompanionKey(keys, CleanupName(item.Prefix));
+
+        string noCreator = StripCreatorPrefixForRipper(item.Prefix);
+        AddLooseCompanionKey(keys, noCreator);
+        AddLooseCompanionKey(keys, CleanupName(noCreator));
+
+        string activeName = "";
+        if (!string.IsNullOrEmpty(item.Prefix))
+        {
+            try { activeDazClothingNameByPrefix.TryGetValue(item.Prefix, out activeName); } catch { activeName = ""; }
+        }
+        AddLooseCompanionKey(keys, activeName);
+
+        return keys;
+    }
+
+    private bool LooseCompanionBelongsToItem(ClothItem item, string storableId)
+    {
+        if (item == null || string.IsNullOrEmpty(storableId))
+            return false;
+
+        List<string> itemKeys = BuildLooseCompanionItemKeys(item);
+        if (itemKeys.Count == 0)
+            return false;
+
+        string prefix = GetWearablePrefix(storableId);
+        string storableKey = NormalizeLooseCompanionKey(prefix);
+        if (string.IsNullOrEmpty(storableKey))
+            storableKey = NormalizeLooseCompanionKey(storableId);
+
+        if (string.IsNullOrEmpty(storableKey))
+            return false;
+
+        for (int i = 0; i < itemKeys.Count; i++)
+        {
+            string key = itemKeys[i];
+            if (string.IsNullOrEmpty(key))
+                continue;
+
+            if (storableKey == key)
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool IsSafeLooseCompanionMaterialCandidate(string storableId)
+    {
+        if (string.IsNullOrEmpty(storableId))
+            return false;
+
+        string lower = storableId.ToLowerInvariant();
+        if (lower.IndexOf("material") < 0)
+            return false;
+
+        // Keep the dangerous/global exclusions from the normal scanner.
+        if (lower.IndexOf("plugin#") >= 0 ||
+            lower.IndexOf("punchballgame") >= 0 ||
+            lower.IndexOf("clothstateswitcher") >= 0 ||
+            lower.IndexOf("clothofftester") >= 0 ||
+            lower.IndexOf("clothingplugindestructor") >= 0 ||
+            lower.IndexOf("clothingpresets") >= 0 ||
+            lower.IndexOf("stopper.clothingpluginmanager") >= 0 ||
+            lower.IndexOf("region") >= 0 ||
+            lower.IndexOf("scalpmaterial") >= 0 ||
+            lower.IndexOf("pantyregion") >= 0)
+            return false;
+
+        bool companionWord = LooksLikeLooseCompanionKeyword(lower);
+
+        // Do not touch hair/face unless the name clearly belongs to real clothing.
+        if (!LooksLikeRealClothItem(lower) && LooksLikeHairOrFaceItem(lower))
+            return false;
+
+        // Accessory filter catches "ring" inside "string". Allow clear companion words through,
+        // but keep unrelated accessory materials out.
+        if (!companionWord && !LooksLikeRealClothItem(lower) && LooksLikeAccessoryItem(lower))
+            return false;
+
+        return true;
+    }
+
+    private int AddLooseCompanionMaterials(ClothItem item, string reason)
+    {
+        if (selectedPerson == null || item == null)
+            return 0;
+
+        if (item.Materials == null)
+            item.Materials = new List<SavedBool>();
+
+        int added = 0;
+        try
+        {
+            foreach (string storableId in selectedPerson.GetStorableIDs())
+            {
+                if (!IsSafeLooseCompanionMaterialCandidate(storableId))
+                    continue;
+
+                if (ContainsSavedMaterialRef(item, storableId, "hideMaterial"))
+                    continue;
+
+                JSONStorable storable = selectedPerson.GetStorableByID(storableId);
+                if (storable == null)
+                    continue;
+
+                JSONStorableBool hideMaterial = storable.GetBoolJSONParam("hideMaterial");
+                if (hideMaterial == null)
+                    continue;
+
+                if (!LooseCompanionBelongsToItem(item, storableId))
+                    continue;
+
+                SavedBool saved = new SavedBool();
+                saved.StorableId = storableId;
+                saved.ParamName = "hideMaterial";
+                saved.Value = hideMaterial.val;
+                item.Materials.Add(saved);
+                added++;
+
+                DebugLog("[OFF COMPANION ADD] reason=" + reason +
+                    " / item=" + item.Name +
+                    " / prefix=" + item.Prefix +
+                    " / storable=" + storableId +
+                    " / value=" + (hideMaterial.val ? "1" : "0") +
+                    " / total=" + item.Materials.Count.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("[OFF COMPANION ERROR] reason=" + reason + " / item=" + (item != null ? item.Name : "null") + " / " + e.Message);
+        }
+
+        return added;
     }
 
     private string NormalizeDazClothingKey(string value)
@@ -4175,10 +4729,207 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             ",max=" + max.ToString("F3", CultureInfo.InvariantCulture);
     }
 
+
+    private HashSet<string> GetExcludedClothingPrefixSet()
+    {
+        HashSet<string> set = new HashSet<string>();
+        if (excludedClothingPrefixesJSON == null || string.IsNullOrEmpty(excludedClothingPrefixesJSON.val))
+            return set;
+
+        string[] parts = excludedClothingPrefixesJSON.val.Split(new char[] { '\n', '|', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            string p = NormalizeWearablePrefix(parts[i]);
+            if (!string.IsNullOrEmpty(p))
+                set.Add(p);
+        }
+        return set;
+    }
+
+    private void SetExcludedClothingPrefixSet(HashSet<string> set)
+    {
+        if (excludedClothingPrefixesJSON == null)
+            return;
+
+        List<string> list = new List<string>();
+        if (set != null)
+        {
+            foreach (string p in set)
+            {
+                string n = NormalizeWearablePrefix(p);
+                if (!string.IsNullOrEmpty(n) && !list.Contains(n))
+                    list.Add(n);
+            }
+        }
+        list.Sort();
+        excludedClothingPrefixesJSON.val = string.Join("\n", list.ToArray());
+    }
+
+    private string GetClothPrefixKey(ClothItem item)
+    {
+        if (item == null)
+            return "";
+        if (!string.IsNullOrEmpty(item.Prefix))
+            return NormalizeWearablePrefix(item.Prefix);
+        return NormalizeWearablePrefix(item.Name);
+    }
+
+    private bool IsClothExcluded(ClothItem item)
+    {
+        string key = GetClothPrefixKey(item);
+        if (string.IsNullOrEmpty(key))
+            return false;
+        return GetExcludedClothingPrefixSet().Contains(key);
+    }
+
+    private string BuildClothingChoiceLabel(ClothItem item, Dictionary<string, int> nameCounts)
+    {
+        if (item == null)
+            return CLOTH_CHOICE_NONE;
+
+        string name = !string.IsNullOrEmpty(item.Name) ? item.Name : item.Prefix;
+        if (string.IsNullOrEmpty(name))
+            name = CLOTH_CHOICE_NONE;
+
+        int count = 0;
+        if (nameCounts != null)
+            nameCounts.TryGetValue(name, out count);
+
+        if (count > 1 && !string.IsNullOrEmpty(item.Prefix))
+            return name + "  [" + item.Prefix + "]";
+        return name;
+    }
+
+    private void UpdateExclusionChoices()
+    {
+        if (targetClothingChooser == null || excludedClothingChooser == null)
+            return;
+
+        updatingExclusionChoices = true;
+
+        string oldTarget = targetClothingChooser.val;
+        string oldExcluded = excludedClothingChooser.val;
+
+        targetClothingPrefixByLabel.Clear();
+        excludedClothingPrefixByLabel.Clear();
+
+        Dictionary<string, int> nameCounts = new Dictionary<string, int>();
+        for (int i = 0; i < clothes.Count; i++)
+        {
+            ClothItem item = clothes[i];
+            if (item == null)
+                continue;
+            string name = !string.IsNullOrEmpty(item.Name) ? item.Name : item.Prefix;
+            if (string.IsNullOrEmpty(name))
+                continue;
+            if (!nameCounts.ContainsKey(name))
+                nameCounts[name] = 0;
+            nameCounts[name]++;
+        }
+
+        HashSet<string> excluded = GetExcludedClothingPrefixSet();
+        List<string> targetChoices = new List<string>();
+        List<string> excludedChoices = new List<string>();
+
+        for (int i = 0; i < clothes.Count; i++)
+        {
+            ClothItem item = clothes[i];
+            if (item == null)
+                continue;
+
+            string key = GetClothPrefixKey(item);
+            if (string.IsNullOrEmpty(key))
+                continue;
+
+            string label = BuildClothingChoiceLabel(item, nameCounts);
+            if (excluded.Contains(key))
+            {
+                excludedChoices.Add(label);
+                excludedClothingPrefixByLabel[label] = key;
+            }
+            else
+            {
+                targetChoices.Add(label);
+                targetClothingPrefixByLabel[label] = key;
+            }
+        }
+
+        if (targetChoices.Count == 0)
+            targetChoices.Add(CLOTH_CHOICE_NONE);
+        if (excludedChoices.Count == 0)
+            excludedChoices.Add(CLOTH_CHOICE_NONE);
+
+        targetClothingChooser.choices = targetChoices;
+        excludedClothingChooser.choices = excludedChoices;
+
+        if (!targetChoices.Contains(oldTarget))
+            targetClothingChooser.val = targetChoices[0];
+        else
+            targetClothingChooser.val = oldTarget;
+
+        if (!excludedChoices.Contains(oldExcluded))
+            excludedClothingChooser.val = excludedChoices[0];
+        else
+            excludedClothingChooser.val = oldExcluded;
+
+        updatingExclusionChoices = false;
+    }
+
+    private void ExcludeSelectedClothing()
+    {
+        if (targetClothingChooser == null)
+            return;
+
+        string label = targetClothingChooser.val;
+        string prefix = null;
+        if (string.IsNullOrEmpty(label) || label == CLOTH_CHOICE_NONE || !targetClothingPrefixByLabel.TryGetValue(label, out prefix) || string.IsNullOrEmpty(prefix))
+        {
+            SetStatus("Exclude skipped: no target clothing selected");
+            return;
+        }
+
+        HashSet<string> set = GetExcludedClothingPrefixSet();
+        set.Add(prefix);
+        SetExcludedClothingPrefixSet(set);
+        stateCacheValid = false;
+        UpdateExclusionChoices();
+        UpdateExternalState("exclude_add", null);
+        UpdatePreview();
+        SetStatus("Excluded: " + label);
+        DebugLog("[EXCLUSION ADD] label=" + label + " / prefix=" + prefix);
+    }
+
+    private void RemoveSelectedClothingExclusion()
+    {
+        if (excludedClothingChooser == null)
+            return;
+
+        string label = excludedClothingChooser.val;
+        string prefix = null;
+        if (string.IsNullOrEmpty(label) || label == CLOTH_CHOICE_NONE || !excludedClothingPrefixByLabel.TryGetValue(label, out prefix) || string.IsNullOrEmpty(prefix))
+        {
+            SetStatus("Remove exclusion skipped: no excluded clothing selected");
+            return;
+        }
+
+        HashSet<string> set = GetExcludedClothingPrefixSet();
+        set.Remove(prefix);
+        SetExcludedClothingPrefixSet(set);
+        stateCacheValid = false;
+        UpdateExclusionChoices();
+        UpdateExternalState("exclude_remove", null);
+        UpdatePreview();
+        SetStatus("Exclusion removed: " + label);
+        DebugLog("[EXCLUSION REMOVE] label=" + label + " / prefix=" + prefix);
+    }
+
     private bool IsProtected(ClothItem item)
     {
         if (item == null)
             return false;
+
+        if (IsClothExcluded(item))
+            return true;
 
         string s = GetLowerName(item);
 
@@ -4826,6 +5577,788 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
     }
 
 
+    private void WatchClothingRipperPlugin()
+    {
+        clothingRipperWatchTimer += Time.deltaTime;
+        if (clothingRipperWatchTimer < 1.0f)
+            return;
+
+        clothingRipperWatchTimer = 0.0f;
+        UpdateClothingRipperDetection("watch");
+    }
+
+    private void SetRipperControlVisible(UIDynamicButton button, bool visible)
+    {
+        if (button == null)
+            return;
+
+        try
+        {
+            if (button.gameObject != null)
+                button.gameObject.SetActive(visible);
+        }
+        catch { }
+    }
+
+    private void PrepareClothingRipperControls(bool visible)
+    {
+        if (clothingRipperFoundToggle != null)
+        {
+            try
+            {
+                if (clothingRipperFoundToggle.toggle != null)
+                    clothingRipperFoundToggle.toggle.interactable = false;
+            }
+            catch { }
+
+            try
+            {
+                if (clothingRipperFoundToggle.gameObject != null)
+                    clothingRipperFoundToggle.gameObject.SetActive(visible);
+            }
+            catch { }
+        }
+
+        // v20: keep the ClothingRipper manual test buttons registered as external Actions,
+        // but hide their UI buttons. The user-facing UI only shows the found checkbox and PHTY modes.
+        SetRipperControlVisible(ripperPreCutButton, false);
+        SetRipperControlVisible(ripperRipSelectedButton, false);
+        SetRipperControlVisible(ripperRipAllButton, false);
+        SetRipperControlVisible(ripperRestoreSelectedButton, false);
+        SetRipperControlVisible(ripperRestoreAllButton, false);
+    }
+
+    private string GetRipperHiddenKey(ClothItem item)
+    {
+        return GetCacheKey(item);
+    }
+
+    private bool IsRipperSelectedHidden(ClothItem item)
+    {
+        string key = GetRipperHiddenKey(item);
+        return !string.IsNullOrEmpty(key) && ripperSelectedHiddenPrefixes.Contains(key);
+    }
+
+    private void MarkRipperSelectedHidden(ClothItem item)
+    {
+        string key = GetRipperHiddenKey(item);
+        if (!string.IsNullOrEmpty(key))
+            ripperSelectedHiddenPrefixes.Add(key);
+    }
+
+    private void ClearRipperSelectedHidden(ClothItem item)
+    {
+        string key = GetRipperHiddenKey(item);
+        if (!string.IsNullOrEmpty(key))
+            ripperSelectedHiddenPrefixes.Remove(key);
+    }
+
+    private void AddStringUnique(List<string> list, string value)
+    {
+        if (list == null || string.IsNullOrEmpty(value))
+            return;
+
+        string v = value.Trim();
+        if (v.Length == 0)
+            return;
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (string.Equals(list[i], v, StringComparison.OrdinalIgnoreCase))
+                return;
+        }
+        list.Add(v);
+    }
+
+    private string NormalizeRipperLabelKey(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        string s = value.ToLowerInvariant();
+        s = s.Replace(":", " ");
+        s = s.Replace("_", " ");
+        s = s.Replace("-", " ");
+        s = s.Replace(".", " ");
+        while (s.IndexOf("  ") >= 0)
+            s = s.Replace("  ", " ");
+        return s.Trim();
+    }
+
+    private string NormalizeRipperLabelCompactKey(string value)
+    {
+        string s = NormalizeRipperLabelKey(value);
+        if (string.IsNullOrEmpty(s))
+            return "";
+        return s.Replace(" ", "");
+    }
+
+    private string NormalizeRipperLabelSemanticKey(string value)
+    {
+        string s = NormalizeRipperLabelKey(value);
+        if (string.IsNullOrEmpty(s))
+            return "";
+
+        string[] raw = s.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        List<string> tokens = new List<string>();
+
+        for (int i = 0; i < raw.Length; i++)
+        {
+            string t = raw[i];
+            if (string.IsNullOrEmpty(t))
+                continue;
+
+            // Common creator/vendor words seen in CSS names but not in ClothingRipper labels.
+            if (t == "anythingfashionvr" || t == "modkkola" || t == "fumesec" ||
+                t == "noc" || t == "this" || t == "yass" || t == "vl")
+                continue;
+
+            // Common shorthand expansions from clothing internal names to display names.
+            if (t == "rev") t = "reverse";
+            else if (t == "biki") t = "bikini";
+
+            // Often a variant code in internal names, not present in ClothingRipper display labels.
+            if (t == "6b")
+                continue;
+
+            // Handle compact internal names like WetPussy against display labels like Wet Pussy.
+            if (t == "wetpussy")
+            {
+                tokens.Add("wet");
+                tokens.Add("pussy");
+                continue;
+            }
+
+            tokens.Add(t);
+        }
+
+        string joined = "";
+        for (int i = 0; i < tokens.Count; i++)
+            joined += tokens[i];
+        return joined;
+    }
+
+    private bool RipperLabelEquivalentLoose(string a, string b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
+            return false;
+
+        string ak = NormalizeRipperLabelKey(a);
+        string bk = NormalizeRipperLabelKey(b);
+        if (!string.IsNullOrEmpty(ak) && ak == bk)
+            return true;
+
+        string ac = NormalizeRipperLabelCompactKey(a);
+        string bc = NormalizeRipperLabelCompactKey(b);
+        if (!string.IsNullOrEmpty(ac) && ac == bc)
+            return true;
+
+        string asem = NormalizeRipperLabelSemanticKey(a);
+        string bsem = NormalizeRipperLabelSemanticKey(b);
+        if (!string.IsNullOrEmpty(asem) && asem == bsem)
+            return true;
+
+        return false;
+    }
+
+    private string StripCreatorPrefixForRipper(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        int idx = value.LastIndexOf(':');
+        if (idx < 0 || idx >= value.Length - 1)
+            return "";
+
+        return value.Substring(idx + 1).Trim();
+    }
+
+    private void AddRipperLabelCandidateWithVariants(List<string> labels, string value)
+    {
+        if (labels == null || string.IsNullOrEmpty(value))
+            return;
+
+        string v = value.Trim();
+        if (v.Length == 0)
+            return;
+
+        AddStringUnique(labels, v);
+        AddStringUnique(labels, v.Replace(" ", "_"));
+        AddStringUnique(labels, v.Replace("_", " "));
+        AddStringUnique(labels, CleanupName(v));
+
+        string noCreator = StripCreatorPrefixForRipper(v);
+        if (!string.IsNullOrEmpty(noCreator))
+        {
+            AddStringUnique(labels, noCreator);
+            AddStringUnique(labels, noCreator.Replace(" ", "_"));
+            AddStringUnique(labels, noCreator.Replace("_", " "));
+            AddStringUnique(labels, CleanupName(noCreator));
+        }
+    }
+
+    private List<string> BuildRipperLabelCandidates(ClothItem item)
+    {
+        List<string> labels = new List<string>();
+        if (item == null)
+            return labels;
+
+        // ClothingRipper labels come from DAZClothingItem.displayName.
+        // In many clothes this is the item name without the creator prefix,
+        // e.g. CSS prefix "Modkkola:rev_biki_6b_panty" but Ripper label
+        // "rev_biki_6b_panty". Prefer both forms.
+        AddRipperLabelCandidateWithVariants(labels, item.Prefix);
+        AddRipperLabelCandidateWithVariants(labels, item.Name);
+
+        string activeName = "";
+        if (!string.IsNullOrEmpty(item.Prefix))
+        {
+            try { activeDazClothingNameByPrefix.TryGetValue(item.Prefix, out activeName); } catch { activeName = ""; }
+        }
+        AddRipperLabelCandidateWithVariants(labels, activeName);
+
+        return labels;
+    }
+
+    private JSONStorableStringChooser GetRipperSelectedClothingChooser()
+    {
+        if (clothingRipperStorable == null)
+            return null;
+
+        try { return clothingRipperStorable.GetStringChooserJSONParam("Selected Clothing"); }
+        catch { return null; }
+    }
+
+    private void RefreshRipperClothingScanForSelection(string reason)
+    {
+        if (clothingRipperStorable == null)
+            return;
+
+        try
+        {
+            JSONStorableAction scan = clothingRipperStorable.GetAction("ScanClothing");
+            if (scan != null && scan.actionCallback != null)
+            {
+                scan.actionCallback.Invoke();
+                DebugLog("[RIPPER SCAN] executed before item resolve / reason=" + reason + " / storable=" + clothingRipperStorableId);
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("[RIPPER SCAN ERROR] reason=" + reason + " / " + e.Message);
+        }
+    }
+
+    private bool TryResolveRipperLabel(ClothItem item, out string label)
+    {
+        label = "";
+        List<string> candidates = BuildRipperLabelCandidates(item);
+        if (candidates.Count == 0)
+            return false;
+
+        JSONStorableStringChooser chooser = GetRipperSelectedClothingChooser();
+        if (chooser == null || chooser.choices == null || chooser.choices.Count == 0)
+        {
+            RefreshRipperClothingScanForSelection("resolve:" + (item != null ? item.Name : "null"));
+            chooser = GetRipperSelectedClothingChooser();
+        }
+
+        if (chooser != null && chooser.choices != null && chooser.choices.Count > 0)
+        {
+            // Exact match first, preserving ClothingRipper's real label for the per-item action name.
+            for (int c = 0; c < candidates.Count; c++)
+            {
+                string cand = candidates[c];
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    string choice = chooser.choices[i];
+                    if (string.Equals(choice, cand, StringComparison.Ordinal))
+                    {
+                        label = choice;
+                        return true;
+                    }
+                }
+            }
+
+            // Case-insensitive exact match.
+            for (int c = 0; c < candidates.Count; c++)
+            {
+                string cand = candidates[c];
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    string choice = chooser.choices[i];
+                    if (string.Equals(choice, cand, StringComparison.OrdinalIgnoreCase))
+                    {
+                        label = choice;
+                        return true;
+                    }
+                }
+            }
+
+            // Normalized match: spaces / underscores / hyphens are considered equivalent.
+            for (int c = 0; c < candidates.Count; c++)
+            {
+                string candKey = NormalizeRipperLabelKey(candidates[c]);
+                if (candKey.Length < 3)
+                    continue;
+
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    string choice = chooser.choices[i];
+                    string choiceKey = NormalizeRipperLabelKey(choice);
+                    if (choiceKey == candKey)
+                    {
+                        label = choice;
+                        return true;
+                    }
+                }
+            }
+
+            // Fuzzy equivalent match:
+            // - WetPussy <=> Wet Pussy
+            // - Modkkola rev biki 6b panty <=> Reverse Bikini Panty
+            // - Noc This NT Peach Neck <=> NT_Peach_Neck
+            for (int c = 0; c < candidates.Count; c++)
+            {
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    string choice = chooser.choices[i];
+                    if (RipperLabelEquivalentLoose(candidates[c], choice))
+                    {
+                        label = choice;
+                        return true;
+                    }
+                }
+            }
+
+            // Last-resort contains match for cases where CSS strips a Sim/Material suffix but Ripper keeps it.
+            // Use compact keys too so spaces/underscores do not break contains matching.
+            for (int c = 0; c < candidates.Count; c++)
+            {
+                string candKey = NormalizeRipperLabelCompactKey(candidates[c]);
+                if (candKey.Length < 5)
+                    continue;
+
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    string choice = chooser.choices[i];
+                    string choiceKey = NormalizeRipperLabelCompactKey(choice);
+                    if (choiceKey.Length < 5)
+                        continue;
+                    if (choiceKey.IndexOf(candKey, StringComparison.Ordinal) >= 0 || candKey.IndexOf(choiceKey, StringComparison.Ordinal) >= 0)
+                    {
+                        label = choice;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        DebugLog("[RIPPER ITEM] chooser label not resolved / css=" + (item != null ? item.Name : "(null)") +
+            " / prefix=" + (item != null ? item.Prefix : "") +
+            " / chooser=" + (chooser != null ? "1" : "0") +
+            " / choices=" + (chooser != null && chooser.choices != null ? chooser.choices.Count.ToString(CultureInfo.InvariantCulture) : "null"));
+        return false;
+    }
+
+    private bool SelectRipperLabel(string label)
+    {
+        if (string.IsNullOrEmpty(label))
+            return false;
+
+        JSONStorableStringChooser chooser = GetRipperSelectedClothingChooser();
+        if (chooser == null)
+            return false;
+
+        try
+        {
+            if (chooser.choices != null && chooser.choices.Count > 0)
+            {
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    if (string.Equals(chooser.choices[i], label, StringComparison.Ordinal))
+                    {
+                        chooser.val = chooser.choices[i];
+                        return true;
+                    }
+                }
+                for (int i = 0; i < chooser.choices.Count; i++)
+                {
+                    if (string.Equals(chooser.choices[i], label, StringComparison.OrdinalIgnoreCase))
+                    {
+                        chooser.val = chooser.choices[i];
+                        return true;
+                    }
+                }
+            }
+
+            DebugLog("[RIPPER ITEM] refused invalid selected label / requested=" + label +
+                " / choices=" + (chooser.choices != null ? chooser.choices.Count.ToString(CultureInfo.InvariantCulture) : "null"));
+            return false;
+        }
+        catch { return false; }
+    }
+
+    private bool CallRipperItemAction(ClothItem item, string labelPrefix, string genericAction, string reason)
+    {
+        UpdateClothingRipperDetection("item-" + reason);
+
+        if (!clothingRipperFound || clothingRipperStorable == null)
+        {
+            SetStatus("ClothingRipper not found: " + reason);
+            DebugLog("[RIPPER ITEM] not found / reason=" + reason + " / item=" + (item != null ? item.Name : "(null)"));
+            UpdatePreview();
+            return false;
+        }
+
+        if (IsClothingRipperBusy())
+        {
+            SetStatus("ClothingRipper busy: " + reason);
+            DebugLog("[RIPPER ITEM] busy / reason=" + reason + " / item=" + (item != null ? item.Name : "(null)"));
+            UpdatePreview();
+            return false;
+        }
+
+        string ripperLabel;
+        if (!TryResolveRipperLabel(item, out ripperLabel) || string.IsNullOrEmpty(ripperLabel))
+        {
+            SetStatus("Ripper item label not found: " + (item != null ? item.Name : "(null)"));
+            DebugLog("[RIPPER ITEM] label not found / reason=" + reason + " / item=" + (item != null ? item.Name : "(null)") + " / prefix=" + (item != null ? item.Prefix : ""));
+            UpdatePreview();
+            return false;
+        }
+
+        string perItemActionName = labelPrefix + ripperLabel;
+        JSONStorableAction action = null;
+        try { action = clothingRipperStorable.GetAction(perItemActionName); } catch { action = null; }
+        if (action != null)
+        {
+            try
+            {
+                action.actionCallback.Invoke();
+                SetStatus("Ripper " + reason + ": " + ripperLabel);
+                DebugLog("[RIPPER ITEM] executed per-item / reason=" + reason + " / action=" + perItemActionName + " / storable=" + clothingRipperStorableId + " / css=" + (item != null ? item.Name : "(null)"));
+                UpdatePreview();
+                return true;
+            }
+            catch (Exception e)
+            {
+                SetStatus("Ripper item action error: " + reason);
+                DebugLog("[RIPPER ITEM ERROR] reason=" + reason + " / action=" + perItemActionName + " / " + e.Message);
+                UpdatePreview();
+                return false;
+            }
+        }
+
+        // Fallback: select the same label in ClothingRipper's chooser, then call the generic selected action.
+        if (SelectRipperLabel(ripperLabel))
+        {
+            DebugLog("[RIPPER ITEM] per-item action missing, fallback selected action / reason=" + reason + " / label=" + ripperLabel + " / generic=" + genericAction);
+            return CallClothingRipperAction(reason + " / " + ripperLabel, new List<string> { genericAction });
+        }
+
+        SetStatus("Ripper item action not found: " + ripperLabel);
+        DebugLog("[RIPPER ITEM] action not found / reason=" + reason + " / label=" + ripperLabel + " / perItem=" + perItemActionName + " / generic=" + genericAction);
+        UpdatePreview();
+        return false;
+    }
+
+    private bool CallRipperRipItemAction(ClothItem item, string reason)
+    {
+        return CallRipperItemAction(item, "Rip: ", "RipSelected", reason);
+    }
+
+    private bool CallRipperRestoreItemAction(ClothItem item, string reason)
+    {
+        return CallRipperItemAction(item, "Restore: ", "RestoreSelected", reason);
+    }
+
+    private bool IsClothingRipperBusy()
+    {
+        // VaM blocks System.Reflection, so do not read ClothingRipper's private busy flag.
+        // ClothingRipper already guards its own PreCut/Rip coroutines with its internal busy state,
+        // so external callers should just fire the registered Action and allow ClothingRipper to queue/wait internally.
+        return false;
+    }
+
+    private IEnumerator WaitForClothingRipperIdle(float timeoutSeconds)
+    {
+        // Compatibility shim kept for the v13 call sites.
+        // Without reflection, this is only a tiny pacing delay to avoid firing every per-item action in the exact same frame.
+        yield return new WaitForSeconds(0.10f);
+    }
+
+    private IEnumerator WearNoneRipperSelectedRoutine()
+    {
+        int cancelToken = ++wearNoneCancelVersion;
+        physicalRemoveRunning++;
+        UpdateButtonColors();
+
+        int changed = 0;
+        ClothItem lastChanged = null;
+        List<ClothItem> fallbackDownItems = new List<ClothItem>();
+
+        for (int i = 0; i < orderedClothes.Count; i++)
+        {
+            if (IsWearNoneCancelled(cancelToken))
+                break;
+
+            ClothItem item = orderedClothes[i];
+            if (item == null)
+                continue;
+            if (IsProtected(item))
+                continue;
+            if (IsHidden(item))
+                continue;
+
+            yield return StartCoroutine(WaitForClothingRipperIdle(20.0f));
+            if (IsWearNoneCancelled(cancelToken))
+                break;
+
+            bool ok = CallRipperRipItemAction(item, "PHTY RIPPER / WEAR NONE");
+            if (!ok)
+            {
+                DebugLog("[WEAR NONE RIPPER V21] queue fallback DOWN / item=" + item.Name + " / prefix=" + item.Prefix);
+                SetStatus("V21 RIPPER queue fallback DOWN: " + item.Name);
+                fallbackDownItems.Add(item);
+                continue;
+            }
+
+            MarkRipperSelectedHidden(item);
+            changed++;
+            lastChanged = item;
+            PublishClothState("ripper", item, true);
+
+            // Give ClothingRipper one frame to enter its busy state before checking the next item.
+            yield return null;
+            yield return StartCoroutine(WaitForClothingRipperIdle(20.0f));
+        }
+
+        if (!IsWearNoneCancelled(cancelToken) && fallbackDownItems.Count > 0)
+        {
+            DebugLog("[WEAR NONE RIPPER V21] fallback DOWN group start / count=" + fallbackDownItems.Count.ToString(CultureInfo.InvariantCulture));
+            SetStatus("V21 RIPPER fallback DOWN group: " + fallbackDownItems.Count.ToString(CultureInfo.InvariantCulture));
+
+            physicalStyleOverride = PHYS_DOWN;
+            yield return StartCoroutine(PhysicalHideGroupRoutine(fallbackDownItems, "ripper_fallback_down", "ripper fallback DOWN", cancelToken));
+
+            int fallbackHidden = 0;
+            for (int i = 0; i < fallbackDownItems.Count; i++)
+            {
+                ClothItem item = fallbackDownItems[i];
+                if (item == null)
+                    continue;
+                if (IsHidden(item))
+                {
+                    fallbackHidden++;
+                    lastChanged = item;
+                }
+            }
+
+            changed += fallbackHidden;
+            DebugLog("[WEAR NONE RIPPER V21] fallback DOWN group done / hidden=" + fallbackHidden.ToString(CultureInfo.InvariantCulture) + " / queued=" + fallbackDownItems.Count.ToString(CultureInfo.InvariantCulture));
+        }
+
+        physicalRemoveRunning = Mathf.Max(0, physicalRemoveRunning - 1);
+        wearNoneRoutine = null;
+
+        if (changed <= 0)
+            SetStatus("PHTY RIPPER: no visible cloth removed");
+        else
+            SetStatus("PHTY RIPPER complete: " + changed.ToString(CultureInfo.InvariantCulture));
+
+        PublishClothState(changed > 0 ? "ripper_done" : "hide_done", lastChanged, changed > 0);
+        ResetAutoTimerAfterStep();
+        UpdateButtonColors();
+        UpdatePreview();
+    }
+
+    private bool CallClothingRipperAction(string label, List<string> actionNames)
+    {
+        UpdateClothingRipperDetection("call-" + label);
+
+        if (!clothingRipperFound || clothingRipperStorable == null)
+        {
+            SetStatus("ClothingRipper not found: " + label);
+            DebugLog("[RIPPER ACTION] not found / label=" + label);
+            UpdatePreview();
+            return false;
+        }
+
+        if (actionNames == null || actionNames.Count == 0)
+        {
+            SetStatus("ClothingRipper action list empty: " + label);
+            DebugLog("[RIPPER ACTION] empty action list / label=" + label + " / storable=" + clothingRipperStorableId);
+            UpdatePreview();
+            return false;
+        }
+
+        for (int i = 0; i < actionNames.Count; i++)
+        {
+            string actionName = actionNames[i];
+            if (string.IsNullOrEmpty(actionName))
+                continue;
+
+            JSONStorableAction action = null;
+            try { action = clothingRipperStorable.GetAction(actionName); } catch { action = null; }
+            if (action == null)
+            {
+                DebugLog("[RIPPER ACTION] missing / label=" + label + " / action=" + actionName + " / storable=" + clothingRipperStorableId);
+                continue;
+            }
+
+            try
+            {
+                action.actionCallback.Invoke();
+                SetStatus("Ripper " + label + ": " + actionName);
+                DebugLog("[RIPPER ACTION] executed / label=" + label + " / action=" + actionName + " / storable=" + clothingRipperStorableId);
+                UpdatePreview();
+                return true;
+            }
+            catch (Exception e)
+            {
+                SetStatus("Ripper action error: " + label);
+                DebugLog("[RIPPER ACTION ERROR] label=" + label + " / action=" + actionName + " / storable=" + clothingRipperStorableId + " / " + e.Message);
+                UpdatePreview();
+                return false;
+            }
+        }
+
+        SetStatus("Ripper action not found: " + label);
+        DebugLog("[RIPPER ACTION] no matching action / label=" + label + " / storable=" + clothingRipperStorableId);
+        UpdatePreview();
+        return false;
+    }
+
+    private void RipperPreCut()
+    {
+        // ClothingRipper source registers the Action as "PreCutSelected".
+        // The visible UI button label is "Pre-Cut Into Pieces", but GetAction() must use RegisterAction names.
+        CallClothingRipperAction("Pre-Cut", new List<string> {
+            "PreCutSelected",
+            "Pre-Cut Into Pieces",
+            "Pre-Cut",
+            "Pre Cut Into Pieces",
+            "PreCut Into Pieces"
+        });
+    }
+
+    private void RipperRipSelected()
+    {
+        // ClothingRipper source registers the Action as "RipSelected".
+        CallClothingRipperAction("RIP Selected", new List<string> {
+            "RipSelected",
+            "RIP Selected Item",
+            "Rip Selected Item",
+            "RIP Selected",
+            "Rip Selected"
+        });
+    }
+
+    private bool CallRipperRipAllAction(string label)
+    {
+        // ClothingRipper source registers the Action as "RipAll".
+        return CallClothingRipperAction(label, new List<string> {
+            "RipAll",
+            "RIP ALL Items",
+            "RIP All Items",
+            "Rip All Items",
+            "RIP ALL",
+            "Rip All"
+        });
+    }
+
+    private void RipperRipAll()
+    {
+        CallRipperRipAllAction("RIP ALL");
+    }
+
+    private void RipperRestoreSelected()
+    {
+        // ClothingRipper source registers the Action as "RestoreSelected".
+        CallClothingRipperAction("Restore Selected", new List<string> {
+            "RestoreSelected",
+            "Restore Selected",
+            "Restore Selected Item"
+        });
+    }
+
+    private bool CallRipperRestoreAllAction(string label)
+    {
+        // ClothingRipper source registers the Action as "RestoreAll".
+        bool ok = CallClothingRipperAction(label, new List<string> {
+            "RestoreAll",
+            "Restore All",
+            "Restore ALL",
+            "Restore All Items"
+        });
+        if (ok)
+            ripperSelectedHiddenPrefixes.Clear();
+        return ok;
+    }
+
+    private void RipperRestoreAll()
+    {
+        CallRipperRestoreAllAction("Restore All");
+    }
+
+    private bool UpdateClothingRipperDetection(string reason)
+    {
+        bool found = false;
+        string foundId = "";
+        JSONStorable foundStorable = null;
+
+        if (selectedPerson != null)
+        {
+            try
+            {
+                foreach (string id in selectedPerson.GetStorableIDs())
+                {
+                    if (string.IsNullOrEmpty(id))
+                        continue;
+
+                    string lower = id.ToLowerInvariant();
+                    if (lower.IndexOf("clothingripper") < 0)
+                        continue;
+
+                    JSONStorable storable = selectedPerson.GetStorableByID(id);
+                    if (storable == null)
+                        continue;
+
+                    found = true;
+                    foundId = id;
+                    foundStorable = storable;
+                    break;
+                }
+            }
+            catch (Exception e)
+            {
+                DebugLog("[RIPPER] detect error / reason=" + reason + " / " + e.Message);
+            }
+        }
+
+        bool changed = found != clothingRipperFound || foundId != clothingRipperStorableId;
+        clothingRipperFound = found;
+        clothingRipperStorableId = foundId;
+        clothingRipperStorable = foundStorable;
+
+        if (clothingRipperFoundJSON != null)
+            clothingRipperFoundJSON.val = found;
+
+        PrepareClothingRipperControls(found);
+
+        if (changed || reason == "init" || reason == "scan")
+        {
+            if (found)
+                DebugLog("[RIPPER] found / reason=" + reason + " / storable=" + foundId);
+            else
+                DebugLog("[RIPPER] not found / reason=" + reason);
+        }
+
+        return found;
+    }
+
+
     private void UpdateButtonColors()
     {
         bool autoOn = autoModeChooser != null && autoModeChooser.val != AUTO_OFF;
@@ -4837,6 +6370,11 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
         SetButtonColor(prevButton, busy ? new Color(1.0f, 0.80f, 0.35f) : new Color(0.90f, 0.90f, 0.90f));
         SetButtonColor(scanButton, new Color(0.75f, 0.85f, 1.0f));
         SetButtonColor(restoreAllButton, new Color(0.65f, 1.0f, 0.70f));
+        SetButtonColor(ripperPreCutButton, new Color(1.0f, 0.92f, 0.30f));
+        SetButtonColor(ripperRipSelectedButton, new Color(0.95f, 0.35f, 0.25f));
+        SetButtonColor(ripperRipAllButton, new Color(1.0f, 0.25f, 0.20f));
+        SetButtonColor(ripperRestoreSelectedButton, new Color(0.40f, 0.70f, 1.0f));
+        SetButtonColor(ripperRestoreAllButton, new Color(0.35f, 0.55f, 1.0f));
         SetButtonColor(wearNoneButton, new Color(1.0f, 0.75f, 0.45f));
         SetButtonColor(removeBraButton, new Color(1.0f, 0.78f, 0.88f));
         SetButtonColor(removePantyButton, new Color(1.0f, 0.78f, 0.88f));
@@ -4904,10 +6442,16 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
         text += " / Bottom Force DOWN=" + ((bottomForceDownJSON != null && bottomForceDownJSON.val) ? "ON" : "OFF");
         if (phtyHiddenPrefixes.Count > 0)
             text += " / PHTY-HIDDEN=" + phtyHiddenPrefixes.Count.ToString(CultureInfo.InvariantCulture);
+        if (ripperSelectedHiddenPrefixes.Count > 0)
+            text += " / RIPPER=" + ripperSelectedHiddenPrefixes.Count.ToString(CultureInfo.InvariantCulture);
+        if (clothingRipperFound)
+            text += " / ClothingRipper=FOUND";
         if (physicalRemoveRunning > 0)
             text += " / BUSY=" + physicalRemoveRunning.ToString(CultureInfo.InvariantCulture);
         text += "\n";
         text += "WEAR ALL=全部着る / WEAR NONE=全部脱ぐ / PREV=1枚着る / NEXT=1枚脱ぐ\n";
+        if (IsRipperSelectedMode())
+            text += "PHTY RIPPER: NEXT/Auto NEXT rip one ClothingRipper item at a time. Missing/unrippable items fall back to PHTY DOWN. PREV restores one item.\n";
         text += "Count: " + orderedClothes.Count + "\n";
         text += "Progress: " + (stateProgressJSON != null ? stateProgressJSON.val : "") + "\n\n";
 
@@ -4916,10 +6460,13 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
         {
             ClothItem item = orderedClothes[i];
             bool hidden = IsHidden(item);
+            bool excluded = IsClothExcluded(item);
             bool protect = IsProtected(item);
 
             string mark = "";
-            if (protect)
+            if (excluded)
+                mark = "[EXCLUDED]";
+            else if (protect)
                 mark = "[LOCK]";
             else if (hidden)
                 mark = "[DONE]";
