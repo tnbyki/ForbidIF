@@ -1,4 +1,7 @@
-// V18_RIPPER_SELECTED_FALLBACK_DOWN_CONFIRM: v17 behavior + visible v18 ready/fallback logs to prevent accidentally testing older v16/v17 files.
+// V28_GLOBAL_EXCLUSION_LOAD_ON_SCAN: v27 base + reload global exclusions on SCAN and more robust SaveJSON LoadJSON parsing/debug. No System.IO, no FileManagerSecure, no GetType.
+// V25_GLOBAL_EXCLUSION_SAVEJSON_ROBUST: v23 base; avoids FileManagerSecure/System.Reflection, uses VaM SaveJSON/LoadJSON with robust prefix fields for cross-scene global exclusions.
+// V23_GLOBAL_EXCLUSION_SIMPLEJSON_FIX: v22 + adds SimpleJSON namespace for VaM JSONNode/JSONClass compile. No System.IO / no Reflection.
+// V22_GLOBAL_EXCLUSION_SAFE_JSON: v21 base + global ClothingRipper exclusion prefixes stored via VaM SaveJSON/LoadJSON. No System.IO / no Reflection.
 // V21_RIPPER_UNIFIED_EXCLUSION_UI: v20 base + PHTY RIPPER unified one-by-one mode, excludes RipAll auto mode, and adds SCAN CLOTH-based persistent exclusion UI.
 // V20_OFF_COMPANION_RIPPER_BUTTONS_HIDDEN: v19 base + OFF hide augments loose companion/string materials and hides ClothingRipper test buttons from UI.
 // V16_RIPPER_SELECTED_FUZZY_LABELS: v15 base + fuzzy ClothingRipper label matching for real dropdown names such as Reverse Bikini Panty / Wet Pussy / NT_Peach_Neck.
@@ -25,6 +28,7 @@
 // ver    : 0.2
 // ============================================================
 using UnityEngine;
+using SimpleJSON;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -63,6 +67,7 @@ public class ClothStateSwitcher : MVRScript
     private const string PHYS_RIPPER_SELECTED = "RIPPER SELECTED";
 
     private const string CLOTH_CHOICE_NONE = "<none>";
+    private const string GLOBAL_EXCLUSION_SAVE_PATH = "Saves/PluginData/VAMT_ClothStateSwitcher_GlobalExclusions.json";
 
     private JSONStorableStringChooser personChooser;
     private JSONStorableStringChooser orderModeChooser;
@@ -72,6 +77,7 @@ public class ClothStateSwitcher : MVRScript
     private JSONStorableStringChooser targetClothingChooser;
     private JSONStorableStringChooser excludedClothingChooser;
     private JSONStorableString excludedClothingPrefixesJSON;
+    private JSONStorableBool useGlobalExclusionJSON;
 
     private JSONStorableBool protectBraJSON;
     private JSONStorableBool protectPantyJSON;
@@ -123,6 +129,7 @@ public class ClothStateSwitcher : MVRScript
     private readonly Dictionary<string, string> targetClothingPrefixByLabel = new Dictionary<string, string>();
     private readonly Dictionary<string, string> excludedClothingPrefixByLabel = new Dictionary<string, string>();
     private bool updatingExclusionChoices = false;
+    private readonly HashSet<string> globalExcludedClothingPrefixes = new HashSet<string>();
     private readonly Dictionary<string, List<SavedBool>> scanStates = new Dictionary<string, List<SavedBool>>();
     private readonly Dictionary<string, List<SavedPhysBool>> scanPhysBoolStates = new Dictionary<string, List<SavedPhysBool>>();
     private readonly Dictionary<string, List<SavedPhysFloat>> scanPhysFloatStates = new Dictionary<string, List<SavedPhysFloat>>();
@@ -187,6 +194,7 @@ public class ClothStateSwitcher : MVRScript
     private UIDynamicButton scanButton = null;
     private UIDynamicButton excludeSelectedButton = null;
     private UIDynamicButton removeExclusionButton = null;
+    private UIDynamicButton loadGlobalExclusionButton = null;
     private UIDynamicButton resetRuntimeButton = null;
     private UIDynamicToggle clothingRipperFoundToggle = null;
     // v11j: ClothingRipper action test buttons. Created once, shown only when ClothingRipper is detected.
@@ -274,9 +282,27 @@ public class ClothStateSwitcher : MVRScript
         scanButton = CreateButton("SCAN CLOTH");
         scanButton.button.onClick.AddListener(RequestScanClothes);
 
-        // v21: target/exclusion UI is driven by SCAN CLOTH. The saved Prefix list is hidden but persisted in plugin data.
+        // v21/v22: target/exclusion UI is driven by SCAN CLOTH. Scene Prefix list is hidden but persisted in plugin data.
         excludedClothingPrefixesJSON = new JSONStorableString("Excluded Clothing Prefixes", "");
         RegisterString(excludedClothingPrefixesJSON);
+
+        useGlobalExclusionJSON = new JSONStorableBool("Use Global Exclusion", true, delegate(bool value)
+        {
+            if (value)
+                LoadGlobalExclusions();
+            stateCacheValid = false;
+            UpdateExclusionChoices();
+            UpdateExternalState("global_exclusion_toggle", null);
+            UpdatePreview();
+            SetStatus("Global Exclusion: " + (value ? "ON" : "OFF"));
+        });
+        RegisterBool(useGlobalExclusionJSON);
+        CreateToggle(useGlobalExclusionJSON);
+        LoadGlobalExclusions();
+
+        // v29: Manual reload button for cross-scene/global exclusion verification.
+        loadGlobalExclusionButton = CreateButton("LOAD GLOBAL EXCLUSIONS");
+        loadGlobalExclusionButton.button.onClick.AddListener(LoadGlobalExclusionsAction);
 
         targetClothingChooser = new JSONStorableStringChooser(
             "Target Clothing",
@@ -461,7 +487,7 @@ public class ClothStateSwitcher : MVRScript
         UpdateExternalState();
 
         UpdateButtonColors();
-        DebugLog("ready / v21 RIPPER unified + exclusion UI / Ripper test buttons hidden / SIM_RESET_ONLY");
+        DebugLog("ready / v29 global exclusion manual load button / path=Saves/PluginData/VAMT_ClothStateSwitcher_GlobalExclusions.json / no System.IO / no FileManagerSecure / no GetType");
     }
 
     private IEnumerator DelayedInitialScan()
@@ -744,6 +770,8 @@ public class ClothStateSwitcher : MVRScript
 
         RegisterAction(new JSONStorableAction("Exclude Selected Clothing", ExcludeSelectedClothing));
         RegisterAction(new JSONStorableAction("Remove Selected Clothing Exclusion", RemoveSelectedClothingExclusion));
+        RegisterAction(new JSONStorableAction("Load Global Exclusions", LoadGlobalExclusionsAction));
+        RegisterAction(new JSONStorableAction("Save Global Exclusions", SaveGlobalExclusionsAction));
 
         RegisterAction(new JSONStorableAction("Set Phys OFF", SetPhysOff));
         RegisterAction(new JSONStorableAction("Set Phys DOWN", SetPhysDown));
@@ -1319,6 +1347,10 @@ public class ClothStateSwitcher : MVRScript
     private void ScanClothes()
     {
         DebugLog("[BUTTON] SCAN CLOTH BODY / begin");
+        // v28: reload global exclusions on every SCAN so cross-scene/global file changes are reflected
+        // even if the plugin was already loaded before the file was edited/saved.
+        if (useGlobalExclusionJSON != null && useGlobalExclusionJSON.val)
+            LoadGlobalExclusions();
         UpdateClothingRipperDetection("scan");
         clothes.Clear();
         orderedClothes.Clear();
@@ -4730,13 +4762,13 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
     }
 
 
-    private HashSet<string> GetExcludedClothingPrefixSet()
+    private HashSet<string> ParsePrefixTextToSet(string text)
     {
         HashSet<string> set = new HashSet<string>();
-        if (excludedClothingPrefixesJSON == null || string.IsNullOrEmpty(excludedClothingPrefixesJSON.val))
+        if (string.IsNullOrEmpty(text))
             return set;
 
-        string[] parts = excludedClothingPrefixesJSON.val.Split(new char[] { '\n', '|', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        string[] parts = text.Split(new char[] { '\n', '|', ';' }, StringSplitOptions.RemoveEmptyEntries);
         for (int i = 0; i < parts.Length; i++)
         {
             string p = NormalizeWearablePrefix(parts[i]);
@@ -4746,11 +4778,8 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
         return set;
     }
 
-    private void SetExcludedClothingPrefixSet(HashSet<string> set)
+    private string BuildPrefixText(HashSet<string> set)
     {
-        if (excludedClothingPrefixesJSON == null)
-            return;
-
         List<string> list = new List<string>();
         if (set != null)
         {
@@ -4762,7 +4791,139 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             }
         }
         list.Sort();
-        excludedClothingPrefixesJSON.val = string.Join("\n", list.ToArray());
+        return string.Join("\n", list.ToArray());
+    }
+
+    private HashSet<string> GetSceneExcludedClothingPrefixSet()
+    {
+        if (excludedClothingPrefixesJSON == null)
+            return new HashSet<string>();
+        return ParsePrefixTextToSet(excludedClothingPrefixesJSON.val);
+    }
+
+    private HashSet<string> GetExcludedClothingPrefixSet()
+    {
+        HashSet<string> set = GetSceneExcludedClothingPrefixSet();
+        if (useGlobalExclusionJSON != null && useGlobalExclusionJSON.val)
+        {
+            foreach (string p in globalExcludedClothingPrefixes)
+            {
+                string n = NormalizeWearablePrefix(p);
+                if (!string.IsNullOrEmpty(n))
+                    set.Add(n);
+            }
+        }
+        return set;
+    }
+
+    private void SetExcludedClothingPrefixSet(HashSet<string> set)
+    {
+        if (excludedClothingPrefixesJSON == null)
+            return;
+        excludedClothingPrefixesJSON.val = BuildPrefixText(set);
+    }
+
+    private void LoadGlobalExclusions()
+    {
+        globalExcludedClothingPrefixes.Clear();
+
+        try
+        {
+            JSONNode node = LoadJSON(GLOBAL_EXCLUSION_SAVE_PATH);
+            if (node == null)
+            {
+                DebugLog("[GLOBAL EXCLUSION V29] no file / path=" + GLOBAL_EXCLUSION_SAVE_PATH);
+                return;
+            }
+
+            HashSet<string> loaded = new HashSet<string>();
+
+            // v28: read count defensively because VaM/SimpleJSON may serialize numbers as strings.
+            int count = 0;
+            string countText = "";
+            try { countText = node["count"].Value; } catch { countText = ""; }
+            if (!string.IsNullOrEmpty(countText))
+            {
+                try { count = int.Parse(countText, CultureInfo.InvariantCulture); } catch { count = 0; }
+            }
+            if (count <= 0)
+            {
+                try { count = node["count"].AsInt; } catch { count = 0; }
+            }
+
+            // Primary format: prefix0, prefix1, ... with count.
+            int max = Mathf.Max(count, 64);
+            for (int i = 0; i < max; i++)
+            {
+                string key = "prefix" + i.ToString(CultureInfo.InvariantCulture);
+                string p = "";
+                try { p = node[key].Value; } catch { p = ""; }
+                p = NormalizeWearablePrefix(p);
+                if (!string.IsNullOrEmpty(p))
+                    loaded.Add(p);
+            }
+
+            // Compatibility: one multiline string.
+            string raw = "";
+            try { raw = node["excludedPrefixes"].Value; } catch { raw = ""; }
+            HashSet<string> legacy = ParsePrefixTextToSet(raw);
+            foreach (string p in legacy)
+                loaded.Add(p);
+
+            foreach (string p in loaded)
+                globalExcludedClothingPrefixes.Add(p);
+
+            DebugLog("[GLOBAL EXCLUSION V29] loaded / count=" + globalExcludedClothingPrefixes.Count.ToString(CultureInfo.InvariantCulture) + " / fileCount=" + count.ToString(CultureInfo.InvariantCulture) + " / path=" + GLOBAL_EXCLUSION_SAVE_PATH);
+            if (IsDebugLogEnabled())
+            {
+                List<string> dbg = new List<string>(globalExcludedClothingPrefixes);
+                dbg.Sort();
+                for (int i = 0; i < dbg.Count; i++)
+                    DebugLog("[GLOBAL EXCLUSION V29] loaded prefix " + (i + 1).ToString(CultureInfo.InvariantCulture) + "/" + dbg.Count.ToString(CultureInfo.InvariantCulture) + " = " + dbg[i]);
+            }
+        }
+        catch (Exception e)
+        {
+            DebugLog("[GLOBAL EXCLUSION V29] load failed / " + e.Message);
+        }
+    }
+
+    private void SaveGlobalExclusions()
+    {
+        try
+        {
+            List<string> list = new List<string>();
+            foreach (string p in globalExcludedClothingPrefixes)
+            {
+                string n = NormalizeWearablePrefix(p);
+                if (!string.IsNullOrEmpty(n) && !list.Contains(n))
+                    list.Add(n);
+            }
+            list.Sort();
+
+            JSONClass jc = new JSONClass();
+            // v27: Use the same SimpleJSON assignment style that was verified by VAMT_SaveJsonProbe_v002.
+            // In some VaM/SimpleJSON builds, touching .Value on an auto-created child can leave
+            // the key out of the serialized file. Direct indexer assignment creates JSONData reliably.
+            jc["format"] = "VAMT_ClothStateSwitcher_GlobalExclusions";
+            jc["version"] = "29";
+            jc["count"].AsInt = list.Count;
+            jc["excludedPrefixes"] = BuildPrefixText(new HashSet<string>(list));
+
+            for (int i = 0; i < list.Count; i++)
+            {
+                string key = "prefix" + i.ToString(CultureInfo.InvariantCulture);
+                jc[key] = list[i];
+            }
+
+            SaveJSON(jc, GLOBAL_EXCLUSION_SAVE_PATH);
+            DebugLog("[GLOBAL EXCLUSION V29] saved / count=" + list.Count.ToString(CultureInfo.InvariantCulture) + " / path=" + GLOBAL_EXCLUSION_SAVE_PATH);
+        }
+        catch (Exception e)
+        {
+            DebugLog("[GLOBAL EXCLUSION V29] save failed / " + e.Message);
+            SetStatus("Global Exclusion save failed. Scene exclusion is still saved.");
+        }
     }
 
     private string GetClothPrefixKey(ClothItem item)
@@ -4888,9 +5049,14 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             return;
         }
 
-        HashSet<string> set = GetExcludedClothingPrefixSet();
-        set.Add(prefix);
-        SetExcludedClothingPrefixSet(set);
+        HashSet<string> sceneSet = GetSceneExcludedClothingPrefixSet();
+        sceneSet.Add(prefix);
+        SetExcludedClothingPrefixSet(sceneSet);
+        if (useGlobalExclusionJSON != null && useGlobalExclusionJSON.val)
+        {
+            globalExcludedClothingPrefixes.Add(prefix);
+            SaveGlobalExclusions();
+        }
         stateCacheValid = false;
         UpdateExclusionChoices();
         UpdateExternalState("exclude_add", null);
@@ -4912,15 +5078,37 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             return;
         }
 
-        HashSet<string> set = GetExcludedClothingPrefixSet();
-        set.Remove(prefix);
-        SetExcludedClothingPrefixSet(set);
+        HashSet<string> sceneSet = GetSceneExcludedClothingPrefixSet();
+        sceneSet.Remove(prefix);
+        SetExcludedClothingPrefixSet(sceneSet);
+        if (globalExcludedClothingPrefixes.Contains(prefix))
+        {
+            globalExcludedClothingPrefixes.Remove(prefix);
+            SaveGlobalExclusions();
+        }
         stateCacheValid = false;
         UpdateExclusionChoices();
         UpdateExternalState("exclude_remove", null);
         UpdatePreview();
         SetStatus("Exclusion removed: " + label);
         DebugLog("[EXCLUSION REMOVE] label=" + label + " / prefix=" + prefix);
+    }
+
+
+    private void LoadGlobalExclusionsAction()
+    {
+        LoadGlobalExclusions();
+        stateCacheValid = false;
+        UpdateExclusionChoices();
+        UpdateExternalState("global_exclusion_load", null);
+        UpdatePreview();
+        SetStatus("Global Exclusion loaded: " + globalExcludedClothingPrefixes.Count.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private void SaveGlobalExclusionsAction()
+    {
+        SaveGlobalExclusions();
+        SetStatus("Global Exclusion saved: " + globalExcludedClothingPrefixes.Count.ToString(CultureInfo.InvariantCulture));
     }
 
     private bool IsProtected(ClothItem item)
@@ -6892,3 +7080,4 @@ private void OnDestroy()
         return false;
     }
 }
+// codex
