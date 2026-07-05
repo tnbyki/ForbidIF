@@ -1,3 +1,13 @@
+// DEBUG_VIEW_GEN_MARKER_NO_NORMAL_LOG_BUILD 2026-07-05: Red/blue Gen source markers now render only while Debug View is ON, and the Gen source visual log is no longer written as a normal always-on VaM log.
+// BLUE_DISTANCE_SLIDER_5CM_BUILD 2026-07-05: Adds Blue Point Distance slider under Distance; default 5cm and shared by red/blue visual marker, Depth P Follow, and Yellow Guide pre-angle blue->red route.
+// PFOLLOW_BLUE_ROUTE_4CM_BUILD 2026-07-05: Moves the blue approach marker/route point to 4cm from the red live origin on the output/front side; Depth P Follow and Yellow Guide pre-angle blue->red routing share the same distance.
+// PFOLLOW_BLUE_ROUTE_BEFORE_ANGLE_BUILD 2026-07-05: Yellow Guide P Follow now projects P Tip/Mid targets onto the live blue->red route before applying the later P angle/upward correction, preventing shortcut-to-red after the blue marker is created.
+// GEN_SOURCE_VISUAL_LIVE_ONLY_VISIBLE_BUILD 2026-07-05: Gen source red/blue markers now use only the live current inside line; dynamic/captured fallback branches are removed, and marker alpha/width are raised while keeping the 1/3 size.
+// GEN_SOURCE_VISUAL_MARKER_BUILD 2026-07-05: Adds normal logs plus always-on-top red/blue circle markers for the resolved current Gen/inside-line source position; red marks the output origin and blue marks the configured approach distance ahead along the output direction.
+// PFOLLOW_BLUE_TO_RED_ROUTE_BUILD 2026-07-05: Depth P Follow uses a two-step approach lead: before blue, P Tip/Mid target the blue approach point; after reaching blue, the target leads by the same approach distance so the route naturally continues through red/origin.
+// PFOLLOW_BLUE_APPROACH_ROUTE_BUILD 2026-07-05: Depth P Follow no longer clamps pre-origin depth to red/origin immediately; P Tip target first uses the blue approach point, then continues through red/origin along the live inside line.
+// GEN_SOURCE_VISUAL_FRONT_3CM_BUILD 2026-07-05: Gen source visual marker stays live-current-inside-line only, draws blue marker to the front side using -dir, and logs blueMode=front:-dir.
+// ANUS_THIGH_LR_ROOT_FORWARD_DOCKING_BUILD 2026-06-27: Anus Smart/Reverse docking now uses the same thighLR+targetRoot.forward body placement direction as genital, while preserving the anus inside line for depth/P-follow.
 // LIE_YAW_LOCK_USES_DOCKING_DIR_BUILD 2026-06-27: Smart/Reverse genital docking uses thighLR+targetRoot.forward and Lie yaw lock preserves that captured docking side.
 // PFOLLOW_OWN_LIE_UNBLOCK_LOG_FIX_BUILD 2026-06-27: Fixes normal log noise after v235 by gating Auto Pose mode and Now Docking Auto Pose probe logs behind Debug Log while keeping the ownLie P Follow unblock fix.
 // PFOLLOW_OWN_LIE_UNBLOCK_FIX_BUILD 2026-06-27: Keeps Yellow P Follow active when only the user's current upper-body posture looks lie/flat; P Follow is blocked only by actual rideLieActive Auto Pose Lie state.
@@ -219,6 +229,7 @@ public class TargetLinePerson : MVRScript
     JSONStorableBool runtimeDynamicVisuals;
 
     JSONStorableFloat distance;
+    JSONStorableFloat bluePointDistance;
     JSONStorableFloat orbitAngle;
     JSONStorableFloat hipYOffset;
     JSONStorableFloat cuddleDepth;
@@ -294,6 +305,7 @@ public class TargetLinePerson : MVRScript
 
     UIDynamicSlider orbitAngleSlider;
     UIDynamicSlider distanceSlider;
+    UIDynamicSlider bluePointDistanceSlider;
     UIDynamicSlider hipYOffsetSlider;
     UIDynamicSlider yellowButtGuideScaleSlider;
     UIDynamicSlider yellowDipAngleMinSlider;
@@ -738,6 +750,15 @@ public class TargetLinePerson : MVRScript
     const string FeatureCutModeDockingOnly = "Docking Only";
     const float GenDepthHudSampleInterval = 0.050f;
     const float DebugLineRenderInterval = 0.050f;
+    const int GenSourceVisualCircleSegments = 64;
+    const float GenSourceVisualCircleRadius = 0.012f; // v241: about 1/3 of v240 marker size
+    const float GenSourceVisualAheadDistanceDefault = 0.050f; // v248: default blue marker/route point is 5cm toward front side (-dir)
+    const float GenSourceVisualAheadDistanceMin = 0.000f;
+    const float GenSourceVisualAheadDistanceMax = 0.100f;
+    const float GenSourceVisualLineWidth = 0.003f; // v242: still small, but easier to see at 1/3 marker size
+    const float GenSourceVisualLogInterval = 1.00f;
+    const float GenSourceVisualLogMoveThreshold = 0.004f;
+    const float GenSourceVisualAlpha = 0.72f; // v242: semi-transparent but visibly stronger
     const float GenDepthHudGContactDotBelowScale = 1.45f;
     const float GenDepthHudGContactDotSizeScale = 0.29f;
     const float GenDepthHudGContactDotLeftDotScale = 1.1567f; // v156: micro left from v155 by about 0.12 dot
@@ -776,6 +797,8 @@ public class TargetLinePerson : MVRScript
     GameObject penisPathLineObj;
     GameObject bendMarkerLineObj;
     GameObject gDepthGuideLineObj;
+    GameObject genSourceRedCircleObj;
+    GameObject genSourceBlueCircleObj;
     GameObject genDepthHudBackObj;
     GameObject genDepthHudFillObj;
     GameObject genDepthHudMarkerObj;
@@ -792,6 +815,8 @@ public class TargetLinePerson : MVRScript
     LineRenderer penisPathLine;
     LineRenderer bendMarkerLine;
     LineRenderer gDepthGuideLine;
+    LineRenderer genSourceRedCircleLine;
+    LineRenderer genSourceBlueCircleLine;
     LineRenderer genDepthHudMarkerLine;
     LineRenderer genDepthHudBottomMarkerLine;
     Material genDepthHudBackMaterial;
@@ -867,6 +892,12 @@ public class TargetLinePerson : MVRScript
     const float HbaLinkRefreshInterval = 1.00f;
     int lastGenDepthProbeZone = -999;
     float lastGDepthGuideLineLogTime = -999f;
+    float lastGenSourceVisualLogTime = -999f;
+    float lastGenSourceVisualDrawTime = -999f;
+    bool genSourceVisualLastKnown;
+    Vector3 genSourceVisualLastOrigin;
+    Vector3 genSourceVisualLastBlue;
+    string genSourceVisualLastKey = "";
     bool lastGDepthGuideAngleGateBlocked;
     bool gDepthPFollowApplied;
     float lastGDepthPFollowLogTime = -999f;
@@ -1034,6 +1065,15 @@ public class TargetLinePerson : MVRScript
         distance.setCallbackFunction = OnPlacementSliderChanged;
         RegisterFloat(distance);
         distanceSlider = CreateSlider(distance, true);
+
+        bluePointDistance = new JSONStorableFloat(
+            "Blue Point Distance",
+            GenSourceVisualAheadDistanceDefault,
+            GenSourceVisualAheadDistanceMin,
+            GenSourceVisualAheadDistanceMax
+        );
+        RegisterFloat(bluePointDistance);
+        bluePointDistanceSlider = CreateSlider(bluePointDistance, true);
 
         CreateButton("Now Docking", true).button.onClick.AddListener(delegate
         {
@@ -2757,6 +2797,15 @@ public class TargetLinePerson : MVRScript
         return 0.050f;
     }
 
+    float GetGenSourceVisualAheadDistance()
+    {
+        if (bluePointDistance == null)
+        {
+            return GenSourceVisualAheadDistanceDefault;
+        }
+        return Mathf.Clamp(bluePointDistance.val, GenSourceVisualAheadDistanceMin, GenSourceVisualAheadDistanceMax);
+    }
+
     void SetPlacementControlsInteractable(bool interactable)
     {
         if (orbitAngleSlider != null && orbitAngleSlider.slider != null)
@@ -2767,6 +2816,11 @@ public class TargetLinePerson : MVRScript
         if (distanceSlider != null && distanceSlider.slider != null)
         {
             distanceSlider.slider.interactable = interactable;
+        }
+
+        if (bluePointDistanceSlider != null && bluePointDistanceSlider.slider != null)
+        {
+            bluePointDistanceSlider.slider.interactable = interactable;
         }
 
         if (hipYOffsetSlider != null && hipYOffsetSlider.slider != null)
@@ -4737,8 +4791,24 @@ else
         }
         else if (anusLine != null)
         {
-            forward = -GetAnusInsideDirection(targetAtom, anusLine);
-            dockingDirSource = "anus targetRoot.-forward";
+            // v239: Anus should use the same stable body placement direction as genital.
+            // Keep lineDir as the anus inside/red-line axis for depth/P-follow, but use
+            // target L/R thighs + targetRoot.forward for Smart/Reverse body placement.
+            string anusDockingSource;
+            Vector3 anusDockingDir = GetTargetPelvisDockingDirection(targetAtom, lineDir, out anusDockingSource);
+            Vector3 flatAnusDocking = anusDockingDir;
+            flatAnusDocking.y = 0f;
+
+            if (flatAnusDocking.sqrMagnitude >= 0.0001f)
+            {
+                forward = flatAnusDocking;
+                dockingDirSource = anusDockingSource.Replace("LabiaTrigger.-up", "Anus axis").Replace("dotLabia", "dotAnus");
+            }
+            else
+            {
+                forward = -GetAnusInsideDirection(targetAtom, anusLine);
+                dockingDirSource = "anus axis fallback";
+            }
         }
         forward.y = 0f;
 
@@ -6608,7 +6678,7 @@ void RebaseAndAlignNowDockingHeight(string reason)
             }
         }
 
-        bool pTipCyanAssistApplied = ApplyPTipCyanLineAssistToYellowTargets(ref midTarget, ref tipTarget, reason);
+        bool pTipBlueRouteApplied = ApplyPTipBlueToRedRouteToYellowTargets(penisTip, ref midTarget, ref midTan, ref tipTarget, ref tipTan, reason);
 
         Vector3 midBefore = penisMid.transform.position;
         Vector3 tipBefore = penisTip.transform.position;
@@ -6652,7 +6722,7 @@ void RebaseAndAlignNowDockingHeight(string reason)
                 " / folded=" + yellowFoldedOnGreen +
                 " / yellowLine=unchanged" +
                 " / mode=base-straight-mid-tip-yellow-angle-parallel-own-tilt-guard" +
-                " / cyanAssist=" + (pTipCyanAssistApplied ? "1" : "0") +
+                " / blueRoute=" + (pTipBlueRouteApplied ? "1" : "0") +
                 " / midMove=" + Vector3.Distance(midBefore, midTarget).ToString("F3") +
                 " / tipMove=" + Vector3.Distance(tipBefore, tipTarget).ToString("F3") +
                 " / position mid+tip / rotation base+mid+tip"
@@ -6775,7 +6845,19 @@ void RebaseAndAlignNowDockingHeight(string reason)
 
         float baseLen = Mathf.Max(0.02f, yellowBaseToMidLength);
         float midLen = Mathf.Max(0.02f, yellowMidToTipLength);
-        float targetDepth = Mathf.Clamp(rawDepth, 0.0f, 1.00f);
+
+        // v248: The blue marker/route point is slider-controlled in front of the red origin.
+        // Do not target red/origin immediately while the current projection is still in
+        // front of blue.  First pull the Tip target to blue; once the current Tip has
+        // reached/passed blue, lead the target forward by the same distance so it naturally
+        // continues blue -> red -> forward on the live inside line.
+        float blueDepth = -GetGenSourceVisualAheadDistance();
+        float approachLead = GetGenSourceVisualAheadDistance();
+        bool beforeBlue = rawDepth < blueDepth;
+        float targetDepth = beforeBlue
+            ? blueDepth
+            : Mathf.Clamp(rawDepth + approachLead, blueDepth, 1.00f);
+        bool blueApproachRoute = targetDepth <= 0.0001f;
 
         Vector3 tipTarget = origin + dir * targetDepth;
         Vector3 midTarget = tipTarget - dir * midLen;
@@ -6797,6 +6879,10 @@ void RebaseAndAlignNowDockingHeight(string reason)
                 " / angle=" + gDepthAngle.ToString("F1") +
                 " / rawDepth=" + rawDepth.ToString("F3") +
                 " / targetDepth=" + targetDepth.ToString("F3") +
+                " / blueDepth=" + blueDepth.ToString("F3") +
+                " / approachLead=" + approachLead.ToString("F3") +
+                " / beforeBlue=" + (beforeBlue ? "1" : "0") +
+                " / blueRoute=" + (blueApproachRoute ? "1" : "0") +
                 " / lateral=" + lateral.ToString("F3") +
                 " / origin=(" + FormatVector3(origin) + ")" +
                 " / dir=(" + FormatVector3(dir) + ")" +
@@ -6813,14 +6899,20 @@ void RebaseAndAlignNowDockingHeight(string reason)
         return true;
     }
 
-    bool ApplyPTipCyanLineAssistToYellowTargets(ref Vector3 midTarget, ref Vector3 tipTarget, string reason)
+    bool ApplyPTipBlueToRedRouteToYellowTargets(FreeControllerV3 penisTip, ref Vector3 midTarget, ref Vector3 midTan, ref Vector3 tipTarget, ref Vector3 tipTan, string reason)
     {
-        // v222: This is a pre-contact assist for the Yellow Guide route only.
-        // Full Depth P Follow still owns the near/inside zone and returns before this function is reached.
-        // Keep Base untouched so the captured body/yellow-guide shape does not stretch or jump.
+        // v246: Yellow Guide P Follow pre-angle route guard.
+        // The live current inside line is resolved first, then red/blue are built from it:
+        //   red  = origin
+        //   blue = origin - dir * Blue Point Distance
+        // Position targets for P Tip/Mid are forced onto that blue -> red route before
+        // the later yellow/upward rotation correction is applied by ApplyControllerToYellowPathRelative().
+        // This prevents a later angle pass from sending Tip/Mid directly to red/origin and skipping blue.
+        bool wasApplied = pTipCyanLineAssistApplied;
+        pTipCyanLineAssistApplied = false;
+
         if (GetTargetModeName() != "genital")
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
@@ -6830,70 +6922,92 @@ void RebaseAndAlignNowDockingHeight(string reason)
         string depthTargetMode;
         if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out depthTargetMode))
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
         if (depthTargetMode != "genital" || dir.sqrMagnitude < 0.0001f)
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
         dir.Normalize();
 
         float gDepthAngle = Mathf.Abs(Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg);
-        if (gDepthAngle > GenDepthAngleGateLimitDegrees)
+        // Do not angle-gate this route guard.  It is intentionally executed before
+        // the upward/yellow angle correction, so high-angle live lines must still
+        // get the blue -> red positional route instead of falling through to a red shortcut.
+
+        Vector3 redPoint = origin;
+        Vector3 bluePoint = redPoint - dir * GetGenSourceVisualAheadDistance();
+        float blueDepth = -GetGenSourceVisualAheadDistance();
+        float approachLead = GetGenSourceVisualAheadDistance();
+
+        Vector3 currentTipPos = penisTip != null ? penisTip.transform.position : tipTarget;
+        float currentRawDepth = Vector3.Dot(currentTipPos - redPoint, dir);
+        float originalTargetDepth = Vector3.Dot(tipTarget - redPoint, dir);
+
+        // Gate by the already-computed Yellow target.  This only steals ownership when
+        // Yellow is about to aim near the live line; otherwise the normal yellow shape remains untouched.
+        if (originalTargetDepth < PTipCyanLineAssistBackDepth || originalTargetDepth > PTipCyanLineAssistForwardDepth)
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
-        Vector3 fromOrigin = tipTarget - origin;
-        float rawDepth = Vector3.Dot(fromOrigin, dir);
-        if (rawDepth < PTipCyanLineAssistBackDepth || rawDepth > PTipCyanLineAssistForwardDepth)
+        Vector3 originalClosest = redPoint + dir * originalTargetDepth;
+        Vector3 originalLateral = Vector3.ProjectOnPlane(tipTarget - originalClosest, dir);
+        float originalLateralDistance = originalLateral.magnitude;
+
+        if (originalLateralDistance > PTipCyanLineAssistLateralMax)
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
-        Vector3 closestOnAxis = origin + dir * rawDepth;
-        Vector3 lateral = Vector3.ProjectOnPlane(tipTarget - closestOnAxis, dir);
-        float lateralDistance = lateral.magnitude;
+        // No lateral-min gate here: an already-on-axis Yellow target is exactly the
+        // case that used to shortcut directly to red/origin.  Let the final move check
+        // below decide whether this route actually changes anything.
+        bool beforeBlue = currentRawDepth < blueDepth;
+        float routeTargetDepth = beforeBlue
+            ? blueDepth
+            : Mathf.Clamp(currentRawDepth + approachLead, blueDepth, 1.00f);
 
-        if (lateralDistance < PTipCyanLineAssistLateralMin || lateralDistance > PTipCyanLineAssistLateralMax)
+        Vector3 routedTipTarget = redPoint + dir * routeTargetDepth;
+        float midLen = Mathf.Max(0.02f, yellowMidToTipLength);
+        Vector3 routedMidTarget = routedTipTarget - dir * midLen;
+
+        float tipMove = Vector3.Distance(tipTarget, routedTipTarget);
+        float midMove = Vector3.Distance(midTarget, routedMidTarget);
+        if (tipMove < 0.0001f && midMove < 0.0001f)
         {
-            pTipCyanLineAssistApplied = false;
             return false;
         }
 
-        Vector3 correction = Vector3.ClampMagnitude(-lateral, PTipCyanLineAssistTipMaxMove);
-        if (correction.sqrMagnitude < 0.0000001f)
-        {
-            pTipCyanLineAssistApplied = false;
-            return false;
-        }
+        tipTarget = routedTipTarget;
+        midTarget = routedMidTarget;
 
-        Vector3 midCorrection = correction * PTipCyanLineAssistMidScale;
-        tipTarget += correction;
-        midTarget += midCorrection;
-
-        bool shouldLog = !pTipCyanLineAssistApplied || (IsDebugViewEnabled() && Time.time - lastPTipCyanLineAssistLogTime >= PTipCyanLineAssistLogInterval);
+        // Do not overwrite midTan/tipTan here.  Position is blue->red first;
+        // the existing Yellow Guide angle correction runs afterward.
+        bool shouldLog = !wasApplied || (IsDebugViewEnabled() && Time.time - lastPTipCyanLineAssistLogTime >= PTipCyanLineAssistLogInterval);
         if (shouldLog)
         {
             lastPTipCyanLineAssistLogTime = Time.time;
             DebugLog(
-                "[TargetLinePerson] P Tip Cyan Line Assist" +
+                "[TargetLinePerson] P Tip Blue->Red Route before angle" +
                 " / reason=" + reason +
                 " / target=" + depthTargetMode +
                 " / angle=" + gDepthAngle.ToString("F1") +
-                " / rawDepth=" + rawDepth.ToString("F3") +
-                " / lateral=" + lateralDistance.ToString("F3") +
-                " / tipMove=" + correction.magnitude.ToString("F3") +
-                " / midMove=" + midCorrection.magnitude.ToString("F3") +
-                " / origin=(" + FormatVector3(origin) + ")" +
+                " / currentDepth=" + currentRawDepth.ToString("F3") +
+                " / originalTargetDepth=" + originalTargetDepth.ToString("F3") +
+                " / routeTargetDepth=" + routeTargetDepth.ToString("F3") +
+                " / blueDepth=" + blueDepth.ToString("F3") +
+                " / approachLead=" + approachLead.ToString("F3") +
+                " / beforeBlue=" + (beforeBlue ? "1" : "0") +
+                " / lateral=" + originalLateralDistance.ToString("F3") +
+                " / red=(" + FormatVector3(redPoint) + ")" +
+                " / blue=(" + FormatVector3(bluePoint) + ")" +
                 " / dir=(" + FormatVector3(dir) + ")" +
-                " / mode=yellow-pre-depth-follow-position-only"
+                " / midMove=" + midMove.ToString("F3") +
+                " / tipMove=" + tipMove.ToString("F3") +
+                " / mode=yellow-blue-red-position-before-angle"
             );
         }
 
@@ -9744,12 +9858,16 @@ void LogNowDockingAutoPoseProbe()
         penisPathLineObj = new GameObject("TargetLinePerson_PenisPath_Yellow");
         bendMarkerLineObj = new GameObject("TargetLinePerson_BendMarker_Purple");
         gDepthGuideLineObj = new GameObject("TargetLinePerson_GDepthGuide_Cyan");
+        genSourceRedCircleObj = new GameObject("TargetLinePerson_GenSource_RedCircle_Topmost");
+        genSourceBlueCircleObj = new GameObject("TargetLinePerson_GenSource_BlueCircle_Topmost");
 
         forwardLine = forwardLineObj.AddComponent<LineRenderer>();
         moveLine = moveLineObj.AddComponent<LineRenderer>();
         penisPathLine = penisPathLineObj.AddComponent<LineRenderer>();
         bendMarkerLine = bendMarkerLineObj.AddComponent<LineRenderer>();
         gDepthGuideLine = gDepthGuideLineObj.AddComponent<LineRenderer>();
+        genSourceRedCircleLine = genSourceRedCircleObj.AddComponent<LineRenderer>();
+        genSourceBlueCircleLine = genSourceBlueCircleObj.AddComponent<LineRenderer>();
 
         // Original debug lines restored.
         SetupLine(forwardLine, Color.red);
@@ -9759,6 +9877,8 @@ void LogNowDockingAutoPoseProbe()
         SetupLine(penisPathLine, Color.yellow);
         SetupLine(bendMarkerLine, new Color(1f, 0f, 1f, 1f));
         SetupLine(gDepthGuideLine, new Color(0.0f, 1.0f, 1.0f, GuideLineAlpha));
+        SetupTopmostCircleLine(genSourceRedCircleLine, new Color(1.0f, 0.0f, 0.0f, GenSourceVisualAlpha));
+        SetupTopmostCircleLine(genSourceBlueCircleLine, new Color(0.0f, 0.35f, 1.0f, GenSourceVisualAlpha));
 
         if (penisPathLine != null)
         {
@@ -9799,6 +9919,39 @@ void LogNowDockingAutoPoseProbe()
         lr.endColor = transparentColor;
         lr.enabled = false;
         lr.useWorldSpace = true;
+    }
+
+    void SetupTopmostCircleLine(LineRenderer lr, Color color)
+    {
+        if (lr == null)
+        {
+            return;
+        }
+
+        lr.positionCount = GenSourceVisualCircleSegments + 1;
+        lr.startWidth = GenSourceVisualLineWidth;
+        lr.endWidth = GenSourceVisualLineWidth;
+        lr.useWorldSpace = true;
+        lr.enabled = false;
+
+        Shader shader = Shader.Find("Hidden/Internal-Colored");
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
+        }
+        lr.material = new Material(shader);
+        lr.material.color = color;
+        lr.material.renderQueue = 5000;
+        try { lr.material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha); } catch { }
+        try { lr.material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha); } catch { }
+        try { lr.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off); } catch { }
+        try { lr.material.SetInt("_ZWrite", 0); } catch { }
+        try { lr.material.SetInt("_ZTest", 8); } catch { } // 8 = Always
+        lr.startColor = color;
+        lr.endColor = color;
+
+        lr.startColor = color;
+        lr.endColor = color;
     }
 
     void CreateInsertDebugOverlay()
@@ -13145,6 +13298,7 @@ void LogNowDockingAutoPoseProbe()
         if (!captured)
         {
             SetDebugLineRenderersEnabled(false);
+            SetGenSourceVisualEnabled(false);
             return;
         }
 
@@ -13154,6 +13308,17 @@ void LogNowDockingAutoPoseProbe()
         }
 
         bool draw = visible && captured;
+        bool drawGenSourceMarkers = draw && !IsFeatureCutNoDynamicVisuals();
+
+        if (drawGenSourceMarkers && Time.time - lastGenSourceVisualDrawTime >= GetDebugLineRenderInterval())
+        {
+            lastGenSourceVisualDrawTime = Time.time;
+            DrawGenSourceVisualMarkers();
+        }
+        else if (!drawGenSourceMarkers)
+        {
+            SetGenSourceVisualEnabled(false);
+        }
 
         if (!draw)
         {
@@ -13194,6 +13359,12 @@ void LogNowDockingAutoPoseProbe()
         if (penisPathLine != null) penisPathLine.enabled = enabled && hasYellowPPath;
         if (bendMarkerLine != null) bendMarkerLine.enabled = enabled && hasYellowPPath;
         if (gDepthGuideLine != null) gDepthGuideLine.enabled = enabled;
+    }
+
+    void SetGenSourceVisualEnabled(bool enabled)
+    {
+        if (genSourceRedCircleLine != null) genSourceRedCircleLine.enabled = enabled;
+        if (genSourceBlueCircleLine != null) genSourceBlueCircleLine.enabled = enabled;
     }
 
     void ScheduleDelayedLineLock(string reason)
@@ -13289,6 +13460,127 @@ void LogNowDockingAutoPoseProbe()
             moveLine.SetPosition(0, capturedMoveLineStart);
             moveLine.SetPosition(1, capturedMoveLineEnd);
         }
+    }
+
+    bool TryResolveGenSourceVisualPoint(out Vector3 origin, out Vector3 dir, out float length, out string source)
+    {
+        origin = Vector3.zero;
+        dir = Vector3.zero;
+        length = GetGenDepthMax();
+        source = "none";
+
+        // v242: No fallback. The marker is a pure live Gen/Anus/Mouth inside-line probe.
+        // If TryGetLiveCurrentInsideLine cannot resolve the current special target, hide the marker.
+        string targetMode;
+        if (!TryGetLiveCurrentInsideLine(out origin, out dir, out length, out targetMode))
+        {
+            return false;
+        }
+
+        source = "1:live-current-inside-line:" + targetMode;
+        return dir.sqrMagnitude >= 0.0001f;
+    }
+
+    void DrawGenSourceVisualMarkers()
+    {
+        if (genSourceRedCircleLine == null || genSourceBlueCircleLine == null)
+        {
+            return;
+        }
+
+        Vector3 origin;
+        Vector3 dir;
+        float length;
+        string source;
+        if (!TryResolveGenSourceVisualPoint(out origin, out dir, out length, out source))
+        {
+            SetGenSourceVisualEnabled(false);
+            return;
+        }
+
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            SetGenSourceVisualEnabled(false);
+            return;
+        }
+
+        dir.Normalize();
+        Vector3 blue = origin - dir * GetGenSourceVisualAheadDistance();
+        SetGenSourceCircle(genSourceRedCircleLine, origin, GenSourceVisualCircleRadius);
+        SetGenSourceCircle(genSourceBlueCircleLine, blue, GenSourceVisualCircleRadius * 0.72f);
+        SetGenSourceVisualEnabled(true);
+        LogGenSourceVisualIfNeeded(source, origin, dir, blue, length);
+    }
+
+    void SetGenSourceCircle(LineRenderer line, Vector3 center, float radius)
+    {
+        if (line == null)
+        {
+            return;
+        }
+
+        Camera cam = Camera.main;
+        Vector3 right = Vector3.right;
+        Vector3 up = Vector3.up;
+        if (cam != null)
+        {
+            right = cam.transform.right;
+            up = cam.transform.up;
+        }
+        else if (containingAtom != null && containingAtom.transform != null)
+        {
+            right = containingAtom.transform.right;
+            up = Vector3.up;
+        }
+
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        if (up.sqrMagnitude < 0.0001f) up = Vector3.up;
+        right.Normalize();
+        up.Normalize();
+
+        line.positionCount = GenSourceVisualCircleSegments + 1;
+        for (int i = 0; i <= GenSourceVisualCircleSegments; i++)
+        {
+            float a = (Mathf.PI * 2.0f) * ((float)i / (float)GenSourceVisualCircleSegments);
+            Vector3 p = center + right * (Mathf.Cos(a) * radius) + up * (Mathf.Sin(a) * radius);
+            line.SetPosition(i, p);
+        }
+    }
+
+    void LogGenSourceVisualIfNeeded(string source, Vector3 origin, Vector3 dir, Vector3 blue, float length)
+    {
+        string targetMode = GetTargetModeName();
+        string key = source + ":" + targetMode;
+        bool moved = !genSourceVisualLastKnown
+            || Vector3.Distance(origin, genSourceVisualLastOrigin) >= GenSourceVisualLogMoveThreshold
+            || Vector3.Distance(blue, genSourceVisualLastBlue) >= GenSourceVisualLogMoveThreshold
+            || genSourceVisualLastKey != key;
+
+        if (!moved && Time.time - lastGenSourceVisualLogTime < GenSourceVisualLogInterval)
+        {
+            return;
+        }
+
+        genSourceVisualLastKnown = true;
+        genSourceVisualLastOrigin = origin;
+        genSourceVisualLastBlue = blue;
+        genSourceVisualLastKey = key;
+        lastGenSourceVisualLogTime = Time.time;
+
+        DebugLog(
+            "[TargetLinePerson] Gen source visual" +
+            " / target=" + targetMode +
+            " / used=" + source +
+            " / redPos=(" + FormatVector3(origin) + ")" +
+            " / dir=(" + FormatVector3(dir) + ")" +
+            " / bluePos=(" + FormatVector3(blue) + ")" +
+            " / blueMode=front:-dir" +
+            " / ahead=" + GetGenSourceVisualAheadDistance().ToString("F3") +
+            " / len=" + length.ToString("F3") +
+            " / capturedOrigin=(" + FormatVector3(capturedOrigin) + ")" +
+            " / capturedLineDir=(" + FormatVector3(capturedLineDir) + ")" +
+            " / dynamic=" + (hasDynamicRedLineDisplay ? "1" : "0")
+        );
     }
 
     void DrawGDepthGuideLine()
@@ -15677,6 +15969,16 @@ void LogNowDockingAutoPoseProbe()
         if (gDepthGuideLineObj != null)
         {
             Destroy(gDepthGuideLineObj);
+        }
+
+        if (genSourceRedCircleObj != null)
+        {
+            Destroy(genSourceRedCircleObj);
+        }
+
+        if (genSourceBlueCircleObj != null)
+        {
+            Destroy(genSourceBlueCircleObj);
         }
 
         if (genDepthHudBackObj != null)
