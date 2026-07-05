@@ -1,3 +1,4 @@
+// HLA_V094_SURFACE_BASE_MAINCONTROLLER: Body-surface RandomCover points now use the Person mainController as the base position, falling back to hipControl with hip-relative height before atom.transform, preventing Self/Target shoulder points from staying near the Atom origin after root/pose movement.
 // HLA_V093_LEG_MOTION_COOPERATIVE: Life Leg Motion now defaults to rotation-only cooperative thigh sway, leaves thigh PositionState untouched unless optional Position Assist is enabled, and yields briefly when external pose/root motion moves the thighs.
 // HLA_V091_SHOULDER_SWAY_BREATH: Adds optional Life Shoulder Sway driven by the Breath loop using small l/r elbow offsets to make breathing visible without touching hand IK or chest position; keeps v090 Breath Scale max 50 and v089 surface cover/return snap behavior.
 // HLA_V090_BREATH_SCALE_MAX50_VISIBLE: Raises Life Breath Scale slider max from 10.0 to 50.0 so rotation-only breath can be visibly verified; keeps v089 surface cover and rotation-only breath behavior.
@@ -3905,18 +3906,100 @@ public class HumanLifeAction : MVRScript
     bool TryGetBodySurfacePoint(Atom atom, float height, float sideOffset, float forwardOffset, out Vector3 pos)
     {
         pos = Vector3.zero;
-        if (atom == null || atom.transform == null) return false;
+        if (atom == null) return false;
 
-        Vector3 forward = atom.transform.forward;
-        Vector3 right = atom.transform.right;
+        Vector3 basePos;
+        float heightFromBase;
+        Vector3 forward;
+        Vector3 right;
+        string baseSource;
+        if (!TryGetBodySurfaceBase(atom, height, out basePos, out heightFromBase, out forward, out right, out baseSource))
+            return false;
+
+        pos = basePos + Vector3.up * heightFromBase + right * sideOffset + forward * forwardOffset;
+
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Body surface point / atom=" + SafeAtomName(atom)
+                + " / base=" + baseSource
+                + " / height=" + height.ToString("F3", CultureInfo.InvariantCulture)
+                + " / heightFromBase=" + heightFromBase.ToString("F3", CultureInfo.InvariantCulture)
+                + " / side=" + sideOffset.ToString("F3", CultureInfo.InvariantCulture)
+                + " / forward=" + forwardOffset.ToString("F3", CultureInfo.InvariantCulture)
+                + " / pos=" + pos.ToString("F3"));
+        }
+
+        return true;
+    }
+
+    bool TryGetBodySurfaceBase(Atom atom, float nominalHeight, out Vector3 basePos, out float heightFromBase, out Vector3 forward, out Vector3 right, out string baseSource)
+    {
+        basePos = Vector3.zero;
+        heightFromBase = nominalHeight;
+        forward = Vector3.forward;
+        right = Vector3.right;
+        baseSource = "<none>";
+
+        if (atom == null) return false;
+
+        Transform basisTransform = null;
+
+        // Prefer the Person's live root/main controller. atom.transform can remain near the
+        // original Atom origin after pose/root handoff, which makes surface cover points appear
+        // meters away from the visible body.
+        try
+        {
+            if (atom.mainController != null && atom.mainController.transform != null)
+            {
+                basePos = atom.mainController.transform.position;
+                basisTransform = atom.mainController.transform;
+                heightFromBase = nominalHeight;
+                baseSource = "mainController";
+            }
+        }
+        catch { }
+
+        if (baseSource == "<none>")
+        {
+            FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip", "pelvisControl", "pelvis");
+            if (hip != null)
+            {
+                basePos = GetControllerPosition(hip);
+                basisTransform = atom.transform != null ? atom.transform : hip.transform;
+                // Existing body-surface heights are roughly floor/root-relative. If we must use
+                // hipControl as the base, convert them to hip-relative offsets instead of adding
+                // the full shoulder/chest height above the hip.
+                heightFromBase = nominalHeight - 0.90f;
+                baseSource = "hipControl";
+            }
+        }
+
+        if (baseSource == "<none>")
+        {
+            if (atom.transform == null) return false;
+            basePos = atom.transform.position;
+            basisTransform = atom.transform;
+            heightFromBase = nominalHeight;
+            baseSource = "atomTransform";
+        }
+
+        if (basisTransform != null)
+        {
+            forward = basisTransform.forward;
+            right = basisTransform.right;
+        }
+        else if (atom.transform != null)
+        {
+            forward = atom.transform.forward;
+            right = atom.transform.right;
+        }
+
         forward.y = 0.0f;
         right.y = 0.0f;
         if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
         if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
         forward.Normalize();
         right.Normalize();
-
-        pos = atom.transform.position + Vector3.up * height + right * sideOffset + forward * forwardOffset;
         return true;
     }
 

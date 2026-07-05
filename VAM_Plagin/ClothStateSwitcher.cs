@@ -1,3 +1,4 @@
+// V30_PHTY_FADE_ONLY_MODE: v29 base + adds PHTY FADE mode. FADE skips Sim DOWN/UP physical undress settings and only fades alpha for Fade Seconds before hiding the item.
 // V28_GLOBAL_EXCLUSION_LOAD_ON_SCAN: v27 base + reload global exclusions on SCAN and more robust SaveJSON LoadJSON parsing/debug. No System.IO, no FileManagerSecure, no GetType.
 // V25_GLOBAL_EXCLUSION_SAVEJSON_ROBUST: v23 base; avoids FileManagerSecure/System.Reflection, uses VaM SaveJSON/LoadJSON with robust prefix fields for cross-scene global exclusions.
 // V23_GLOBAL_EXCLUSION_SIMPLEJSON_FIX: v22 + adds SimpleJSON namespace for VaM JSONNode/JSONClass compile. No System.IO / no Reflection.
@@ -61,6 +62,7 @@ public class ClothStateSwitcher : MVRScript
     private const string PHYS_OFF = "OFF";
     private const string PHYS_DOWN = "DOWN";
     private const string PHYS_UP = "UP";
+    private const string PHYS_FADE = "FADE";
     private const string PHYS_RIPPER = "RIPPER";
     // v21: old values are kept only for scene/trigger compatibility; both resolve to PHYS_RIPPER behavior.
     private const string PHYS_RIPPER_ALL = "RIPPER ALL";
@@ -356,7 +358,7 @@ public class ClothStateSwitcher : MVRScript
         // 初期値は DOWN。v9ではReloadを自動使用しない。PHTYはNEXT専用。
         physRemoveStyleChooser = new JSONStorableStringChooser(
             "PHTY",
-            new List<string> { PHYS_OFF, PHYS_DOWN, PHYS_UP, PHYS_RIPPER },
+            new List<string> { PHYS_OFF, PHYS_DOWN, PHYS_UP, PHYS_FADE, PHYS_RIPPER },
             PHYS_DOWN,
             "PHTY",
             delegate(string value) { UpdatePreview(); }
@@ -776,6 +778,7 @@ public class ClothStateSwitcher : MVRScript
         RegisterAction(new JSONStorableAction("Set Phys OFF", SetPhysOff));
         RegisterAction(new JSONStorableAction("Set Phys DOWN", SetPhysDown));
         RegisterAction(new JSONStorableAction("Set Phys UP", SetPhysUp));
+        RegisterAction(new JSONStorableAction("Set Phys FADE", SetPhysFade));
         RegisterAction(new JSONStorableAction("Set Phys RIPPER", SetPhysRipper));
         // v21 compatibility aliases for older triggers. Both now select the unified one-by-one RIPPER mode.
         RegisterAction(new JSONStorableAction("Set Phys RIPPER ALL", SetPhysRipperAll));
@@ -853,6 +856,11 @@ public class ClothStateSwitcher : MVRScript
     private void SetPhysUp()
     {
         SetPhysMode(PHYS_UP);
+    }
+
+    private void SetPhysFade()
+    {
+        SetPhysMode(PHYS_FADE);
     }
 
     private void SetPhysRipper()
@@ -2392,13 +2400,19 @@ UpdatePreview();
             }
 
             bool sim = IsSimCloth(item);
-            if (sim)
+            string style = ResolvePhysicalStyleForItem(item, requestedStyle);
+            bool fadeOnly = style == PHYS_FADE;
+            if (sim && !fadeOnly)
             {
-                string style = ResolvePhysicalStyleForItem(item, requestedStyle);
                 int physChanged = ApplyPhysicalRemoveSettings(item, style, boolBackups, floatBackups);
                 DebugLog("[WEAR NONE DEBUG] sim apply " + item.Name +
                     " / style=" + style +
                     " / changed=" + physChanged.ToString(CultureInfo.InvariantCulture));
+                simCount++;
+            }
+            else if (sim && fadeOnly)
+            {
+                DebugLog("[WEAR NONE DEBUG] sim physical skipped by FADE mode " + item.Name);
                 simCount++;
             }
 
@@ -2427,7 +2441,8 @@ UpdatePreview();
             " / sim=" + simCount.ToString(CultureInfo.InvariantCulture) +
             " / fadeRefs=" + fadeRefs.Count.ToString(CultureInfo.InvariantCulture));
 
-        float physicalSeconds = Mathf.Max(0.0f, duration - fadeSeconds);
+        bool groupFadeOnly = ResolvePhysicalStyleForItem(null, requestedStyle) == PHYS_FADE;
+        float physicalSeconds = groupFadeOnly ? 0.0f : Mathf.Max(0.0f, duration - fadeSeconds);
         if (physicalSeconds > 0.0f)
         {
             DebugLog("[WEAR NONE DEBUG] wait physicalSeconds=" + physicalSeconds.ToString("F2", CultureInfo.InvariantCulture));
@@ -2767,8 +2782,11 @@ UpdatePreview();
         DebugLog("[TRACE PHTY] D before APPLY: " + item.Name);
 
         int changed = 0;
-        if (sim)
+        bool fadeOnly = style == PHYS_FADE;
+        if (sim && !fadeOnly)
             changed = ApplyPhysicalRemoveSettings(item, style, boolBackups, floatBackups);
+        else if (sim && fadeOnly)
+            DebugLog("[TRACE PHTY] D2 sim physical skipped by FADE mode: " + item.Name);
         else
             DebugLog("[TRACE PHTY] D2 no sim apply: " + item.Name);
 
@@ -2781,7 +2799,15 @@ UpdatePreview();
         PublishClothState("phys_start", item, true);
         UpdatePreview();
 
-        if (sim)
+        if (fadeOnly)
+        {
+            // FADE mode intentionally does not undress via Sim physics.
+            // It only fades the material alpha for Fade Seconds, then hides the item.
+            if (fadeSeconds > 0.01f)
+                yield return StartCoroutine(FadeOutRoutine(item, fadeSeconds, fadeRefs));
+            DumpMaterialValues(item, "AFTER_FADE");
+        }
+        else if (sim)
         {
             float physicalSeconds = Mathf.Max(0.0f, duration - fadeSeconds);
             if (physicalSeconds > 0.0f)
@@ -6638,6 +6664,8 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             text += " / BUSY=" + physicalRemoveRunning.ToString(CultureInfo.InvariantCulture);
         text += "\n";
         text += "WEAR ALL=全部着る / WEAR NONE=全部脱ぐ / PREV=1枚着る / NEXT=1枚脱ぐ\n";
+        if (physRemoveStyleChooser != null && physRemoveStyleChooser.val == PHYS_FADE)
+            text += "PHTY FADE: no DOWN/UP physical undress. Fade only, then hide. PREV restores one item.\n";
         if (IsRipperSelectedMode())
             text += "PHTY RIPPER: NEXT/Auto NEXT rip one ClothingRipper item at a time. Missing/unrippable items fall back to PHTY DOWN. PREV restores one item.\n";
         text += "Count: " + orderedClothes.Count + "\n";
@@ -6671,7 +6699,7 @@ TraceAlphaAdjustState(item, context + "_AFTER_SET_VISIBLE_BEFORE_NUDGE_TRACE");
             {
                 string req = physRemoveStyleChooser != null ? physRemoveStyleChooser.val : PHYS_OFF;
                 string eff = ResolvePhysicalStyleForItem(item, req);
-                if (eff != req)
+                if (eff != req || eff == PHYS_FADE)
                     physMark = " [PHTY " + eff + "]";
             }
 
