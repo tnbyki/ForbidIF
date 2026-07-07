@@ -1,3 +1,29 @@
+// HLA_V122_INDEPENDENT_LOOK_TIMER: Splits LookTarget/LookCamera/LookAway into an independent look timer so gaze can run even when RandomCover is active; Cover/hand gestures remain on lifeGestureRoutine and Look uses lookGestureRoutine.
+// HLA_V121_COVER_HEAD_FACE_MOUTH_RESTORE: Restores the existing Head/Face/Mouth cover target labels to RandomCover so legacy head-reach/chest-avoid/front-lane logic is used again; keeps v119 live body surface points and leaves Cheek L/R as low-weight extra targets.
+// HLA_V120_COVER_FACE_TARGETS_RESTORE: Restores explicit RandomCover face targets (Self Face/Mouth/Chin/Cheek and low-weight Target Face) using live head/chest points while keeping v119 live body surface points.
+// HLA_V119_LIVE_BODY_SURFACE_POINTS: UpperChest/Belly/Thigh RandomCover surface targets now use live chest/hip/thigh controller positions, keeping mainController fixed-height body surface only as fallback.
+// HLA_V118_COVER_SHOULDER_SIDE_MATCH_LIVE_POINT: RandomCover shoulder targets now match the selected hand side, and Self/Target shoulder points use live chest/head controller axes before falling back to root surface estimates.
+// HLA_V117_EXTERNAL_LIFE_IF_ALIASES: Adds AI-facing alias actions for HumanReceiver HUM_LIFE(state/expression/personality) routing while keeping v116 expression Sad default 0.60.
+// HLA_V116_EXPRESSION_SAD_DEFAULT_060: Renames the expression-side Shy slot to Sad : しょんぼり, defaults Sad Morph to Sad with max 0.60, and keeps old Shy actions as compatibility aliases.
+// HLA_V115_EXPRESSION_SHY_SAD_DEFAULT: Changes Shy expression built-in default morph to Sad with max 0.20 while keeping Like/Dislike/Shy under Life Expression.
+// HLA_V114_EXPRESSION_LIKE_DISLIKE_SHY: Groups Like / Dislike / Shy under the expression combo (UI label Life Expression) instead of Life State/Personality, keeps old Shy actions as compatibility aliases to expression Shy.
+// HLA_V113_SHY_LIFE_ACTION: Moves Shy from Life Personality to the Life State/Action combo as "Shy : 恥ずかしい" while keeping Shy Morph and compatibility actions.
+// HLA_V111_AFFECTION_MORPH_FILTERABLE_POPUP: Removes unusable text search fields and uses VaM's CreateFilterablePopup for Like/Dislike morph choosers, so the popup itself can be typed/searched. Keeps defaults Like=Smile Full Face 0.90 / Dislike=Frown 0.90.
+// HLA_V110_AFFECTION_MORPH_SEARCH_DEFAULTS: Adds Like/Dislike morph search fields, narrows each chooser independently, and sets built-in defaults Like=Smile Full Face 0.90 / Dislike=Frown 0.90.
+// HLA_V109_AFFECTION_MORPH_CHOOSER: Replaces manual Like/Dislike Morph text input with popups populated from geometry float/morph parameters, plus a Refresh Affection Morphs button. Keeps max sliders and fade behavior from v108.
+// HLA_V108_AFFECTION_MORPH_USER_SELECT: Adds user-entered Like/Dislike Morph names with max-value sliders and a fade slider. Life Affection drives the selected morph toward its max and restores HLA-touched morphs when returning to Neutral or the opposite affection.
+// HLA_V107_LIFE_AFFECTION_LIKE_DISLIKE: Adds Life Affection combo (Neutral/Like/Dislike with Japanese labels) that biases target gaze, target cover, look-away, interval, and self-fidget behavior while keeping Sleeping/Quiet state rules dominant.
+// HLA_V106_PERSONALITY_COMPILE_FIX: Initializes targetSuppressReason before mutual-back/self-only target-cover suppression so VaM/Mono compiles the Life Personality build.
+// HLA_V105_LIFE_PERSONALITY_SHY_BOLD: Adds Life Personality combo (Normal/Shy/Bold with Japanese labels) that biases gaze, self/target cover, fidget weights, intervals, and body micro-motion while keeping Sleeping state dominant.
+// HLA_V104_LIFE_STATE_JAPANESE_LABELS: Life State combo entries now include Japanese labels such as Sleeping : 寝ている while keeping legacy English values/actions compatible.
+// HLA_V103_SLEEP_EYE_TRANSITION_SETTLE: Sleeping transition now slowly closes eyes and opens them on wake, keeps auto eye systems off during the transition, and briefly releases hands/elbows to Comply/Off for a natural sleep settle without restoring old IK targets.
+// HLA_V100_SLEEPING_EYELIDCONTROL_COMPILE_FIX: Fixes VaM/Mono Type name collision in EyelidControl reflection scan by explicitly using System.Type; keeps v099 direct EyelidControl sleeping eye behavior.
+// HLA_V102_SLEEP_QUIET_FIDGET: Makes Sleeping and Quiet more alive with self-only fidget/mogimogi behavior, stronger quiet breathing/shoulder/leg micro-motion, and higher Free/Self Hip cover weights while keeping no target gaze/cover for those states.
+// HLA_V101_SLEEPING_NO_REFLECTION_MORE_MOTION: Removes prohibited System.Reflection access, keeps direct EyelidControl blinkEnabled/eyelidMorphsEnabled lookup, and makes Sleeping slightly more alive while remaining self-only/no target gaze.
+// HLA_V099_SLEEPING_EYELIDCONTROL_DIRECT: Sleeping directly targets EyelidControl blinkEnabled / eyelidMorphsEnabled before fallback scanning, so Auto Systems > Eye Control checkboxes are actually disabled and restored.
+// HLA_V098_SLEEPING_AUTO_EYE_SYSTEMS_OFF: Sleeping disables Auto Systems / Auto Blink plus Auto Eyelid Morphs when accessible, retries with reflection, and holds Eyes Closed every frame.
+// HLA_V096_LIFE_STATE_SLEEP_EYES_SELF_ONLY: Sleeping closes eyes, blocks target/camera gaze, keeps only low random away/self motion, and Quiet/Sleeping cover only self body; other states open eyes.
+// HLA_V095_LIFE_STATE_SIMPLE_UI: Adds Life State (Quiet/Normal/Active/Sleeping) to control motion level, hides confusing internal checkboxes/sliders from the visible UI while keeping them registered for compatibility.
 // HLA_V094_SURFACE_BASE_MAINCONTROLLER: Body-surface RandomCover points now use the Person mainController as the base position, falling back to hipControl with hip-relative height before atom.transform, preventing Self/Target shoulder points from staying near the Atom origin after root/pose movement.
 // HLA_V093_LEG_MOTION_COOPERATIVE: Life Leg Motion now defaults to rotation-only cooperative thigh sway, leaves thigh PositionState untouched unless optional Position Assist is enabled, and yields briefly when external pose/root motion moves the thighs.
 // HLA_V091_SHOULDER_SWAY_BREATH: Adds optional Life Shoulder Sway driven by the Breath loop using small l/r elbow offsets to make breathing visible without touching hand IK or chest position; keeps v090 Breath Scale max 50 and v089 surface cover/return snap behavior.
@@ -76,6 +102,18 @@ public class HumanLifeAction : MVRScript
     JSONStorableBool debugLog;
     JSONStorableBool logCoverDetail;
     JSONStorableStringChooser lifeMotionMode;
+    JSONStorableStringChooser lifeStateMode;
+    JSONStorableStringChooser lifePersonalityMode;
+    JSONStorableStringChooser lifeAffectionMode;
+    JSONStorableStringChooser shyPersonalityMorphName;
+    JSONStorableFloat shyPersonalityMorphMax;
+    JSONStorableString likeAffectionMorphSearch;
+    JSONStorableStringChooser likeAffectionMorphName;
+    JSONStorableFloat likeAffectionMorphMax;
+    JSONStorableString dislikeAffectionMorphSearch;
+    JSONStorableStringChooser dislikeAffectionMorphName;
+    JSONStorableFloat dislikeAffectionMorphMax;
+    JSONStorableFloat affectionMorphFadeSeconds;
     JSONStorableBool breathEnabled;
     JSONStorableBool autoPauseBreathOnHbaActive;
     JSONStorableBool lifeHeadLookEnabled;
@@ -107,8 +145,49 @@ public class HumanLifeAction : MVRScript
 
     readonly List<string> targetPersonChoices = new List<string>() { TargetAutoOtherPerson };
     readonly List<string> lifeMotionChoices = new List<string>() { LifeMotionSmall, LifeMotionNormal, LifeMotionLarge };
+    readonly List<string> lifeStateChoices = new List<string>() { LifeStateQuiet, LifeStateNormal, LifeStateActive, LifeStateSleeping };
+    readonly List<string> lifePersonalityChoices = new List<string>() { LifePersonalityNormal, LifePersonalityBold };
+    readonly List<string> lifeAffectionChoices = new List<string>() { LifeAffectionNeutral, LifeAffectionLike, LifeAffectionDislike, LifeAffectionShy };
+    readonly List<string> affectionMorphChoices = new List<string>() { AffectionMorphNone };
+    readonly List<string> dislikeAffectionMorphChoices = new List<string>() { AffectionMorphNone };
+    readonly List<string> shyPersonalityMorphChoices = new List<string>() { AffectionMorphNone };
 
     const string TargetAutoOtherPerson = "Auto Other Person";
+    const string LifeStateQuiet = "Quiet : おとなしい";
+    const string LifeStateShy = "Shy : 恥ずかしい";
+    const string LifeStateNormal = "Normal : ふつう";
+    const string LifeStateActive = "Active : 活発";
+    const string LifeStateSleeping = "Sleeping : 寝ている";
+    const string LifeStateQuietLegacy = "Quiet";
+    const string LifeStateShyLegacy = "Shy";
+    const string LifeStateNormalLegacy = "Normal";
+    const string LifeStateActiveLegacy = "Active";
+    const string LifeStateSleepingLegacy = "Sleeping";
+    const string LifePersonalityNormal = "Normal : 標準";
+    const string LifePersonalityShy = "Shy : 恥ずかしい";
+    const string LifePersonalityBold = "Bold : 積極的";
+    const string LifePersonalityNormalLegacy = "Normal";
+    const string LifePersonalityShyLegacy = "Shy";
+    const string LifePersonalityBoldLegacy = "Bold";
+    const string LifeAffectionNeutral = "Neutral : ふつう";
+    const string LifeAffectionLike = "Like : 好き";
+    const string LifeAffectionDislike = "Dislike : 嫌い";
+    const string LifeAffectionShy = "Sad : しょんぼり";
+    const string LifeAffectionNeutralLegacy = "Neutral";
+    const string LifeAffectionLikeLegacy = "Like";
+    const string LifeAffectionDislikeLegacy = "Dislike";
+    const string LifeAffectionShyLegacy = "Shy";
+    const string LifeAffectionSadLegacy = "Sad";
+    const string DefaultLikeAffectionMorphName = "Smile Full Face";
+    const string DefaultDislikeAffectionMorphName = "Frown";
+    const string DefaultShyPersonalityMorphName = "Sad";
+    const string DefaultLikeAffectionMorphSearch = "smile";
+    const string DefaultDislikeAffectionMorphSearch = "frown";
+    const float DefaultLikeAffectionMorphMax = 0.90f;
+    const float DefaultDislikeAffectionMorphMax = 0.90f;
+    const float DefaultShyPersonalityMorphMax = 0.60f;
+    const float DefaultAffectionMorphFadeSeconds = 1.00f;
+    const string AffectionMorphNone = "None : なし";
     const string LifeMotionSmall = "Small";
     const string LifeMotionNormal = "Normal";
     const string LifeMotionLarge = "Large";
@@ -255,6 +334,7 @@ public class HumanLifeAction : MVRScript
     FreeControllerV3 rThighControl;
 
     Coroutine lifeGestureRoutine;
+    Coroutine lookGestureRoutine;
 
     private bool hipSmoothPathAborted = false;
     Coroutine breathLoopRoutine;
@@ -298,8 +378,45 @@ public class HumanLifeAction : MVRScript
     ControllerSnapshot activeLegBaseLeftSnapshot;
     ControllerSnapshot activeLegBaseRightSnapshot;
     float nextGestureTime = -1.0f;
+    float nextLookGestureTime = -1.0f;
     string lastGesture = "None";
+    Coroutine affectionMorphRoutine;
+    Dictionary<string, float> affectionMorphOriginalValues = new Dictionary<string, float>();
+    string lastAffectionMorphAffection = "";
+    string lastAffectionMorphPersonality = "";
+    string lastAffectionMorphLikeName = "";
+    string lastAffectionMorphDislikeName = "";
+    string lastAffectionMorphShyName = "";
+    float lastAffectionMorphLikeMax = -999.0f;
+    float lastAffectionMorphDislikeMax = -999.0f;
+    float lastAffectionMorphShyMax = -999.0f;
+    float lastAffectionMorphFadeSeconds = -999.0f;
     bool initialized;
+    bool suppressLifeStateCallback = false;
+    string lastAppliedEyeState = "";
+    JSONStorableBool sleepingAutoBlinkParam;
+    bool sleepingAutoBlinkResolved = false;
+    bool sleepingAutoBlinkOriginalSaved = false;
+    bool sleepingAutoBlinkOriginalValue = false;
+    string sleepingAutoBlinkSource = "";
+    float nextSleepingEyeHoldTime = -999.0f;
+    const float SleepingEyeHoldInterval = 0.35f;
+    const float SleepingEyeCloseSeconds = 1.65f;
+    const float SleepingEyeOpenSeconds = 1.10f;
+    const float SleepSettleComplySeconds = 2.50f;
+    Coroutine sleepingEyeTransitionRoutine;
+    Coroutine sleepSettleComplyRoutine;
+
+    class SleepingEyeAutoBoolState
+    {
+        public JSONStorableBool param;
+        public bool originalValue;
+        public bool saved;
+        public string source;
+    }
+
+    readonly List<SleepingEyeAutoBoolState> sleepingEyeAutoBoolStates = new List<SleepingEyeAutoBoolState>();
+    bool sleepingEyeAutoSystemsResolved = false;
 
     class ControllerSnapshot
     {
@@ -369,11 +486,106 @@ public class HumanLifeAction : MVRScript
 
             debugLog = new JSONStorableBool("HLA Debug Log", false);
             RegisterBool(debugLog);
-            CreateToggle(debugLog, false);
+            // v112: keep the main state controls on the left and move debug/morph tools to the right column.
+            CreateToggle(debugLog, true);
 
             logCoverDetail = new JSONStorableBool("HLA Log Cover Detail", false);
             RegisterBool(logCoverDetail);
-            CreateToggle(logCoverDetail, false);
+            // v095: internal/debug detail toggle is registered for compatibility but hidden from the simple UI.
+
+            lifeStateMode = new JSONStorableStringChooser(
+                "Life State",
+                new List<string>(lifeStateChoices),
+                LifeStateNormal,
+                "Life State",
+                delegate(string value) { OnLifeStateChanged(value); }
+            );
+            RegisterStringChooser(lifeStateMode);
+            CreatePopup(lifeStateMode, false);
+
+            lifePersonalityMode = new JSONStorableStringChooser(
+                "Life Personality",
+                new List<string>(lifePersonalityChoices),
+                LifePersonalityNormal,
+                "Life Personality",
+                delegate(string value) { OnLifePersonalityChanged(value); }
+            );
+            RegisterStringChooser(lifePersonalityMode);
+            CreatePopup(lifePersonalityMode, false);
+
+            RefreshAffectionMorphChoices(false);
+
+            lifeAffectionMode = new JSONStorableStringChooser(
+                "Life Affection",
+                new List<string>(lifeAffectionChoices),
+                LifeAffectionNeutral,
+                "Life Expression",
+                delegate(string value) { OnLifeAffectionChanged(value); }
+            );
+            RegisterStringChooser(lifeAffectionMode);
+            CreatePopup(lifeAffectionMode, true);
+
+
+            // v116: Sad is part of the expression group together with Like/Dislike. The popup is filterable. Old Shy actions remain aliases.
+            shyPersonalityMorphName = new JSONStorableStringChooser(
+                "Sad Morph",
+                new List<string>(shyPersonalityMorphChoices),
+                DefaultShyPersonalityMorphName,
+                "Sad Morph",
+                delegate(string value) { ApplyAffectionMorphTarget("shy-morph-choice"); }
+            );
+            RegisterStringChooser(shyPersonalityMorphName);
+            CreateFilterablePopup(shyPersonalityMorphName, true);
+
+            shyPersonalityMorphMax = new JSONStorableFloat("Sad Morph Max", DefaultShyPersonalityMorphMax, 0.0f, 1.0f, true);
+            RegisterFloat(shyPersonalityMorphMax);
+            CreateSlider(shyPersonalityMorphMax, true);
+
+            // v111: VaM text fields are not usable enough for morph search here.
+            // Keep these registered for save compatibility, but hide them from the UI.
+            // The actual user-facing search is the filter box inside CreateFilterablePopup.
+            likeAffectionMorphSearch = new JSONStorableString("Like Morph Search", DefaultLikeAffectionMorphSearch);
+            RegisterString(likeAffectionMorphSearch);
+
+            dislikeAffectionMorphSearch = new JSONStorableString("Dislike Morph Search", DefaultDislikeAffectionMorphSearch);
+            RegisterString(dislikeAffectionMorphSearch);
+
+            RefreshAffectionMorphChoices(false);
+            likeAffectionMorphName = new JSONStorableStringChooser(
+                "Like Morph",
+                new List<string>(affectionMorphChoices),
+                DefaultLikeAffectionMorphName,
+                "Like Morph",
+                delegate(string value) { ApplyAffectionMorphTarget("like-morph-choice"); }
+            );
+            RegisterStringChooser(likeAffectionMorphName);
+            // v111: filterable popup lets the user type inside the combo popup.
+            CreateFilterablePopup(likeAffectionMorphName, true);
+
+            likeAffectionMorphMax = new JSONStorableFloat("Like Morph Max", DefaultLikeAffectionMorphMax, 0.0f, 1.0f, true);
+            RegisterFloat(likeAffectionMorphMax);
+            CreateSlider(likeAffectionMorphMax, true);
+
+            dislikeAffectionMorphName = new JSONStorableStringChooser(
+                "Dislike Morph",
+                new List<string>(dislikeAffectionMorphChoices),
+                DefaultDislikeAffectionMorphName,
+                "Dislike Morph",
+                delegate(string value) { ApplyAffectionMorphTarget("dislike-morph-choice"); }
+            );
+            RegisterStringChooser(dislikeAffectionMorphName);
+            // v111: filterable popup lets the user type inside the combo popup.
+            CreateFilterablePopup(dislikeAffectionMorphName, true);
+
+            dislikeAffectionMorphMax = new JSONStorableFloat("Dislike Morph Max", DefaultDislikeAffectionMorphMax, 0.0f, 1.0f, true);
+            RegisterFloat(dislikeAffectionMorphMax);
+            CreateSlider(dislikeAffectionMorphMax, true);
+
+            affectionMorphFadeSeconds = new JSONStorableFloat("Affection Morph Fade Seconds", DefaultAffectionMorphFadeSeconds, 0.05f, 5.0f, true);
+            RegisterFloat(affectionMorphFadeSeconds);
+            CreateSlider(affectionMorphFadeSeconds, true);
+
+            CreateButton("Refresh Affection Morphs", true).button.onClick.AddListener(delegate { RefreshAffectionMorphChoices(true); });
 
             lifeMotionMode = new JSONStorableStringChooser(
                 "Life Motion",
@@ -382,7 +594,7 @@ public class HumanLifeAction : MVRScript
                 "Life Motion"
             );
             RegisterStringChooser(lifeMotionMode);
-            CreatePopup(lifeMotionMode, false);
+            // v095: hidden legacy motion chooser. Life State drives the effective motion level.
 
             breathEnabled = new JSONStorableBool("Life Breath", true);
             RegisterBool(breathEnabled);
@@ -390,11 +602,11 @@ public class HumanLifeAction : MVRScript
 
             autoPauseBreathOnHbaActive = new JSONStorableBool("Auto Pause Breath On HBA Active", true);
             RegisterBool(autoPauseBreathOnHbaActive);
-            CreateToggle(autoPauseBreathOnHbaActive, false);
+            // v095: hidden safety toggle. Keep registered/default ON.
 
             lifeHeadLookEnabled = new JSONStorableBool("Life Head Look", true);
             RegisterBool(lifeHeadLookEnabled);
-            CreateToggle(lifeHeadLookEnabled, false);
+            // v095: hidden. Life State controls whether head look is effectively used.
 
             lookTargetEnabled = new JSONStorableBool("Life Look Target", true);
             RegisterBool(lookTargetEnabled);
@@ -410,19 +622,19 @@ public class HumanLifeAction : MVRScript
 
             lifeLegMotionEnabled = new JSONStorableBool("Life Leg Motion", true);
             RegisterBool(lifeLegMotionEnabled);
-            CreateToggle(lifeLegMotionEnabled, false);
+            // v095: hidden. Life State controls effective leg motion.
 
             lifeLegPositionAssistEnabled = new JSONStorableBool("Life Leg Position Assist", false);
             RegisterBool(lifeLegPositionAssistEnabled);
-            CreateToggle(lifeLegPositionAssistEnabled, false);
+            // v095: hidden advanced option. Default OFF for coexistence.
 
             autoPauseLegOnHbaActive = new JSONStorableBool("Auto Pause Leg On HBA Active", true);
             RegisterBool(autoPauseLegOnHbaActive);
-            CreateToggle(autoPauseLegOnHbaActive, false);
+            // v095: hidden safety toggle. Keep registered/default ON.
 
             autoPauseGesturesOnHbaActive = new JSONStorableBool("Auto Pause Gestures On HBA Active", true);
             RegisterBool(autoPauseGesturesOnHbaActive);
-            CreateToggle(autoPauseGesturesOnHbaActive, false);
+            // v095: hidden safety toggle. Keep registered/default ON.
 
             respectExistingHandIk = new JSONStorableBool("Respect Existing Hand IK", false);
             RegisterBool(respectExistingHandIk);
@@ -430,7 +642,7 @@ public class HumanLifeAction : MVRScript
 
             poseChangeSafe = new JSONStorableBool("Pose Change Safe", true);
             RegisterBool(poseChangeSafe);
-            CreateToggle(poseChangeSafe, false);
+            // v095: hidden safety toggle. Keep registered/default ON.
 
             RefreshTargetPersonChoices(false);
             targetPersonChooser = new JSONStorableStringChooser(
@@ -460,39 +672,39 @@ public class HumanLifeAction : MVRScript
 
             breathScale = new JSONStorableFloat("Life Breath Scale", DefaultBreathScale, 0.0f, 50.0f, true);
             RegisterFloat(breathScale);
-            CreateSlider(breathScale, false);
+            // v095: hidden tuning slider. Life State applies the effective scale.
 
             shoulderSwayEnabled = new JSONStorableBool("Life Shoulder Sway", true);
             RegisterBool(shoulderSwayEnabled);
-            CreateToggle(shoulderSwayEnabled, false);
+            // v095: hidden tuning toggle. Life State applies the effective behavior.
 
             shoulderSwayScale = new JSONStorableFloat("Life Shoulder Sway Scale", DefaultShoulderSwayScale, 0.0f, 50.0f, true);
             RegisterFloat(shoulderSwayScale);
-            CreateSlider(shoulderSwayScale, false);
+            // v095: hidden tuning slider. Life State applies the effective scale.
 
             legScale = new JSONStorableFloat("Life Leg Scale", DefaultLegScale, 0.0f, 5.0f, true);
             RegisterFloat(legScale);
-            CreateSlider(legScale, false);
+            // v095: hidden tuning slider. Life State applies the effective scale.
 
             coverFrequency = new JSONStorableFloat("Life Cover Frequency", DefaultCoverFrequency, 0.0f, 100.0f, true);
             RegisterFloat(coverFrequency);
-            CreateSlider(coverFrequency, false);
+            // v095: hidden tuning slider. Life State applies the effective frequency.
 
             lookFrequency = new JSONStorableFloat("Life Look Frequency", DefaultLookFrequency, 0.0f, 100.0f, true);
             RegisterFloat(lookFrequency);
-            CreateSlider(lookFrequency, false);
+            // v095: hidden tuning slider. Life State applies the effective frequency.
 
             coverSelfPercent = new JSONStorableFloat("Life Cover Self %", DefaultCoverSelfPercent, 0.0f, 100.0f, true);
             RegisterFloat(coverSelfPercent);
-            CreateSlider(coverSelfPercent, false);
+            // v095: hidden tuning slider. Life State applies the effective split.
 
             lookTargetPercent = new JSONStorableFloat("Life Look Target %", DefaultLookTargetPercent, 0.0f, 100.0f, true);
             RegisterFloat(lookTargetPercent);
-            CreateSlider(lookTargetPercent, false);
+            // v095: hidden tuning slider. Life State applies the effective split.
 
             lookAwayPercent = new JSONStorableFloat("Life Look Away %", DefaultLookAwayPercent, 0.0f, 100.0f, true);
             RegisterFloat(lookAwayPercent);
-            CreateSlider(lookAwayPercent, false);
+            // v095: hidden tuning slider. Life State applies the effective split.
 
             lookMaxAngle = new JSONStorableFloat("Life Look Max Angle", DefaultLookMaxAngle, 0.0f, 180.0f, true);
             RegisterFloat(lookMaxAngle);
@@ -536,10 +748,45 @@ public class HumanLifeAction : MVRScript
             RegisterAction(new JSONStorableAction("HLA_Hip_BothPath", delegate { RequestTestBothHandsToThighs("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Force_LegMotion", delegate { RequestLegMotion("action"); }));
             RegisterAction(new JSONStorableAction("HLA_Stop_Restore", delegate { StopAllLife("action"); }));
+            RegisterAction(new JSONStorableAction("HLA_State_Quiet", delegate { SetLifeState(LifeStateQuiet, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_State_Shy", delegate { SetLifeAffection(LifeAffectionShy, "action-legacy-state-shy"); }));
+            RegisterAction(new JSONStorableAction("HLA_State_Normal", delegate { SetLifeState(LifeStateNormal, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_State_Active", delegate { SetLifeState(LifeStateActive, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_State_Sleeping", delegate { SetLifeState(LifeStateSleeping, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Personality_Normal", delegate { SetLifePersonality(LifePersonalityNormal, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Personality_Shy", delegate { SetLifeAffection(LifeAffectionShy, "action-legacy-personality-shy"); }));
+            RegisterAction(new JSONStorableAction("HLA_Personality_Bold", delegate { SetLifePersonality(LifePersonalityBold, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Affection_Neutral", delegate { SetLifeAffection(LifeAffectionNeutral, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Affection_Like", delegate { SetLifeAffection(LifeAffectionLike, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Affection_Dislike", delegate { SetLifeAffection(LifeAffectionDislike, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Affection_Shy", delegate { SetLifeAffection(LifeAffectionShy, "action-legacy-shy"); }));
+            RegisterAction(new JSONStorableAction("HLA_Affection_Sad", delegate { SetLifeAffection(LifeAffectionShy, "action"); }));
+            RegisterAction(new JSONStorableAction("HLA_Expression_Neutral", delegate { SetLifeAffection(LifeAffectionNeutral, "action-expression"); }));
+            RegisterAction(new JSONStorableAction("HLA_Expression_Like", delegate { SetLifeAffection(LifeAffectionLike, "action-expression"); }));
+            RegisterAction(new JSONStorableAction("HLA_Expression_Dislike", delegate { SetLifeAffection(LifeAffectionDislike, "action-expression"); }));
+            RegisterAction(new JSONStorableAction("HLA_Expression_Shy", delegate { SetLifeAffection(LifeAffectionShy, "action-expression-legacy-shy"); }));
+            RegisterAction(new JSONStorableAction("HLA_Expression_Sad", delegate { SetLifeAffection(LifeAffectionShy, "action-expression"); }));
+
+            // v117: AI-facing external IF aliases. HumanReceiver HUM_LIFE(...) maps to these names,
+            // but they are also usable directly from VaM triggers.
+            RegisterAction(new JSONStorableAction("HLA_Life_State_Sleep", delegate { SetLifeState(LifeStateSleeping, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_State_Sleeping", delegate { SetLifeState(LifeStateSleeping, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_State_Quiet", delegate { SetLifeState(LifeStateQuiet, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_State_Normal", delegate { SetLifeState(LifeStateNormal, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_State_Active", delegate { SetLifeState(LifeStateActive, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Expression_Neutral", delegate { SetLifeAffection(LifeAffectionNeutral, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Expression_Like", delegate { SetLifeAffection(LifeAffectionLike, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Expression_Dislike", delegate { SetLifeAffection(LifeAffectionDislike, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Expression_Sad", delegate { SetLifeAffection(LifeAffectionShy, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Personality_Normal", delegate { SetLifePersonality(LifePersonalityNormal, "action-life-if"); }));
+            RegisterAction(new JSONStorableAction("HLA_Life_Personality_Bold", delegate { SetLifePersonality(LifePersonalityBold, "action-life-if"); }));
 
             ResolveControllers();
             ScheduleNextGesture("init");
+            ScheduleNextLookGesture("init");
             initialized = true;
+            ApplyLifeStateEyeControl("init");
+            ApplyAffectionMorphTarget("init");
             UpdateStatus("Ready");
         }
         catch (Exception e)
@@ -552,17 +799,21 @@ public class HumanLifeAction : MVRScript
     {
         if (!initialized) return;
 
+        MaintainLifeStateEyeControl();
+        MaintainAffectionMorphControl();
+
         if (lifeEnabled == null || !lifeEnabled.val)
         {
             StopBreathLoop("life-off");
             StopLegBaseLoop("life-off");
+            StopLookGesture("life-off", false);
             if (statusText != null) statusText.val = "HumanLifeAction: OFF / last=" + lastGesture;
             return;
         }
 
         if (!IsHeadLookEnabled() && activeLookSnapshot != null)
         {
-            StopLifeGesture("head-look-off");
+            StopLookGesture("head-look-off");
         }
 
         UpdateBreathLoopState();
@@ -572,6 +823,8 @@ public class HumanLifeAction : MVRScript
             StopLifeGestureForTargetGrabberHeldHand();
 
         if (IsLifeGesturePausedByHba()) return;
+
+        UpdateLookGestureLoop();
 
         if (lifeGestureRoutine != null) return;
 
@@ -602,7 +855,7 @@ public class HumanLifeAction : MVRScript
         if (forceCoverOnNextGesture)
         {
             forceCoverOnNextGesture = false;
-            if (randomCoverEnabled != null && randomCoverEnabled.val && SafeFloat(coverFrequency, DefaultCoverFrequency) > 0.001f)
+            if (randomCoverEnabled != null && randomCoverEnabled.val && EffectiveCoverFrequency() > 0.001f)
             {
                 Log("Life roll / selected=RandomCover / mode=hba-resume");
                 RequestRandomCover("hba-resume");
@@ -615,7 +868,7 @@ public class HumanLifeAction : MVRScript
         // Example default: Cover=90 means about 90% cover, then Look rolls only in the remaining 10%.
         if (randomCoverEnabled != null && randomCoverEnabled.val)
         {
-            float coverPercent = Mathf.Clamp(SafeFloat(coverFrequency, DefaultCoverFrequency), 0.0f, 100.0f);
+            float coverPercent = EffectiveCoverFrequency();
             if (coverPercent > 0.001f)
             {
                 float coverRoll = UnityEngine.Random.Range(0.0f, 100.0f);
@@ -633,65 +886,87 @@ public class HumanLifeAction : MVRScript
             }
         }
 
-        // v046: Look Frequency is also interpreted as a percent roll, but only after Cover misses.
-        if (IsHeadLookEnabled())
-        {
-            float lookPercent = Mathf.Clamp(SafeFloat(lookFrequency, DefaultLookFrequency), 0.0f, 100.0f);
-            if (lookPercent > 0.001f)
-            {
-                float lookRoll = UnityEngine.Random.Range(0.0f, 100.0f);
-                if (lookRoll <= lookPercent)
-                {
-                    List<GestureChoice> lookChoices = new List<GestureChoice>();
-                    float lookAwayWeight = Mathf.Clamp(SafeFloat(lookAwayPercent, DefaultLookAwayPercent), 0.0f, 100.0f);
-                    float lookRemainWeight = Mathf.Max(0.0f, 100.0f - lookAwayWeight);
-                    float lookTargetWeight = lookRemainWeight * Mathf.Clamp01(SafeFloat(lookTargetPercent, DefaultLookTargetPercent) / 100.0f);
-                    float lookCameraWeight = Mathf.Max(0.0f, lookRemainWeight - lookTargetWeight);
-
-                    if (lookTargetEnabled != null && lookTargetEnabled.val && lookTargetWeight > 0.001f)
-                        lookChoices.Add(new GestureChoice("LookTarget", lookTargetWeight, delegate { RequestLookTarget("life"); }));
-                    if (lookCameraEnabled != null && lookCameraEnabled.val && lookCameraWeight > 0.001f)
-                        lookChoices.Add(new GestureChoice("LookCamera", lookCameraWeight, delegate { RequestLookCamera("life"); }));
-                    if (lookTargetEnabled != null && lookTargetEnabled.val && lookAwayWeight > 0.001f)
-                        lookChoices.Add(new GestureChoice("LookAway", lookAwayWeight, delegate { RequestLookAway("life"); }));
-
-                    float lookTotal = 0.0f;
-                    for (int i = 0; i < lookChoices.Count; i++)
-                    {
-                        if (lookChoices[i] != null && lookChoices[i].weight > 0.0f) lookTotal += lookChoices[i].weight;
-                    }
-
-                    if (lookTotal > 0.001f)
-                    {
-                        float pickRoll = UnityEngine.Random.Range(0.0f, lookTotal);
-                        float acc = 0.0f;
-                        for (int i = 0; i < lookChoices.Count; i++)
-                        {
-                            GestureChoice c = lookChoices[i];
-                            if (c == null || c.weight <= 0.0f) continue;
-                            acc += c.weight;
-                            if (pickRoll <= acc)
-                            {
-                                Log("Life roll / selected=" + c.name
-                                    + " / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
-                                    + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
-                                    + " / pick=" + pickRoll.ToString("F1", CultureInfo.InvariantCulture)
-                                    + " / lookTotal=" + lookTotal.ToString("F1", CultureInfo.InvariantCulture)
-                                    + " / mode=independent");
-                                c.action();
-                                return;
-                            }
-                        }
-                    }
-                }
-
-                Log("Life roll / look miss / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
-                    + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture));
-            }
-        }
+        // v122: LookTarget/LookCamera/LookAway are driven by the independent look timer.
+        // Cover no longer suppresses gaze just because Cover won this gesture roll.
 
         Log("Life roll / selected=None / mode=independent");
         GestureNone();
+    }
+
+    void UpdateLookGestureLoop()
+    {
+        if (!IsHeadLookEnabled()) return;
+        if (lookGestureRoutine != null) return;
+        if (Time.time < nextLookGestureTime) return;
+        RunRandomLookGesture();
+    }
+
+    void RunRandomLookGesture()
+    {
+        ResolveControllers();
+        float lookPercent = EffectiveLookFrequency();
+        if (lookPercent <= 0.001f)
+        {
+            ScheduleNextLookGesture("look-disabled");
+            return;
+        }
+
+        float lookRoll = UnityEngine.Random.Range(0.0f, 100.0f);
+        if (lookRoll > lookPercent)
+        {
+            Log("Look roll / miss / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
+                + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
+                + " / mode=independent-timer");
+            ScheduleNextLookGesture("look-miss");
+            return;
+        }
+
+        List<GestureChoice> lookChoices = new List<GestureChoice>();
+        float lookAwayWeight = EffectiveLookAwayPercent();
+        float lookRemainWeight = Mathf.Max(0.0f, 100.0f - lookAwayWeight);
+        float lookTargetWeight = lookRemainWeight * Mathf.Clamp01(EffectiveLookTargetPercent() / 100.0f);
+        float lookCameraWeight = Mathf.Max(0.0f, lookRemainWeight - lookTargetWeight);
+
+        if (lookTargetEnabled != null && lookTargetEnabled.val && lookTargetWeight > 0.001f)
+            lookChoices.Add(new GestureChoice("LookTarget", lookTargetWeight, delegate { RequestLookTarget("look-timer"); }));
+        if (lookCameraEnabled != null && lookCameraEnabled.val && lookCameraWeight > 0.001f)
+            lookChoices.Add(new GestureChoice("LookCamera", lookCameraWeight, delegate { RequestLookCamera("look-timer"); }));
+        if (lookAwayWeight > 0.001f)
+            lookChoices.Add(new GestureChoice("LookAway", lookAwayWeight, delegate { RequestLookAway("look-timer"); }));
+
+        float lookTotal = 0.0f;
+        for (int i = 0; i < lookChoices.Count; i++)
+        {
+            if (lookChoices[i] != null && lookChoices[i].weight > 0.0f) lookTotal += lookChoices[i].weight;
+        }
+
+        if (lookTotal <= 0.001f)
+        {
+            ScheduleNextLookGesture("look-no-choice");
+            return;
+        }
+
+        float pickRoll = UnityEngine.Random.Range(0.0f, lookTotal);
+        float acc = 0.0f;
+        for (int i = 0; i < lookChoices.Count; i++)
+        {
+            GestureChoice c = lookChoices[i];
+            if (c == null || c.weight <= 0.0f) continue;
+            acc += c.weight;
+            if (pickRoll <= acc)
+            {
+                Log("Look roll / selected=" + c.name
+                    + " / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / pick=" + pickRoll.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / lookTotal=" + lookTotal.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / mode=independent-timer");
+                c.action();
+                return;
+            }
+        }
+
+        ScheduleNextLookGesture("look-fallback");
     }
 
     void GestureNone()
@@ -716,7 +991,7 @@ public class HumanLifeAction : MVRScript
 
     void UpdateBreathLoopState()
     {
-        if (breathEnabled == null || !breathEnabled.val || SafeFloat(breathScale, DefaultBreathScale) <= 0.0001f)
+        if (breathEnabled == null || !breathEnabled.val || EffectiveBreathScale() <= 0.0001f)
         {
             StopBreathLoop("breath-disabled");
             return;
@@ -886,7 +1161,8 @@ public class HumanLifeAction : MVRScript
 
     bool IsShoulderSwayEnabled()
     {
-        return shoulderSwayEnabled != null && shoulderSwayEnabled.val && SafeFloat(shoulderSwayScale, DefaultShoulderSwayScale) > 0.0001f;
+        // v102: Sleeping still gets a very small elbow/shoulder micro-sway so it does not look frozen.
+        return shoulderSwayEnabled != null && shoulderSwayEnabled.val && EffectiveShoulderSwayScale() > 0.0001f;
     }
 
     bool IsBreathShoulderSwaySuppressed()
@@ -1230,14 +1506,16 @@ public class HumanLifeAction : MVRScript
         if (lifeGesturePausedByHba)
         {
             lifeGesturePausedByHba = false;
-            if (randomCoverEnabled != null && randomCoverEnabled.val && SafeFloat(coverFrequency, DefaultCoverFrequency) > 0.001f)
+            if (randomCoverEnabled != null && randomCoverEnabled.val && EffectiveCoverFrequency() > 0.001f)
             {
                 forceCoverOnNextGesture = true;
                 ScheduleNextGestureSoon("hba-idle-resume-cover", 0.20f, 0.55f);
+                ScheduleNextLookGestureSoon("hba-idle-resume-look", 0.25f, 0.70f);
             }
             else
             {
                 ScheduleNextGestureSoon("hba-idle-resume", 0.30f, 0.80f);
+                ScheduleNextLookGestureSoon("hba-idle-resume-look", 0.35f, 0.90f);
             }
             Log("Life gestures auto resume after HBA idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
         }
@@ -1246,6 +1524,8 @@ public class HumanLifeAction : MVRScript
 
     void StopLifeGestureForHbaActive(float progress, bool active)
     {
+        StopLookGesture("hba-active", false);
+
         if (lifeGestureRoutine != null)
         {
             try { StopCoroutine(lifeGestureRoutine); } catch { }
@@ -1655,6 +1935,10 @@ public class HumanLifeAction : MVRScript
 
     float EffectiveBreathCycleSeconds()
     {
+        string state = CurrentLifeState();
+        if (state == LifeStateSleeping) return 3.85f;
+        if (state == LifeStateQuiet) return 3.10f;
+        if (state == LifeStateActive) return 1.85f;
         string mode = CurrentMotionMode();
         if (mode == LifeMotionSmall) return 2.65f;
         if (mode == LifeMotionLarge) return 1.85f;
@@ -1663,13 +1947,20 @@ public class HumanLifeAction : MVRScript
 
     void RequestLookTarget(string source)
     {
+        if (CurrentLifeState() == LifeStateSleeping)
+        {
+            UpdateStatus("LookTarget skipped: Sleeping");
+            ScheduleNextLookGesture("look-target-sleeping");
+            return;
+        }
+
         ResolveControllers();
         Atom target = GetSelectedTargetPerson();
         Vector3 targetPos;
         if (target == null || !TryGetPersonLookPoint(target, out targetPos))
         {
             UpdateStatus("LookTarget skipped: no target");
-            ScheduleNextGesture("look-target-no-target");
+            ScheduleNextLookGesture("look-target-no-target");
             return;
         }
         RequestLookAtPosition("LookTarget", targetPos, source, target);
@@ -1677,12 +1968,19 @@ public class HumanLifeAction : MVRScript
 
     void RequestLookCamera(string source)
     {
+        if (CurrentLifeState() == LifeStateSleeping)
+        {
+            UpdateStatus("LookCamera skipped: Sleeping");
+            ScheduleNextLookGesture("look-camera-sleeping");
+            return;
+        }
+
         ResolveControllers();
         Camera cam = Camera.main;
         if (cam == null || cam.transform == null)
         {
             UpdateStatus("LookCamera skipped: no Camera.main");
-            ScheduleNextGesture("look-camera-no-camera");
+            ScheduleNextLookGesture("look-camera-no-camera");
             return;
         }
         RequestLookAtPosition("LookCamera", cam.transform.position, source);
@@ -1694,7 +1992,7 @@ public class HumanLifeAction : MVRScript
         if (headControl == null)
         {
             UpdateStatus("LookAway skipped: no headControl");
-            ScheduleNextGesture("look-away-no-head");
+            ScheduleNextLookGesture("look-away-no-head");
             return;
         }
 
@@ -1742,18 +2040,18 @@ public class HumanLifeAction : MVRScript
         if (!IsHeadLookEnabled())
         {
             UpdateStatus(label + " skipped: Life Head Look OFF");
-            ScheduleNextGesture(label + "-headlook-off");
+            ScheduleNextLookGesture(label + "-headlook-off");
             return;
         }
         if (headControl == null)
         {
             UpdateStatus(label + " skipped: no headControl");
-            ScheduleNextGesture(label + "-no-head");
+            ScheduleNextLookGesture(label + "-no-head");
             return;
         }
 
-        StopLifeGesture(source + ":before-look");
-        lifeGestureRoutine = StartCoroutine(LookAtRoutine(label, targetPos, source, trackingTarget));
+        StopLookGesture(source + ":before-look", false);
+        lookGestureRoutine = StartCoroutine(LookAtRoutine(label, targetPos, source, trackingTarget));
     }
 
     IEnumerator LookAtRoutine(string label, Vector3 targetPos, string source, Atom trackingTarget)
@@ -1779,8 +2077,8 @@ public class HumanLifeAction : MVRScript
             RestoreController(eyeSnap);
             activeLookSnapshot = null;
             activeEyeSnapshot = null;
-            lifeGestureRoutine = null;
-            ScheduleNextGesture("look-zero-dir");
+            lookGestureRoutine = null;
+            ScheduleNextLookGesture("look-zero-dir");
             yield break;
         }
         dir.Normalize();
@@ -1798,7 +2096,7 @@ public class HumanLifeAction : MVRScript
         {
             if (IsPoseChangeSafeOn() && ControllerExternallyMoved(headControl, lastAppliedPos, lastAppliedRot))
             {
-                AbortGestureForPoseChange(snap, null, label + ":enter");
+                AbortLookGestureForPoseChange(snap, null, label + ":enter");
                 yield break;
             }
             t += Time.deltaTime;
@@ -1829,7 +2127,7 @@ public class HumanLifeAction : MVRScript
         {
             if (IsPoseChangeSafeOn() && ControllerExternallyMoved(headControl, lastAppliedPos, lastAppliedRot))
             {
-                AbortGestureForPoseChange(snap, null, label + ":hold");
+                AbortLookGestureForPoseChange(snap, null, label + ":hold");
                 yield break;
             }
 
@@ -1869,7 +2167,7 @@ public class HumanLifeAction : MVRScript
         {
             if (IsPoseChangeSafeOn() && ControllerExternallyMoved(headControl, lastAppliedPos, lastAppliedRot))
             {
-                AbortGestureForPoseChange(snap, null, label + ":return");
+                AbortLookGestureForPoseChange(snap, null, label + ":return");
                 yield break;
             }
             t += Time.deltaTime;
@@ -1890,9 +2188,9 @@ public class HumanLifeAction : MVRScript
         RestoreController(eyeSnap);
         activeLookSnapshot = null;
         activeEyeSnapshot = null;
-        lifeGestureRoutine = null;
+        lookGestureRoutine = null;
         UpdateStatus(label + " done");
-        ScheduleNextGesture(label + "-done");
+        ScheduleNextLookGesture(label + "-done");
     }
 
     void RequestRandomCover(string source)
@@ -1910,7 +2208,7 @@ public class HumanLifeAction : MVRScript
 
         Vector3 targetPos;
         string targetLabel;
-        if (!TryPickCoverTarget(out targetPos, out targetLabel))
+        if (!TryPickCoverTarget(hand, out targetPos, out targetLabel))
         {
             UpdateStatus("RandomCover skipped: no cover target");
             LogCover("Cover selected / skipped=no-target / hand=" + GetHandLabel(hand) + " / source=" + source);
@@ -1967,13 +2265,13 @@ public class HumanLifeAction : MVRScript
     {
         ResolveControllers();
         Vector3 targetPos;
-        if (!TryGetSelfShoulderPoint(0, out targetPos))
+        if (!TryGetSelfHeadCoverPoint(out targetPos))
         {
-            UpdateStatus("Test Self Head skipped: no self shoulder surface point");
-            LogCover("Cover test skipped / target=Self Shoulder / reason=no-self-shoulder / source=" + source);
+            UpdateStatus("Test Self Head skipped: no self head point");
+            LogCover("Cover test skipped / target=Self Head / reason=no-self-head / source=" + source);
             return;
         }
-        RequestFixedCoverTarget("Self Shoulder", targetPos, "test-self-head-compat:" + source);
+        RequestFixedCoverTarget("Self Head", targetPos, "test-self-head:" + source);
     }
 
     void RequestTestSelfHipCover(string source)
@@ -1994,13 +2292,13 @@ public class HumanLifeAction : MVRScript
         ResolveControllers();
         Atom target = GetSelectedTargetPerson();
         Vector3 targetPos;
-        if (target == null || !TryGetTargetShoulderPoint(target, 0, out targetPos))
+        if (target == null || !TryGetTargetHeadCoverPoint(target, out targetPos))
         {
-            UpdateStatus("Test Target Head skipped: no target shoulder surface point");
-            LogCover("Cover test skipped / target=Target Shoulder / reason=no-target-shoulder / source=" + source);
+            UpdateStatus("Test Target Head skipped: no target head point");
+            LogCover("Cover test skipped / target=Target Head / reason=no-target-head / source=" + source);
             return;
         }
-        RequestFixedCoverTarget("Target Shoulder", targetPos, "test-target-head-compat:" + source);
+        RequestFixedCoverTarget("Target Head", targetPos, "test-target-head:" + source);
     }
 
     void RequestTestTargetHipCover(string source)
@@ -3784,7 +4082,7 @@ public class HumanLifeAction : MVRScript
         return mutualBack;
     }
 
-    bool TryPickCoverTarget(out Vector3 pos, out string label)
+    bool TryPickCoverTarget(FreeControllerV3 hand, out Vector3 pos, out string label)
     {
         List<string> selfLabels = new List<string>();
         List<Vector3> selfPositions = new List<Vector3>();
@@ -3797,54 +4095,182 @@ public class HumanLifeAction : MVRScript
         Vector3 p;
         // v089: Life cover should not target Head/Chest/Hip IK centers.
         // Use shoulder / upper chest / belly / thigh body-surface estimates instead.
-        if (TryGetSelfShoulderPoint(-1, out p)) { selfLabels.Add("Self L Shoulder"); selfPositions.Add(p); selfWeights.Add(4.0f); }
-        if (TryGetSelfShoulderPoint(1, out p)) { selfLabels.Add("Self R Shoulder"); selfPositions.Add(p); selfWeights.Add(4.0f); }
-        if (TryGetSelfUpperChestSurfacePoint(out p)) { selfLabels.Add("Self UpperChest Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
-        if (TryGetSelfBellySurfacePoint(out p)) { selfLabels.Add("Self Belly Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
-        if (TryGetSelfThighSurfacePoint(out p)) { selfLabels.Add("Self Thigh Surface"); selfPositions.Add(p); selfWeights.Add(2.0f); }
-        selfLabels.Add("Free Hand"); selfPositions.Add(Vector3.zero); selfWeights.Add(1.0f);
+        string coverState = CurrentLifeState();
+        string coverPersonality = CurrentLifePersonality();
+        string coverAffection = CurrentLifeAffection();
+        float selfShoulderWeight = 4.0f;
+        float selfHeadWeight = 1.8f;
+        float selfFaceWeight = 2.4f;
+        float selfMouthChinWeight = 1.1f;
+        float selfCheekWeight = 1.2f;
+        float selfUpperChestWeight = 2.0f;
+        float selfBellyWeight = 2.0f;
+        float selfThighWeight = 2.0f;
+        float selfFreeWeight = 1.0f;
+        float selfHipFidgetWeight = 0.0f;
+
+        // v102: Sleeping/Quiet should feel alive, but must remain self-only.
+        // Favor Free Hand and Self Hip fidget paths over target/upper-body reaching.
+        if (coverState == LifeStateSleeping)
+        {
+            selfShoulderWeight = 1.0f;
+            selfHeadWeight = 0.35f;
+            selfFaceWeight = 0.35f;
+            selfMouthChinWeight = 0.15f;
+            selfCheekWeight = 0.35f;
+            selfUpperChestWeight = 0.8f;
+            selfBellyWeight = 2.2f;
+            selfThighWeight = 4.2f;
+            selfFreeWeight = 6.0f;
+            selfHipFidgetWeight = 3.2f;
+        }
+        else if (coverState == LifeStateQuiet)
+        {
+            selfShoulderWeight = 2.0f;
+            selfHeadWeight = 1.2f;
+            selfFaceWeight = 1.8f;
+            selfMouthChinWeight = 0.9f;
+            selfCheekWeight = 1.0f;
+            selfUpperChestWeight = 1.4f;
+            selfBellyWeight = 2.8f;
+            selfThighWeight = 4.0f;
+            selfFreeWeight = 4.0f;
+            selfHipFidgetWeight = 4.0f;
+        }
+        else if (coverAffection == LifeAffectionShy || coverState == LifeStateShy || coverPersonality == LifePersonalityShy)
+        {
+            selfShoulderWeight = 2.2f;
+            selfHeadWeight = 2.4f;
+            selfFaceWeight = 3.0f;
+            selfMouthChinWeight = 1.7f;
+            selfCheekWeight = 1.6f;
+            selfUpperChestWeight = 1.5f;
+            selfBellyWeight = 3.0f;
+            selfThighWeight = 4.2f;
+            selfFreeWeight = 4.5f;
+            selfHipFidgetWeight = 4.5f;
+        }
+        else if (coverPersonality == LifePersonalityBold)
+        {
+            selfShoulderWeight = 4.5f;
+            selfHeadWeight = 1.6f;
+            selfFaceWeight = 2.0f;
+            selfMouthChinWeight = 0.8f;
+            selfCheekWeight = 1.0f;
+            selfUpperChestWeight = 2.4f;
+            selfBellyWeight = 2.2f;
+            selfThighWeight = 2.0f;
+            selfFreeWeight = 0.8f;
+            selfHipFidgetWeight = 1.2f;
+        }
+
+        if (coverState != LifeStateSleeping && coverState != LifeStateQuiet)
+        {
+            if (coverAffection == LifeAffectionDislike)
+            {
+                selfThighWeight *= 1.15f;
+                selfHeadWeight *= 0.65f;
+                selfFaceWeight *= 0.65f;
+                selfMouthChinWeight *= 0.55f;
+                selfCheekWeight *= 0.65f;
+                selfFreeWeight *= 1.35f;
+                selfHipFidgetWeight = Mathf.Max(selfHipFidgetWeight, 2.8f);
+            }
+            else if (coverAffection == LifeAffectionShy)
+            {
+                selfThighWeight *= 1.18f;
+                selfHeadWeight *= 1.20f;
+                selfFaceWeight *= 1.25f;
+                selfMouthChinWeight *= 1.35f;
+                selfCheekWeight *= 1.20f;
+                selfFreeWeight *= 1.45f;
+                selfHipFidgetWeight = Mathf.Max(selfHipFidgetWeight, 4.0f);
+            }
+            else if (coverAffection == LifeAffectionLike)
+            {
+                selfHeadWeight *= 0.90f;
+                selfFaceWeight *= 0.90f;
+                selfMouthChinWeight *= 0.85f;
+                selfCheekWeight *= 0.95f;
+                selfFreeWeight *= 0.72f;
+                selfHipFidgetWeight *= 0.78f;
+            }
+        }
+
+        int coverHandSide = GetStrictHandSideForCover(hand);
+        if (ShouldAllowShoulderSideForHand(coverHandSide, -1) && TryGetSelfShoulderPoint(-1, out p)) { selfLabels.Add("Self L Shoulder"); selfPositions.Add(p); selfWeights.Add(selfShoulderWeight); }
+        if (ShouldAllowShoulderSideForHand(coverHandSide, 1) && TryGetSelfShoulderPoint(1, out p)) { selfLabels.Add("Self R Shoulder"); selfPositions.Add(p); selfWeights.Add(selfShoulderWeight); }
+        if (coverHandSide != 0)
+        {
+            LogCover("Cover shoulder side filter / hand=" + GetHandLabel(hand)
+                + " / allowed=" + (coverHandSide < 0 ? "L" : "R")
+                + " / opposite=skip");
+        }
+        // v121: restore the existing legacy Head / Face / Mouth labels so the
+        // old head-reach, self-face chest-avoid and L-hand front-lane code paths are used again.
+        if (TryGetSelfHeadCoverPoint(out p)) { selfLabels.Add("Self Head"); selfPositions.Add(p); selfWeights.Add(selfHeadWeight); }
+        if (TryGetSelfFaceCoverPoint(out p)) { selfLabels.Add("Self Face"); selfPositions.Add(p); selfWeights.Add(selfFaceWeight); }
+        if (TryGetSelfMouthCoverPoint(out p)) { selfLabels.Add("Self Mouth"); selfPositions.Add(p); selfWeights.Add(selfMouthChinWeight); }
+        // Cheek L/R from v120 is kept as a low-weight extra; the main restored behavior is Head/Face/Mouth.
+        if (ShouldAllowShoulderSideForHand(coverHandSide, -1) && TryGetSelfCheekSurfacePoint(-1, out p)) { selfLabels.Add("Self L Cheek Surface"); selfPositions.Add(p); selfWeights.Add(selfCheekWeight * 0.45f); }
+        if (ShouldAllowShoulderSideForHand(coverHandSide, 1) && TryGetSelfCheekSurfacePoint(1, out p)) { selfLabels.Add("Self R Cheek Surface"); selfPositions.Add(p); selfWeights.Add(selfCheekWeight * 0.45f); }
+        if (TryGetSelfUpperChestSurfacePoint(out p)) { selfLabels.Add("Self UpperChest Surface"); selfPositions.Add(p); selfWeights.Add(selfUpperChestWeight); }
+        if (TryGetSelfBellySurfacePoint(out p)) { selfLabels.Add("Self Belly Surface"); selfPositions.Add(p); selfWeights.Add(selfBellyWeight); }
+        if (TryGetSelfThighSurfacePoint(out p)) { selfLabels.Add("Self Thigh Surface"); selfPositions.Add(p); selfWeights.Add(selfThighWeight); }
+        if (selfHipFidgetWeight > 0.001f) { selfLabels.Add("Self Hip"); selfPositions.Add(Vector3.zero); selfWeights.Add(selfHipFidgetWeight); }
+        selfLabels.Add("Free Hand"); selfPositions.Add(Vector3.zero); selfWeights.Add(selfFreeWeight);
 
         Atom target = GetSelectedTargetPerson();
-        string targetSuppressReason;
-        bool suppressTargetCover = IsTargetCoverSuppressedForMutualBack(target, out targetSuppressReason);
+        string targetSuppressReason = "";
+        bool stateSelfOnlyCover = coverState == LifeStateSleeping || coverState == LifeStateQuiet;
+        bool suppressTargetCover = stateSelfOnlyCover || IsTargetCoverSuppressedForMutualBack(target, out targetSuppressReason);
+        if (stateSelfOnlyCover) targetSuppressReason = "state-self-only";
         if (target != null && !suppressTargetCover)
         {
-            if (TryGetTargetShoulderPoint(target, -1, out p)) { targetLabels.Add("Target L Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f); }
-            if (TryGetTargetShoulderPoint(target, 1, out p)) { targetLabels.Add("Target R Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f); }
-            if (TryGetTargetUpperChestSurfacePoint(target, out p)) { targetLabels.Add("Target UpperChest Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
-            if (TryGetTargetBellySurfacePoint(target, out p)) { targetLabels.Add("Target Belly Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
-            if (TryGetTargetThighSurfacePoint(target, out p)) { targetLabels.Add("Target Thigh Surface"); targetPositions.Add(p); targetWeights.Add(2.0f); }
-            targetLabels.Add("Free Hand"); targetPositions.Add(Vector3.zero); targetWeights.Add(1.0f);
+            float targetWeightScale = 1.0f;
+            if (coverAffection == LifeAffectionDislike) targetWeightScale = 0.55f;
+            else if (coverAffection == LifeAffectionShy) targetWeightScale = 0.35f;
+            else if (coverAffection == LifeAffectionLike) targetWeightScale = 1.25f;
+
+            if (ShouldAllowShoulderSideForHand(coverHandSide, -1) && TryGetTargetShoulderPoint(target, -1, out p)) { targetLabels.Add("Target L Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f * targetWeightScale); }
+            if (ShouldAllowShoulderSideForHand(coverHandSide, 1) && TryGetTargetShoulderPoint(target, 1, out p)) { targetLabels.Add("Target R Shoulder"); targetPositions.Add(p); targetWeights.Add(4.0f * targetWeightScale); }
+            if (TryGetTargetHeadCoverPoint(target, out p)) { targetLabels.Add("Target Head"); targetPositions.Add(p); targetWeights.Add(0.60f * targetWeightScale); }
+            if (TryGetTargetFaceCoverPoint(target, out p)) { targetLabels.Add("Target Face"); targetPositions.Add(p); targetWeights.Add(0.85f * targetWeightScale); }
+            if (TryGetTargetMouthCoverPoint(target, out p)) { targetLabels.Add("Target Mouth"); targetPositions.Add(p); targetWeights.Add(0.35f * targetWeightScale); }
+            if (TryGetTargetUpperChestSurfacePoint(target, out p)) { targetLabels.Add("Target UpperChest Surface"); targetPositions.Add(p); targetWeights.Add(2.0f * targetWeightScale); }
+            if (TryGetTargetBellySurfacePoint(target, out p)) { targetLabels.Add("Target Belly Surface"); targetPositions.Add(p); targetWeights.Add(2.0f * targetWeightScale); }
+            if (TryGetTargetThighSurfacePoint(target, out p)) { targetLabels.Add("Target Thigh Surface"); targetPositions.Add(p); targetWeights.Add(2.0f * targetWeightScale); }
+            targetLabels.Add("Free Hand"); targetPositions.Add(Vector3.zero); targetWeights.Add(Mathf.Max(0.25f, 1.0f * targetWeightScale));
         }
         else if (target != null && suppressTargetCover)
         {
             LogCover("Cover target group suppressed / reason=" + targetSuppressReason + " / fallback=SelfOrFree");
         }
 
-        bool preferSelf = UnityEngine.Random.Range(0.0f, 100.0f) < Mathf.Clamp(SafeFloat(coverSelfPercent, DefaultCoverSelfPercent), 0.0f, 100.0f);
+        bool preferSelf = UnityEngine.Random.Range(0.0f, 100.0f) < EffectiveCoverSelfPercent();
 
         if (preferSelf && TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
-            Log("Cover target group / Self / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=surface-shoulder4x2 free1");
+            Log("Cover target group / Self / self%=" + EffectiveCoverSelfPercent().ToString("F0", CultureInfo.InvariantCulture)
+                + " / weighted=head/face/mouth+surface+shoulder free1");
             return true;
         }
         if (!preferSelf && TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
-            Log("Cover target group / Target / self%=" + SafeFloat(coverSelfPercent, DefaultCoverSelfPercent).ToString("F0", CultureInfo.InvariantCulture)
-                + " / weighted=surface-shoulder4x2 free1");
+            Log("Cover target group / Target / self%=" + EffectiveCoverSelfPercent().ToString("F0", CultureInfo.InvariantCulture)
+                + " / weighted=head/face/mouth+surface+shoulder free1");
             return true;
         }
 
         // Fallback to the other group when the preferred side has no point.
         if (TryPickFromWeightedList(selfLabels, selfPositions, selfWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Self / weighted=surface-shoulder4x2 free1");
+            Log("Cover target group fallback / Self / weighted=head/face/mouth+surface+shoulder free1");
             return true;
         }
         if (TryPickFromWeightedList(targetLabels, targetPositions, targetWeights, out pos, out label))
         {
-            Log("Cover target group fallback / Target / weighted=surface-shoulder4x2 free1");
+            Log("Cover target group fallback / Target / weighted=head/face/mouth+surface+shoulder free1");
             return true;
         }
 
@@ -4005,46 +4431,492 @@ public class HumanLifeAction : MVRScript
 
     bool TryGetSelfShoulderPoint(int side, out Vector3 pos)
     {
-        float s = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
-        return TryGetBodySurfacePoint(containingAtom, 1.38f, s, 0.055f, out pos);
+        return TryGetLiveShoulderPoint(containingAtom, side, out pos, "Self Shoulder");
     }
 
     bool TryGetTargetShoulderPoint(Atom atom, int side, out Vector3 pos)
     {
-        float s = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
-        return TryGetBodySurfacePoint(atom, 1.38f, s, 0.055f, out pos);
+        return TryGetLiveShoulderPoint(atom, side, out pos, "Target Shoulder");
+    }
+
+    bool TryGetLiveShoulderPoint(Atom atom, int side, out Vector3 pos, string label)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest", "abdomenControl", "abdomen");
+        if (chest == null)
+        {
+            float fallbackSide = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
+            return TryGetBodySurfacePoint(atom, 1.38f, fallbackSide, 0.055f, out pos);
+        }
+
+        FreeControllerV3 head = FindControllerByAliasesOnAtom(atom, "headControl", "head");
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip", "pelvisControl", "pelvis");
+
+        Vector3 chestPos = GetControllerPosition(chest);
+        Vector3 upAxis = Vector3.up;
+        if (head != null)
+        {
+            upAxis = GetControllerPosition(head) - chestPos;
+        }
+        if (upAxis.sqrMagnitude < 0.0001f && hip != null)
+        {
+            upAxis = chestPos - GetControllerPosition(hip);
+        }
+        if (upAxis.sqrMagnitude < 0.0001f)
+            upAxis = Vector3.up;
+        upAxis.Normalize();
+
+        Quaternion chestRot = GetControllerRotation(chest);
+        Vector3 right = chestRot * Vector3.right;
+        right = Vector3.ProjectOnPlane(right, upAxis);
+        if (right.sqrMagnitude < 0.0001f)
+            right = GetAtomRightFallback(atom, upAxis);
+        if (right.sqrMagnitude < 0.0001f)
+            right = Vector3.right;
+        right.Normalize();
+
+        Vector3 forward = chestRot * Vector3.forward;
+        forward = Vector3.ProjectOnPlane(forward, upAxis);
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = GetAtomForwardFallback(atom, upAxis);
+        if (forward.sqrMagnitude < 0.0001f)
+            forward = Vector3.forward;
+        forward.Normalize();
+
+        float sideOffset = side < 0 ? -0.22f : (side > 0 ? 0.22f : 0.0f);
+        float upOffset = 0.12f;
+        float forwardOffset = 0.050f;
+        pos = chestPos + upAxis * upOffset + right * sideOffset + forward * forwardOffset;
+
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Live shoulder point / label=" + label
+                + " / atom=" + SafeAtomName(atom)
+                + " / side=" + side.ToString(CultureInfo.InvariantCulture)
+                + " / chest=" + chestPos.ToString("F3")
+                + " / up=" + upAxis.ToString("F3")
+                + " / right=" + right.ToString("F3")
+                + " / forward=" + forward.ToString("F3")
+                + " / pos=" + pos.ToString("F3"));
+        }
+
+        return true;
+    }
+
+    Vector3 GetAtomRightFallback(Atom atom, Vector3 upAxis)
+    {
+        Vector3 right = Vector3.zero;
+        try
+        {
+            if (atom != null && atom.mainController != null && atom.mainController.transform != null)
+                right = atom.mainController.transform.right;
+        }
+        catch { }
+        if (right.sqrMagnitude < 0.0001f && atom != null && atom.transform != null)
+            right = atom.transform.right;
+        right = Vector3.ProjectOnPlane(right, upAxis);
+        return right;
+    }
+
+    Vector3 GetAtomForwardFallback(Atom atom, Vector3 upAxis)
+    {
+        Vector3 forward = Vector3.zero;
+        try
+        {
+            if (atom != null && atom.mainController != null && atom.mainController.transform != null)
+                forward = atom.mainController.transform.forward;
+        }
+        catch { }
+        if (forward.sqrMagnitude < 0.0001f && atom != null && atom.transform != null)
+            forward = atom.transform.forward;
+        forward = Vector3.ProjectOnPlane(forward, upAxis);
+        return forward;
+    }
+
+    int GetStrictHandSideForCover(FreeControllerV3 hand)
+    {
+        if (hand == null) return 0;
+        if (lHandControl != null && hand == lHandControl) return -1;
+        if (rHandControl != null && hand == rHandControl) return 1;
+        string label = GetHandLabel(hand);
+        if (label.IndexOf("L Hand", StringComparison.OrdinalIgnoreCase) >= 0) return -1;
+        if (label.IndexOf("R Hand", StringComparison.OrdinalIgnoreCase) >= 0) return 1;
+        return 0;
+    }
+
+    bool ShouldAllowShoulderSideForHand(int handSide, int shoulderSide)
+    {
+        if (handSide == 0 || shoulderSide == 0) return true;
+        return handSide == shoulderSide;
+    }
+
+    bool TryGetSelfHeadCoverPoint(out Vector3 pos)
+    {
+        // Use the legacy Self Head point so existing reach/chest-avoid constants continue to apply.
+        return TryGetSelfHeadPoint(out pos);
+    }
+
+    bool TryGetSelfFaceCoverPoint(out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(containingAtom, out pos, "Self Face", 0, 0);
+    }
+
+    bool TryGetSelfMouthCoverPoint(out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(containingAtom, out pos, "Self Mouth", 0, -1);
+    }
+
+    bool TryGetTargetHeadCoverPoint(Atom atom, out Vector3 pos)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 head = FindControllerByAliasesOnAtom(atom, "headControl", "head");
+        if (head != null)
+        {
+            Quaternion headRot = GetControllerRotation(head);
+            Vector3 forward = headRot * Vector3.forward;
+            if (forward.sqrMagnitude < 0.0001f) forward = GetAtomForwardFallback(atom, Vector3.up);
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+
+            Vector3 headPos = GetControllerPosition(head);
+            pos = headPos + forward * SelfHeadCoverPointForwardOffset;
+            LogLiveSurfacePoint("Target Head", atom, head.name, headPos, headRot * Vector3.up, headRot * Vector3.right, forward, pos);
+            return true;
+        }
+
+        return TryGetLiveFaceSurfacePoint(atom, out pos, "Target Head", 0, 1);
+    }
+
+    bool TryGetTargetFaceCoverPoint(Atom atom, out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(atom, out pos, "Target Face", 0, 0);
+    }
+
+    bool TryGetTargetMouthCoverPoint(Atom atom, out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(atom, out pos, "Target Mouth", 0, -1);
+    }
+
+    bool TryGetSelfFaceSurfacePoint(out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(containingAtom, out pos, "Self Face Surface", 0, 0);
+    }
+
+    bool TryGetSelfMouthChinSurfacePoint(out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(containingAtom, out pos, "Self Mouth/Chin Surface", 0, -1);
+    }
+
+    bool TryGetSelfCheekSurfacePoint(int side, out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(containingAtom, out pos, side < 0 ? "Self L Cheek Surface" : "Self R Cheek Surface", side, 0);
+    }
+
+    bool TryGetTargetFaceSurfacePoint(Atom atom, out Vector3 pos)
+    {
+        return TryGetLiveFaceSurfacePoint(atom, out pos, "Target Face Surface", 0, 0);
     }
 
     bool TryGetSelfUpperChestSurfacePoint(out Vector3 pos)
     {
-        return TryGetBodySurfacePoint(containingAtom, 1.24f, 0.0f, 0.065f, out pos);
+        return TryGetLiveUpperChestSurfacePoint(containingAtom, out pos, "Self UpperChest Surface");
     }
 
     bool TryGetTargetUpperChestSurfacePoint(Atom atom, out Vector3 pos)
     {
-        return TryGetBodySurfacePoint(atom, 1.24f, 0.0f, 0.065f, out pos);
+        return TryGetLiveUpperChestSurfacePoint(atom, out pos, "Target UpperChest Surface");
     }
 
     bool TryGetSelfBellySurfacePoint(out Vector3 pos)
     {
-        return TryGetBodySurfacePoint(containingAtom, 1.02f, 0.0f, 0.060f, out pos);
+        return TryGetLiveBellySurfacePoint(containingAtom, out pos, "Self Belly Surface");
     }
 
     bool TryGetTargetBellySurfacePoint(Atom atom, out Vector3 pos)
     {
-        return TryGetBodySurfacePoint(atom, 1.02f, 0.0f, 0.060f, out pos);
+        return TryGetLiveBellySurfacePoint(atom, out pos, "Target Belly Surface");
     }
 
     bool TryGetSelfThighSurfacePoint(out Vector3 pos)
     {
         int side = UnityEngine.Random.value < 0.5f ? -1 : 1;
-        return TryGetBodySurfacePoint(containingAtom, 0.72f, 0.13f * side, 0.030f, out pos);
+        return TryGetLiveThighSurfacePoint(containingAtom, side, out pos, "Self Thigh Surface");
     }
 
     bool TryGetTargetThighSurfacePoint(Atom atom, out Vector3 pos)
     {
         int side = UnityEngine.Random.value < 0.5f ? -1 : 1;
-        return TryGetBodySurfacePoint(atom, 0.72f, 0.13f * side, 0.030f, out pos);
+        return TryGetLiveThighSurfacePoint(atom, side, out pos, "Target Thigh Surface");
+    }
+
+    bool TryGetLiveFaceSurfacePoint(Atom atom, out Vector3 pos, string label, int side, int verticalMode)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 head = FindControllerByAliasesOnAtom(atom, "headControl", "head");
+        Vector3 upAxis;
+        Vector3 right;
+        Vector3 forward;
+        bool hasAxes = false;
+
+        if (head != null)
+        {
+            Quaternion headRot = GetControllerRotation(head);
+            upAxis = headRot * Vector3.up;
+            right = headRot * Vector3.right;
+            forward = headRot * Vector3.forward;
+            hasAxes = true;
+        }
+        else
+        {
+            hasAxes = TryGetLiveTorsoAxes(atom, out upAxis, out right, out forward);
+        }
+
+        if (!hasAxes)
+        {
+            upAxis = Vector3.up;
+            right = GetAtomRightFallback(atom, upAxis);
+            if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+            right.Normalize();
+            forward = GetAtomForwardFallback(atom, upAxis);
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        if (upAxis.sqrMagnitude < 0.0001f) upAxis = Vector3.up;
+        upAxis.Normalize();
+        right = Vector3.ProjectOnPlane(right, upAxis);
+        if (right.sqrMagnitude < 0.0001f) right = GetAtomRightFallback(atom, upAxis);
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        right.Normalize();
+        forward = Vector3.ProjectOnPlane(forward, upAxis);
+        if (forward.sqrMagnitude < 0.0001f) forward = GetAtomForwardFallback(atom, upAxis);
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+
+        Vector3 basePos = Vector3.zero;
+        string source = "<none>";
+        if (head != null)
+        {
+            basePos = GetControllerPosition(head);
+            source = head.name;
+        }
+        else
+        {
+            FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest", "abdomenControl", "abdomen");
+            if (chest != null)
+            {
+                basePos = GetControllerPosition(chest) + upAxis * 0.260f;
+                source = "chest-head-fallback";
+            }
+            else
+            {
+                return TryGetBodySurfacePoint(atom, 1.55f, 0.0f, 0.070f, out pos);
+            }
+        }
+
+        float forwardOffset = 0.070f;
+        float upOffset = -0.030f;
+        if (verticalMode > 0)
+        {
+            forwardOffset = 0.055f;
+            upOffset = 0.020f;
+        }
+        else if (verticalMode < 0)
+        {
+            forwardOffset = 0.075f;
+            upOffset = -0.105f;
+        }
+
+        float sideOffset = 0.0f;
+        if (side < 0) sideOffset = -0.080f;
+        else if (side > 0) sideOffset = 0.080f;
+
+        pos = basePos + forward * forwardOffset + upAxis * upOffset + right * sideOffset;
+        LogLiveSurfacePoint(label, atom, source, basePos, upAxis, right, forward, pos);
+        return true;
+    }
+
+    bool TryGetLiveUpperChestSurfacePoint(Atom atom, out Vector3 pos, string label)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest", "abdomenControl", "abdomen");
+        if (chest == null)
+            return TryGetBodySurfacePoint(atom, 1.24f, 0.0f, 0.065f, out pos);
+
+        Vector3 upAxis;
+        Vector3 right;
+        Vector3 forward;
+        if (!TryGetLiveTorsoAxes(atom, out upAxis, out right, out forward))
+        {
+            upAxis = Vector3.up;
+            right = GetAtomRightFallback(atom, upAxis);
+            if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+            right.Normalize();
+            forward = GetAtomForwardFallback(atom, upAxis);
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        Vector3 chestPos = GetControllerPosition(chest);
+        pos = chestPos + upAxis * 0.060f + forward * 0.060f;
+        LogLiveSurfacePoint(label, atom, "chestControl", chestPos, upAxis, right, forward, pos);
+        return true;
+    }
+
+    bool TryGetLiveBellySurfacePoint(Atom atom, out Vector3 pos, string label)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest", "abdomenControl", "abdomen");
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip", "pelvisControl", "pelvis");
+        if (chest == null || hip == null)
+            return TryGetBodySurfacePoint(atom, 1.02f, 0.0f, 0.060f, out pos);
+
+        Vector3 upAxis;
+        Vector3 right;
+        Vector3 forward;
+        if (!TryGetLiveTorsoAxes(atom, out upAxis, out right, out forward))
+        {
+            upAxis = Vector3.up;
+            right = GetAtomRightFallback(atom, upAxis);
+            if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+            right.Normalize();
+            forward = GetAtomForwardFallback(atom, upAxis);
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        Vector3 hipPos = GetControllerPosition(hip);
+        Vector3 chestPos = GetControllerPosition(chest);
+        Vector3 basePos = Vector3.Lerp(hipPos, chestPos, 0.45f);
+        pos = basePos + forward * 0.055f;
+        LogLiveSurfacePoint(label, atom, "hip-chest", basePos, upAxis, right, forward, pos);
+        return true;
+    }
+
+    bool TryGetLiveThighSurfacePoint(Atom atom, int side, out Vector3 pos, string label)
+    {
+        pos = Vector3.zero;
+        if (atom == null) return false;
+
+        FreeControllerV3 thigh = null;
+        if (side < 0)
+            thigh = FindControllerByAliasesOnAtom(atom, "lThighControl", "lThigh", "leftThighControl", "leftThigh", "lUpperLeg", "leftUpperLeg");
+        else if (side > 0)
+            thigh = FindControllerByAliasesOnAtom(atom, "rThighControl", "rThigh", "rightThighControl", "rightThigh", "rUpperLeg", "rightUpperLeg");
+
+        FreeControllerV3 lThigh = FindControllerByAliasesOnAtom(atom, "lThighControl", "lThigh", "leftThighControl", "leftThigh", "lUpperLeg", "leftUpperLeg");
+        FreeControllerV3 rThigh = FindControllerByAliasesOnAtom(atom, "rThighControl", "rThigh", "rightThighControl", "rightThigh", "rUpperLeg", "rightUpperLeg");
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip", "pelvisControl", "pelvis");
+
+        Vector3 upAxis;
+        Vector3 right;
+        Vector3 forward;
+        if (!TryGetLiveTorsoAxes(atom, out upAxis, out right, out forward))
+        {
+            upAxis = Vector3.up;
+            right = GetAtomRightFallback(atom, upAxis);
+            if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+            right.Normalize();
+            forward = GetAtomForwardFallback(atom, upAxis);
+            if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+            forward.Normalize();
+        }
+
+        Vector3 basePos = Vector3.zero;
+        string source = "<none>";
+        if (thigh != null)
+        {
+            basePos = GetControllerPosition(thigh);
+            source = thigh.name;
+        }
+        else if (lThigh != null && rThigh != null)
+        {
+            basePos = Vector3.Lerp(GetControllerPosition(lThigh), GetControllerPosition(rThigh), 0.5f);
+            source = "thigh-mid";
+        }
+        else if (hip != null)
+        {
+            basePos = GetControllerPosition(hip) + right * (0.13f * (side < 0 ? -1.0f : 1.0f)) + Vector3.down * 0.16f;
+            source = "hip-fallback";
+        }
+        else
+        {
+            return TryGetBodySurfacePoint(atom, 0.72f, 0.13f * side, 0.030f, out pos);
+        }
+
+        pos = basePos + forward * 0.030f + upAxis * 0.025f;
+        LogLiveSurfacePoint(label, atom, source, basePos, upAxis, right, forward, pos);
+        return true;
+    }
+
+    bool TryGetLiveTorsoAxes(Atom atom, out Vector3 upAxis, out Vector3 right, out Vector3 forward)
+    {
+        upAxis = Vector3.up;
+        right = Vector3.right;
+        forward = Vector3.forward;
+        if (atom == null) return false;
+
+        FreeControllerV3 chest = FindControllerByAliasesOnAtom(atom, "chestControl", "chest", "abdomenControl", "abdomen");
+        FreeControllerV3 head = FindControllerByAliasesOnAtom(atom, "headControl", "head");
+        FreeControllerV3 hip = FindControllerByAliasesOnAtom(atom, "hipControl", "hip", "pelvisControl", "pelvis");
+
+        if (chest != null && head != null)
+            upAxis = GetControllerPosition(head) - GetControllerPosition(chest);
+        else if (chest != null && hip != null)
+            upAxis = GetControllerPosition(chest) - GetControllerPosition(hip);
+        else if (atom.mainController != null && atom.mainController.transform != null)
+            upAxis = atom.mainController.transform.up;
+        else if (atom.transform != null)
+            upAxis = atom.transform.up;
+
+        if (upAxis.sqrMagnitude < 0.0001f) upAxis = Vector3.up;
+        upAxis.Normalize();
+
+        if (chest != null)
+        {
+            Quaternion chestRot = GetControllerRotation(chest);
+            right = chestRot * Vector3.right;
+            forward = chestRot * Vector3.forward;
+        }
+        else
+        {
+            right = GetAtomRightFallback(atom, upAxis);
+            forward = GetAtomForwardFallback(atom, upAxis);
+        }
+
+        right = Vector3.ProjectOnPlane(right, upAxis);
+        if (right.sqrMagnitude < 0.0001f) right = GetAtomRightFallback(atom, upAxis);
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        right.Normalize();
+
+        forward = Vector3.ProjectOnPlane(forward, upAxis);
+        if (forward.sqrMagnitude < 0.0001f) forward = GetAtomForwardFallback(atom, upAxis);
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+        return true;
+    }
+
+    void LogLiveSurfacePoint(string label, Atom atom, string source, Vector3 basePos, Vector3 upAxis, Vector3 right, Vector3 forward, Vector3 pos)
+    {
+        if (debugLog == null || !debugLog.val) return;
+        Log("Live body surface point / label=" + label
+            + " / atom=" + SafeAtomName(atom)
+            + " / source=" + source
+            + " / base=" + basePos.ToString("F3")
+            + " / up=" + upAxis.ToString("F3")
+            + " / right=" + right.ToString("F3")
+            + " / forward=" + forward.ToString("F3")
+            + " / pos=" + pos.ToString("F3"));
     }
 
     bool TryGetSelfChestPoint(out Vector3 pos)
@@ -4163,6 +5035,29 @@ public class HumanLifeAction : MVRScript
         return false;
     }
 
+    void StopLookGesture(string reason)
+    {
+        StopLookGesture(reason, true);
+    }
+
+    void StopLookGesture(string reason, bool scheduleNext)
+    {
+        if (lookGestureRoutine != null)
+        {
+            try { StopCoroutine(lookGestureRoutine); } catch { }
+            lookGestureRoutine = null;
+            Log("Stop look gesture / reason=" + reason);
+        }
+
+        RestoreController(activeLookSnapshot);
+        RestoreController(activeEyeSnapshot);
+        activeLookSnapshot = null;
+        activeEyeSnapshot = null;
+
+        if (scheduleNext)
+            ScheduleNextLookGesture("stop:" + reason);
+    }
+
     void StopLifeGesture(string reason)
     {
         if (lifeGestureRoutine != null)
@@ -4183,14 +5078,22 @@ public class HumanLifeAction : MVRScript
     void StopAllLife(string reason)
     {
         StopLifeGesture(reason);
+        StopLookGesture(reason);
         StopBreathLoop(reason);
         StopLegBaseLoop(reason);
+        StopSleepSettleComply(reason);
+        StopSleepingEyeTransition(reason);
+        RestoreAffectionMorphs(reason);
         UpdateStatus("Stopped / restored");
     }
 
     public void OnDestroy()
     {
         try { StopAllLife("destroy"); } catch { }
+        try { SetBlinkSuppressMorphs(0.0f); } catch { }
+        try { SetEyesClosedMorphs(0.0f); } catch { }
+        try { RestoreAutoBlinkAfterSleeping("destroy"); } catch { }
+        try { RestoreAffectionMorphs("destroy"); } catch { }
     }
 
     bool IsPoseChangeSafeOn()
@@ -4236,13 +5139,23 @@ public class HumanLifeAction : MVRScript
         }
     }
 
-    void AbortGestureForPoseChange(ControllerSnapshot primary, ControllerSnapshot secondary, string reason)
+    void AbortLookGestureForPoseChange(ControllerSnapshot primary, ControllerSnapshot secondary, string reason)
     {
         RestoreControllerStateOnly(primary);
         RestoreControllerStateOnly(secondary);
         RestoreControllerStateOnly(activeEyeSnapshot);
         activeLookSnapshot = null;
         activeEyeSnapshot = null;
+        lookGestureRoutine = null;
+        UpdateStatus("Pose changed: Life look aborted");
+        ScheduleNextLookGesture("pose-change:" + reason);
+        Log("Pose change safe / abort look / reason=" + reason);
+    }
+
+    void AbortGestureForPoseChange(ControllerSnapshot primary, ControllerSnapshot secondary, string reason)
+    {
+        RestoreControllerStateOnly(primary);
+        RestoreControllerStateOnly(secondary);
         ClearLifeLockForSnapshot(activeCoverHandSnapshot);
         ClearLifeLockForSnapshot(activeCoverElbowSnapshot);
         activeCoverHandSnapshot = null;
@@ -4257,16 +5170,12 @@ public class HumanLifeAction : MVRScript
 
     void RestoreActiveGestureSnapshots()
     {
-        RestoreController(activeLookSnapshot);
-        RestoreController(activeEyeSnapshot);
         RestoreController(activeCoverHandSnapshot);
         RestoreController(activeCoverElbowSnapshot);
         ClearLifeLockForSnapshot(activeCoverHandSnapshot);
         ClearLifeLockForSnapshot(activeCoverElbowSnapshot);
         RestoreController(activeLegLeftSnapshot);
         RestoreController(activeLegRightSnapshot);
-        activeLookSnapshot = null;
-        activeEyeSnapshot = null;
         activeCoverHandSnapshot = null;
         activeCoverElbowSnapshot = null;
         activeLegLeftSnapshot = null;
@@ -4275,16 +5184,12 @@ public class HumanLifeAction : MVRScript
 
     void RestoreActiveGestureStateOnly()
     {
-        RestoreControllerStateOnly(activeLookSnapshot);
-        RestoreControllerStateOnly(activeEyeSnapshot);
         RestoreControllerStateOnly(activeCoverHandSnapshot);
         RestoreControllerStateOnly(activeCoverElbowSnapshot);
         ClearLifeLockForSnapshot(activeCoverHandSnapshot);
         ClearLifeLockForSnapshot(activeCoverElbowSnapshot);
         RestoreControllerStateOnly(activeLegLeftSnapshot);
         RestoreControllerStateOnly(activeLegRightSnapshot);
-        activeLookSnapshot = null;
-        activeEyeSnapshot = null;
         activeCoverHandSnapshot = null;
         activeCoverElbowSnapshot = null;
         activeLegLeftSnapshot = null;
@@ -4294,8 +5199,6 @@ public class HumanLifeAction : MVRScript
     void RestoreActiveGestureForHbaHandoff()
     {
         // Look/eye and leg one-shot gestures are not the lock source, so restore state flags only.
-        RestoreControllerStateOnly(activeLookSnapshot);
-        RestoreControllerStateOnly(activeEyeSnapshot);
         RestoreControllerStateOnly(activeLegLeftSnapshot);
         RestoreControllerStateOnly(activeLegRightSnapshot);
 
@@ -4304,8 +5207,6 @@ public class HumanLifeAction : MVRScript
         ReleaseLifeLockForHbaHandoff(activeCoverHandSnapshot, true);
         ReleaseLifeLockForHbaHandoff(activeCoverElbowSnapshot, false);
 
-        activeLookSnapshot = null;
-        activeEyeSnapshot = null;
         activeCoverHandSnapshot = null;
         activeCoverElbowSnapshot = null;
         activeLegLeftSnapshot = null;
@@ -4424,6 +5325,32 @@ public class HumanLifeAction : MVRScript
         max = Mathf.Max(min, max);
         nextGestureTime = Time.time + UnityEngine.Random.Range(min, max);
         Log("Next life gesture soon / in=" + (nextGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
+    }
+
+
+    void ScheduleNextLookGesture(string reason)
+    {
+        float min;
+        float max;
+        if (reason != null && reason.IndexOf("pose-change", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            min = PoseChangeCooldownMin;
+            max = PoseChangeCooldownMax;
+        }
+        else
+        {
+            GetEffectiveInterval(out min, out max);
+        }
+        nextLookGestureTime = Time.time + UnityEngine.Random.Range(min, max);
+        Log("Next look gesture / in=" + (nextLookGestureTime - Time.time).ToString("F1", CultureInfo.InvariantCulture) + " / reason=" + reason);
+    }
+
+    void ScheduleNextLookGestureSoon(string reason, float min, float max)
+    {
+        min = Mathf.Max(0.0f, min);
+        max = Mathf.Max(min, max);
+        nextLookGestureTime = Time.time + UnityEngine.Random.Range(min, max);
+        Log("Next look gesture soon / in=" + (nextLookGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
     }
 
     ControllerSnapshot CaptureController(FreeControllerV3 fc)
@@ -4683,16 +5610,20 @@ public class HumanLifeAction : MVRScript
 
     bool IsHeadLookEnabled()
     {
+        // v096: Sleeping still allows very low random LookAway/head drift,
+        // but RequestLookTarget/RequestLookCamera are blocked separately.
         return lifeHeadLookEnabled == null || lifeHeadLookEnabled.val;
     }
 
     bool IsLegMotionEnabled()
     {
-        return lifeLegMotionEnabled != null && lifeLegMotionEnabled.val;
+        // v102: Sleeping/Quiet use rotation-only thigh micro-motion for subtle fidgeting.
+        return lifeLegMotionEnabled != null && lifeLegMotionEnabled.val && EffectiveLegScale() > 0.0001f;
     }
 
     bool IsLegPositionAssistEnabled()
     {
+        if (CurrentLifeState() == LifeStateSleeping) return false;
         return lifeLegPositionAssistEnabled != null && lifeLegPositionAssistEnabled.val;
     }
 
@@ -4714,11 +5645,1308 @@ public class HumanLifeAction : MVRScript
 
     string CurrentMotionMode()
     {
+        string state = CurrentLifeState();
+        if (state == LifeStateQuiet || state == LifeStateSleeping) return LifeMotionSmall;
+        if (state == LifeStateActive) return LifeMotionLarge;
+
         if (lifeMotionMode == null || string.IsNullOrEmpty(lifeMotionMode.val)) return LifeMotionNormal;
         string v = lifeMotionMode.val;
         if (string.Equals(v, LifeMotionSmall, StringComparison.OrdinalIgnoreCase)) return LifeMotionSmall;
         if (string.Equals(v, LifeMotionLarge, StringComparison.OrdinalIgnoreCase)) return LifeMotionLarge;
         return LifeMotionNormal;
+    }
+
+    string CurrentLifeState()
+    {
+        if (lifeStateMode == null || string.IsNullOrEmpty(lifeStateMode.val)) return LifeStateNormal;
+        return NormalizeLifeState(lifeStateMode.val);
+    }
+
+    void SetLifeState(string state, string source)
+    {
+        string next = NormalizeLifeState(state);
+        suppressLifeStateCallback = true;
+        try
+        {
+            if (lifeStateMode != null)
+                lifeStateMode.val = next;
+        }
+        catch { }
+        suppressLifeStateCallback = false;
+        ApplyLifeStateChange(source);
+    }
+
+    bool IsLifeStateAlias(string value, string legacy, string display)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (string.Equals(value, display, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(value, legacy, StringComparison.OrdinalIgnoreCase)) return true;
+        return value.StartsWith(legacy + " ", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith(legacy + ":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    string NormalizeLifeState(string state)
+    {
+        if (IsLifeStateAlias(state, LifeStateQuietLegacy, LifeStateQuiet)) return LifeStateQuiet;
+        if (IsLifeStateAlias(state, LifeStateShyLegacy, LifeStateShy)) return LifeStateNormal;
+        if (IsLifeStateAlias(state, LifeStateActiveLegacy, LifeStateActive)) return LifeStateActive;
+        if (IsLifeStateAlias(state, LifeStateSleepingLegacy, LifeStateSleeping)) return LifeStateSleeping;
+        if (IsLifeStateAlias(state, LifeStateNormalLegacy, LifeStateNormal)) return LifeStateNormal;
+        return LifeStateNormal;
+    }
+
+    string CurrentLifePersonality()
+    {
+        if (lifePersonalityMode == null || string.IsNullOrEmpty(lifePersonalityMode.val)) return LifePersonalityNormal;
+        return NormalizeLifePersonality(lifePersonalityMode.val);
+    }
+
+    void SetLifePersonality(string personality, string source)
+    {
+        string next = NormalizeLifePersonality(personality);
+        try
+        {
+            if (lifePersonalityMode != null)
+                lifePersonalityMode.val = next;
+        }
+        catch { }
+        ApplyLifePersonalityChange(source);
+    }
+
+    bool IsLifePersonalityAlias(string value, string legacy, string display)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (string.Equals(value, display, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(value, legacy, StringComparison.OrdinalIgnoreCase)) return true;
+        return value.StartsWith(legacy + " ", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith(legacy + ":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    string NormalizeLifePersonality(string personality)
+    {
+        if (IsLifePersonalityAlias(personality, LifePersonalityShyLegacy, LifePersonalityShy)) return LifePersonalityNormal;
+        if (IsLifePersonalityAlias(personality, LifePersonalityBoldLegacy, LifePersonalityBold)) return LifePersonalityBold;
+        if (IsLifePersonalityAlias(personality, LifePersonalityNormalLegacy, LifePersonalityNormal)) return LifePersonalityNormal;
+        return LifePersonalityNormal;
+    }
+
+    void OnLifePersonalityChanged(string value)
+    {
+        ApplyLifePersonalityChange("ui");
+    }
+
+    void ApplyLifePersonalityChange(string source)
+    {
+        if (!initialized) return;
+        StopLifeGesture("life-personality-" + CurrentLifePersonality());
+        ScheduleNextGestureSoon("life-personality-" + CurrentLifePersonality(), 0.20f, 0.75f);
+        ApplyAffectionMorphTarget("life-personality-" + source);
+        UpdateStatus("Life Personality: " + CurrentLifePersonality() + " / state=" + CurrentLifeState() + " / expression=" + CurrentLifeAffection() + " / source=" + source);
+    }
+
+
+    string CurrentLifeAffection()
+    {
+        if (lifeAffectionMode == null || string.IsNullOrEmpty(lifeAffectionMode.val)) return LifeAffectionNeutral;
+        return NormalizeLifeAffection(lifeAffectionMode.val);
+    }
+
+    void SetLifeAffection(string affection, string source)
+    {
+        string next = NormalizeLifeAffection(affection);
+        try
+        {
+            if (lifeAffectionMode != null)
+                lifeAffectionMode.val = next;
+        }
+        catch { }
+        ApplyLifeAffectionChange(source);
+    }
+
+    bool IsLifeAffectionAlias(string value, string legacy, string display)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        if (string.Equals(value, display, StringComparison.OrdinalIgnoreCase)) return true;
+        if (string.Equals(value, legacy, StringComparison.OrdinalIgnoreCase)) return true;
+        return value.StartsWith(legacy + " ", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith(legacy + ":", StringComparison.OrdinalIgnoreCase);
+    }
+
+    string NormalizeLifeAffection(string affection)
+    {
+        if (IsLifeAffectionAlias(affection, LifeAffectionLikeLegacy, LifeAffectionLike)) return LifeAffectionLike;
+        if (IsLifeAffectionAlias(affection, LifeAffectionDislikeLegacy, LifeAffectionDislike)) return LifeAffectionDislike;
+        if (IsLifeAffectionAlias(affection, LifeAffectionSadLegacy, LifeAffectionShy)) return LifeAffectionShy;
+        if (IsLifeAffectionAlias(affection, LifeAffectionShyLegacy, LifeAffectionShy)) return LifeAffectionShy;
+        if (IsLifeAffectionAlias(affection, LifeAffectionNeutralLegacy, LifeAffectionNeutral)) return LifeAffectionNeutral;
+        return LifeAffectionNeutral;
+    }
+
+    void OnLifeAffectionChanged(string value)
+    {
+        ApplyLifeAffectionChange("ui");
+    }
+
+    void ApplyLifeAffectionChange(string source)
+    {
+        if (!initialized) return;
+        StopLifeGesture("life-affection-" + CurrentLifeAffection());
+        ScheduleNextGestureSoon("life-affection-" + CurrentLifeAffection(), 0.20f, 0.75f);
+        ApplyAffectionMorphTarget("life-affection-" + source);
+        UpdateStatus("Life Expression: " + CurrentLifeAffection() + " / state=" + CurrentLifeState() + " / personality=" + CurrentLifePersonality() + " / source=" + source);
+    }
+
+
+    void RefreshAffectionMorphChoices(bool updateUi)
+    {
+        string keepLike = likeAffectionMorphName != null ? likeAffectionMorphName.val : DefaultLikeAffectionMorphName;
+        string keepDislike = dislikeAffectionMorphName != null ? dislikeAffectionMorphName.val : DefaultDislikeAffectionMorphName;
+        string keepShy = shyPersonalityMorphName != null ? shyPersonalityMorphName.val : DefaultShyPersonalityMorphName;
+        // v111: do not pre-filter the choices with a separate text field.
+        // CreateFilterablePopup performs the search inside the combo itself.
+        List<string> likeChoices = BuildAffectionMorphChoices(keepLike, DefaultLikeAffectionMorphName, "");
+        List<string> dislikeChoices = BuildAffectionMorphChoices(keepDislike, DefaultDislikeAffectionMorphName, "");
+        List<string> shyChoices = BuildAffectionMorphChoices(keepShy, DefaultShyPersonalityMorphName, "");
+
+        affectionMorphChoices.Clear();
+        for (int i = 0; i < likeChoices.Count; i++) affectionMorphChoices.Add(likeChoices[i]);
+
+        dislikeAffectionMorphChoices.Clear();
+        for (int i = 0; i < dislikeChoices.Count; i++) dislikeAffectionMorphChoices.Add(dislikeChoices[i]);
+
+        shyPersonalityMorphChoices.Clear();
+        for (int i = 0; i < shyChoices.Count; i++) shyPersonalityMorphChoices.Add(shyChoices[i]);
+
+        if (updateUi)
+        {
+            UpdateAffectionMorphChooserChoices(likeAffectionMorphName, affectionMorphChoices, keepLike);
+            UpdateAffectionMorphChooserChoices(dislikeAffectionMorphName, dislikeAffectionMorphChoices, keepDislike);
+            UpdateAffectionMorphChooserChoices(shyPersonalityMorphName, shyPersonalityMorphChoices, keepShy);
+            ApplyAffectionMorphTarget("refresh-affection-morphs");
+            if (debugLog != null && debugLog.val)
+            {
+                Log("Affection morph choices refreshed"
+                    + " / mode=filterable-popup"
+                    + " / likeCount=" + affectionMorphChoices.Count.ToString(CultureInfo.InvariantCulture)
+                    + " / dislikeCount=" + dislikeAffectionMorphChoices.Count.ToString(CultureInfo.InvariantCulture)
+                    + " / shyCount=" + shyPersonalityMorphChoices.Count.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+    }
+
+    List<string> BuildAffectionMorphChoices(string keep, string defaultMorph, string searchText)
+    {
+        List<string> choices = new List<string>();
+        HashSet<string> seen = new HashSet<string>();
+        AddAffectionMorphChoice(choices, seen, AffectionMorphNone);
+        AddAffectionMorphChoice(choices, seen, defaultMorph);
+        AddAffectionMorphChoice(choices, seen, keep);
+
+        JSONStorable geometry = null;
+        try { if (containingAtom != null) geometry = containingAtom.GetStorableByID("geometry"); } catch { geometry = null; }
+        if (geometry != null)
+        {
+            List<string> names = null;
+            try { names = geometry.GetFloatParamNames(); } catch { names = null; }
+            if (names != null)
+            {
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < names.Count; i++)
+                {
+                    string n = names[i];
+                    if (string.IsNullOrEmpty(n)) continue;
+                    string trimmed = n.Trim();
+                    if (!AffectionMorphMatchesSearch(trimmed, searchText)) continue;
+                    AddAffectionMorphChoice(choices, seen, trimmed);
+                }
+            }
+        }
+
+        return choices;
+    }
+
+    bool AffectionMorphMatchesSearch(string morphName, string searchText)
+    {
+        if (string.IsNullOrEmpty(morphName)) return false;
+        if (string.IsNullOrEmpty(searchText)) return true;
+
+        string hay = morphName.ToLowerInvariant();
+        string normalized = searchText.ToLowerInvariant()
+            .Replace('　', ' ')
+            .Replace(',', ' ')
+            .Replace(';', ' ')
+            .Replace('|', ' ');
+        string[] terms = normalized.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (terms == null || terms.Length <= 0) return true;
+
+        for (int i = 0; i < terms.Length; i++)
+        {
+            string term = terms[i];
+            if (string.IsNullOrEmpty(term)) continue;
+            if (hay.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0) return false;
+        }
+        return true;
+    }
+
+    string SafeSearchLabel(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "<all>";
+        return s.Trim();
+    }
+
+    void AddAffectionMorphChoice(List<string> choices, HashSet<string> seen, string raw)
+    {
+        if (choices == null || seen == null) return;
+        string value = string.IsNullOrEmpty(raw) ? AffectionMorphNone : raw.Trim();
+        if (string.IsNullOrEmpty(value)) value = AffectionMorphNone;
+        string key = value.ToLowerInvariant();
+        if (seen.Contains(key)) return;
+        seen.Add(key);
+        choices.Add(value);
+    }
+
+    void UpdateAffectionMorphChooserChoices(JSONStorableStringChooser chooser, List<string> choices, string keep)
+    {
+        if (chooser == null) return;
+        if (choices == null) choices = new List<string>() { AffectionMorphNone };
+        string desired = string.IsNullOrEmpty(keep) ? AffectionMorphNone : keep;
+        if (!choices.Contains(desired))
+            AddAffectionMorphChoice(choices, new HashSet<string>(choices, StringComparer.OrdinalIgnoreCase), desired);
+        try { chooser.choices = new List<string>(choices); } catch { }
+        try
+        {
+            if (choices.Contains(desired)) chooser.val = desired;
+            else chooser.val = AffectionMorphNone;
+        }
+        catch { }
+    }
+
+    void MaintainAffectionMorphControl()
+    {
+        if (!initialized) return;
+
+        string affection = lifeEnabled != null && !lifeEnabled.val ? LifeAffectionNeutral : CurrentLifeAffection();
+        string personality = lifeEnabled != null && !lifeEnabled.val ? LifePersonalityNormal : CurrentLifePersonality();
+        string state = CurrentLifeState();
+        string likeName = CleanAffectionMorphName(likeAffectionMorphName != null ? likeAffectionMorphName.val : "");
+        string dislikeName = CleanAffectionMorphName(dislikeAffectionMorphName != null ? dislikeAffectionMorphName.val : "");
+        string shyName = CleanAffectionMorphName(shyPersonalityMorphName != null ? shyPersonalityMorphName.val : "");
+        float likeMax = Mathf.Clamp01(SafeFloat(likeAffectionMorphMax, DefaultLikeAffectionMorphMax));
+        float dislikeMax = Mathf.Clamp01(SafeFloat(dislikeAffectionMorphMax, DefaultDislikeAffectionMorphMax));
+        float shyMax = Mathf.Clamp01(SafeFloat(shyPersonalityMorphMax, DefaultShyPersonalityMorphMax));
+        float fade = Mathf.Max(0.05f, SafeFloat(affectionMorphFadeSeconds, DefaultAffectionMorphFadeSeconds));
+
+        if (string.Equals(affection, lastAffectionMorphAffection, StringComparison.Ordinal)
+            && string.Equals(personality, lastAffectionMorphPersonality, StringComparison.Ordinal)
+            && string.Equals(likeName, lastAffectionMorphLikeName, StringComparison.Ordinal)
+            && string.Equals(dislikeName, lastAffectionMorphDislikeName, StringComparison.Ordinal)
+            && string.Equals(shyName, lastAffectionMorphShyName, StringComparison.Ordinal)
+            && Mathf.Abs(likeMax - lastAffectionMorphLikeMax) < 0.0005f
+            && Mathf.Abs(dislikeMax - lastAffectionMorphDislikeMax) < 0.0005f
+            && Mathf.Abs(shyMax - lastAffectionMorphShyMax) < 0.0005f
+            && Mathf.Abs(fade - lastAffectionMorphFadeSeconds) < 0.0005f)
+            return;
+
+        ApplyAffectionMorphTarget("maintain");
+    }
+
+    void ApplyAffectionMorphTarget(string source)
+    {
+        if (!initialized) return;
+
+        string affection = lifeEnabled != null && !lifeEnabled.val ? LifeAffectionNeutral : CurrentLifeAffection();
+        string personality = lifeEnabled != null && !lifeEnabled.val ? LifePersonalityNormal : CurrentLifePersonality();
+        string state = CurrentLifeState();
+        string likeName = CleanAffectionMorphName(likeAffectionMorphName != null ? likeAffectionMorphName.val : "");
+        string dislikeName = CleanAffectionMorphName(dislikeAffectionMorphName != null ? dislikeAffectionMorphName.val : "");
+        string shyName = CleanAffectionMorphName(shyPersonalityMorphName != null ? shyPersonalityMorphName.val : "");
+        float likeMax = Mathf.Clamp01(SafeFloat(likeAffectionMorphMax, DefaultLikeAffectionMorphMax));
+        float dislikeMax = Mathf.Clamp01(SafeFloat(dislikeAffectionMorphMax, DefaultDislikeAffectionMorphMax));
+        float shyMax = Mathf.Clamp01(SafeFloat(shyPersonalityMorphMax, DefaultShyPersonalityMorphMax));
+        float fade = Mathf.Max(0.05f, SafeFloat(affectionMorphFadeSeconds, DefaultAffectionMorphFadeSeconds));
+
+        lastAffectionMorphAffection = affection;
+        lastAffectionMorphPersonality = personality;
+        lastAffectionMorphLikeName = likeName;
+        lastAffectionMorphDislikeName = dislikeName;
+        lastAffectionMorphShyName = shyName;
+        lastAffectionMorphLikeMax = likeMax;
+        lastAffectionMorphDislikeMax = dislikeMax;
+        lastAffectionMorphShyMax = shyMax;
+        lastAffectionMorphFadeSeconds = fade;
+
+        Dictionary<string, float> targets = new Dictionary<string, float>();
+
+        AddAffectionMorphRestoreTargets(targets);
+
+        if (!string.IsNullOrEmpty(likeName))
+        {
+            float likeTarget = GetAffectionMorphOriginalOrCurrent(likeName);
+            if (affection == LifeAffectionLike && likeMax > 0.0001f)
+                likeTarget = likeMax;
+            targets[likeName] = Mathf.Clamp01(likeTarget);
+        }
+
+        if (!string.IsNullOrEmpty(dislikeName))
+        {
+            float dislikeTarget = GetAffectionMorphOriginalOrCurrent(dislikeName);
+            if (affection == LifeAffectionDislike && dislikeMax > 0.0001f)
+                dislikeTarget = dislikeMax;
+            targets[dislikeName] = Mathf.Clamp01(dislikeTarget);
+        }
+
+        if (!string.IsNullOrEmpty(shyName))
+        {
+            float shyTarget = GetAffectionMorphOriginalOrCurrent(shyName);
+            // Sad is part of the Life Expression group; Sleeping stays state-dominant and suppresses it.
+            if (affection == LifeAffectionShy && state != LifeStateSleeping && shyMax > 0.0001f)
+                shyTarget = shyMax;
+            targets[shyName] = Mathf.Clamp01(shyTarget);
+        }
+
+        if (targets.Count <= 0) return;
+
+        if (affectionMorphRoutine != null)
+        {
+            try { StopCoroutine(affectionMorphRoutine); } catch { }
+            affectionMorphRoutine = null;
+        }
+
+        affectionMorphRoutine = StartCoroutine(AffectionMorphFadeRoutine(targets, fade, source));
+    }
+
+    void AddAffectionMorphRestoreTargets(Dictionary<string, float> targets)
+    {
+        if (targets == null || affectionMorphOriginalValues == null) return;
+        foreach (KeyValuePair<string, float> kv in affectionMorphOriginalValues)
+        {
+            if (string.IsNullOrEmpty(kv.Key)) continue;
+            targets[kv.Key] = Mathf.Clamp01(kv.Value);
+        }
+    }
+
+    IEnumerator AffectionMorphFadeRoutine(Dictionary<string, float> targets, float fadeSeconds, string source)
+    {
+        Dictionary<string, float> starts = new Dictionary<string, float>();
+        List<string> names = new List<string>();
+
+        foreach (KeyValuePair<string, float> kv in targets)
+        {
+            string name = CleanAffectionMorphName(kv.Key);
+            if (string.IsNullOrEmpty(name)) continue;
+            JSONStorableFloat f = FindAffectionMorphParam(name);
+            if (f == null)
+            {
+                if (debugLog != null && debugLog.val) Log("Affection morph not found / name=" + name + " / source=" + source);
+                continue;
+            }
+
+            if (!affectionMorphOriginalValues.ContainsKey(name))
+            {
+                try { affectionMorphOriginalValues[name] = Mathf.Clamp01(f.val); } catch { affectionMorphOriginalValues[name] = 0.0f; }
+            }
+
+            try { starts[name] = Mathf.Clamp01(f.val); } catch { starts[name] = GetAffectionMorphOriginalOrCurrent(name); }
+            names.Add(name);
+        }
+
+        if (names.Count <= 0)
+        {
+            affectionMorphRoutine = null;
+            yield break;
+        }
+
+        float seconds = Mathf.Max(0.01f, fadeSeconds);
+        float elapsed = 0.0f;
+        while (elapsed < seconds)
+        {
+            float e = Smoother01(elapsed / seconds);
+            for (int i = 0; i < names.Count; i++)
+            {
+                string name = names[i];
+                JSONStorableFloat f = FindAffectionMorphParam(name);
+                if (f == null) continue;
+                float start = starts.ContainsKey(name) ? starts[name] : 0.0f;
+                float target = targets.ContainsKey(name) ? targets[name] : start;
+                try { f.val = Mathf.Clamp01(Mathf.Lerp(start, target, e)); } catch { }
+            }
+            elapsed += Mathf.Max(0.0001f, Time.deltaTime);
+            yield return null;
+        }
+
+        for (int i = 0; i < names.Count; i++)
+        {
+            string name = names[i];
+            JSONStorableFloat f = FindAffectionMorphParam(name);
+            if (f == null) continue;
+            float target = targets.ContainsKey(name) ? targets[name] : GetAffectionMorphOriginalOrCurrent(name);
+            try { f.val = Mathf.Clamp01(target); } catch { }
+        }
+
+        affectionMorphRoutine = null;
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Life morph applied / affection=" + lastAffectionMorphAffection
+                + " / personality=" + lastAffectionMorphPersonality
+                + " / like=" + lastAffectionMorphLikeName
+                + " / dislike=" + lastAffectionMorphDislikeName
+                + " / sad=" + lastAffectionMorphShyName
+                + " / count=" + names.Count.ToString(CultureInfo.InvariantCulture)
+                + " / source=" + source);
+        }
+    }
+
+    void RestoreAffectionMorphs(string source)
+    {
+        if (affectionMorphRoutine != null)
+        {
+            try { StopCoroutine(affectionMorphRoutine); } catch { }
+            affectionMorphRoutine = null;
+        }
+
+        if (affectionMorphOriginalValues == null || affectionMorphOriginalValues.Count <= 0) return;
+
+        foreach (KeyValuePair<string, float> kv in affectionMorphOriginalValues)
+        {
+            JSONStorableFloat f = FindAffectionMorphParam(kv.Key);
+            if (f == null) continue;
+            try { f.val = Mathf.Clamp01(kv.Value); } catch { }
+        }
+
+        if (debugLog != null && debugLog.val)
+            Log("Affection morph restored / count=" + affectionMorphOriginalValues.Count.ToString(CultureInfo.InvariantCulture) + " / source=" + source);
+    }
+
+    float GetAffectionMorphOriginalOrCurrent(string morphName)
+    {
+        string name = CleanAffectionMorphName(morphName);
+        if (string.IsNullOrEmpty(name)) return 0.0f;
+        if (affectionMorphOriginalValues != null && affectionMorphOriginalValues.ContainsKey(name))
+            return Mathf.Clamp01(affectionMorphOriginalValues[name]);
+
+        JSONStorableFloat f = FindAffectionMorphParam(name);
+        if (f == null) return 0.0f;
+        try { return Mathf.Clamp01(f.val); } catch { }
+        return 0.0f;
+    }
+
+    JSONStorableFloat FindAffectionMorphParam(string morphName)
+    {
+        string name = CleanAffectionMorphName(morphName);
+        if (string.IsNullOrEmpty(name) || containingAtom == null) return null;
+        JSONStorable geometry = null;
+        try { geometry = containingAtom.GetStorableByID("geometry"); } catch { geometry = null; }
+        if (geometry == null) return null;
+
+        JSONStorableFloat f = null;
+        try { f = geometry.GetFloatJSONParam(name); } catch { f = null; }
+        if (f != null) return f;
+
+        // Small convenience fallback for copied labels such as "DAZMorph:Smile" or "geometry:Smile".
+        string stripped = StripAffectionMorphPrefix(name);
+        if (!string.Equals(stripped, name, StringComparison.Ordinal))
+        {
+            try { f = geometry.GetFloatJSONParam(stripped); } catch { f = null; }
+            if (f != null) return f;
+        }
+
+        return null;
+    }
+
+    string CleanAffectionMorphName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        string n = name.Trim();
+        if (string.IsNullOrEmpty(n)) return "";
+        if (string.Equals(n, AffectionMorphNone, StringComparison.OrdinalIgnoreCase)) return "";
+        if (string.Equals(n, "None", StringComparison.OrdinalIgnoreCase)) return "";
+        if (string.Equals(n, "<None>", StringComparison.OrdinalIgnoreCase)) return "";
+        if (string.Equals(n, "なし", StringComparison.OrdinalIgnoreCase)) return "";
+        return StripAffectionMorphPrefix(n).Trim();
+    }
+
+    string StripAffectionMorphPrefix(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        string n = name.Trim();
+        string[] prefixes = new string[] { "DAZMorph:", "Morph:", "geometry:", "Geometry:" };
+        for (int i = 0; i < prefixes.Length; i++)
+        {
+            string p = prefixes[i];
+            if (n.StartsWith(p, StringComparison.OrdinalIgnoreCase))
+                return n.Substring(p.Length).Trim();
+        }
+        return n;
+    }
+
+    void OnLifeStateChanged(string value)
+    {
+        if (suppressLifeStateCallback) return;
+        ApplyLifeStateChange("ui");
+    }
+
+    void ApplyLifeStateChange(string source)
+    {
+        string state = CurrentLifeState();
+        try
+        {
+            if (lifeMotionMode != null)
+                lifeMotionMode.val = CurrentMotionMode();
+        }
+        catch { }
+
+        ApplyLifeStateEyeControl(source);
+
+        if (!initialized)
+            return;
+
+        StopLifeGesture("life-state-" + state);
+        StopBreathLoop("life-state-" + state, false);
+        StopLegBaseLoop("life-state-" + state, false);
+
+        if (state == LifeStateSleeping)
+        {
+            StartSleepSettleComply(source);
+            ScheduleNextGestureSoon("life-state-" + state, SleepSettleComplySeconds + 0.20f, SleepSettleComplySeconds + 1.20f);
+        }
+        else
+        {
+            StopSleepSettleComply("life-state-" + state);
+            ScheduleNextGestureSoon("life-state-" + state, 0.20f, 0.60f);
+        }
+
+        UpdateStatus("Life State: " + state + " / personality=" + CurrentLifePersonality() + " / expression=" + CurrentLifeAffection() + " / source=" + source);
+    }
+
+    void StartSleepSettleComply(string source)
+    {
+        StopSleepSettleComply("restart");
+        ResolveControllers();
+        sleepSettleComplyRoutine = StartCoroutine(SleepSettleComplyRoutine(source));
+    }
+
+    IEnumerator SleepSettleComplyRoutine(string source)
+    {
+        float endTime = Time.time + SleepSettleComplySeconds;
+        float nextReapply = -999.0f;
+
+        while (Time.time < endTime)
+        {
+            if (CurrentLifeState() != LifeStateSleeping)
+                break;
+
+            if (Time.time >= nextReapply)
+            {
+                ResolveControllers();
+                SetControllerComplyOff(lHandControl);
+                SetControllerComplyOff(rHandControl);
+                SetControllerComplyOff(lElbowControl);
+                SetControllerComplyOff(rElbowControl);
+                nextReapply = Time.time + 0.25f;
+            }
+            yield return null;
+        }
+
+        sleepSettleComplyRoutine = null;
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Sleep settle comply complete / seconds=" + SleepSettleComplySeconds.ToString("F2", CultureInfo.InvariantCulture)
+                + " / state=" + CurrentLifeState()
+                + " / source=" + source);
+        }
+    }
+
+    void StopSleepSettleComply(string reason)
+    {
+        if (sleepSettleComplyRoutine != null)
+        {
+            try { StopCoroutine(sleepSettleComplyRoutine); } catch { }
+            sleepSettleComplyRoutine = null;
+            if (debugLog != null && debugLog.val) Log("Stop sleep settle comply / reason=" + reason);
+        }
+    }
+
+    void SetControllerComplyOff(FreeControllerV3 ctrl)
+    {
+        if (ctrl == null) return;
+        try { ctrl.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+        try { ctrl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+    }
+
+    void ApplyLifeStateEyeControl(string source)
+    {
+        string state = CurrentLifeState();
+        bool closeEyes = state == LifeStateSleeping;
+        string desiredState = closeEyes ? "closed" : "open";
+        if (lastAppliedEyeState == desiredState && source != "init")
+        {
+            if (closeEyes && sleepingEyeTransitionRoutine == null) ApplySleepingEyeClosedHold(source + ":same-state");
+            return;
+        }
+
+        int touchedMorphs = 0;
+
+        // Init/load should not animate. Runtime state changes do animate.
+        if (!initialized || string.Equals(source, "init", StringComparison.OrdinalIgnoreCase))
+        {
+            StopSleepingEyeTransition("eye-init");
+            if (closeEyes)
+            {
+                DisableAutoBlinkForSleeping(source);
+                touchedMorphs = SetEyesClosedMorphs(1.0f);
+                nextSleepingEyeHoldTime = Time.time + SleepingEyeHoldInterval;
+            }
+            else
+            {
+                RestoreAutoBlinkAfterSleeping(source);
+                SetBlinkSuppressMorphs(0.0f);
+                touchedMorphs = SetEyesClosedMorphs(0.0f);
+            }
+            lastAppliedEyeState = desiredState;
+        }
+        else
+        {
+            touchedMorphs = StartSleepingEyeTransition(closeEyes, source);
+        }
+
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Life State eye control / state=" + state
+                + " / eyes=" + desiredState
+                + " / morphs=" + touchedMorphs.ToString(CultureInfo.InvariantCulture)
+                + " / transition=" + (sleepingEyeTransitionRoutine != null ? "1" : "0")
+                + " / autoBlink=" + AutoBlinkDebugLabel()
+                + " / source=" + source);
+        }
+    }
+
+    void MaintainLifeStateEyeControl()
+    {
+        string state = CurrentLifeState();
+        if (state == LifeStateSleeping)
+        {
+            if (sleepingEyeTransitionRoutine != null) return;
+
+            // Auto Blink / Auto Eyelid Morphs can run every frame.
+            // Re-assert the final sleeping eye state after the close transition finishes.
+            ApplySleepingEyeClosedHold("maintain");
+            nextSleepingEyeHoldTime = Time.time + SleepingEyeHoldInterval;
+            return;
+        }
+
+        if (sleepingEyeTransitionRoutine != null) return;
+
+        if (sleepingAutoBlinkOriginalSaved || HasSavedEyeAutoSystemState())
+        {
+            RestoreAutoBlinkAfterSleeping("maintain-open");
+        }
+    }
+
+    int StartSleepingEyeTransition(bool closeEyes, string source)
+    {
+        StopSleepingEyeTransition("new-eye-transition");
+
+        if (closeEyes)
+        {
+            DisableAutoBlinkForSleeping(source + ":close-start");
+            sleepingEyeTransitionRoutine = StartCoroutine(SleepingEyeTransitionRoutine(true, source));
+            return SetEyesClosedMorphs(GetEyesClosedMorphValueOrDefault(0.0f));
+        }
+
+        // Keep Auto Blink / Auto Eyelid Morphs disabled until the eyes are fully open.
+        DisableAutoBlinkForSleeping(source + ":open-start");
+        SetBlinkSuppressMorphs(0.0f);
+        sleepingEyeTransitionRoutine = StartCoroutine(SleepingEyeTransitionRoutine(false, source));
+        return SetEyesClosedMorphs(GetEyesClosedMorphValueOrDefault(1.0f));
+    }
+
+    IEnumerator SleepingEyeTransitionRoutine(bool closeEyes, string source)
+    {
+        float target = closeEyes ? 1.0f : 0.0f;
+        float fallbackStart = closeEyes ? 0.0f : 1.0f;
+        float start = GetEyesClosedMorphValueOrDefault(fallbackStart);
+        float seconds = Mathf.Max(0.05f, closeEyes ? SleepingEyeCloseSeconds : SleepingEyeOpenSeconds);
+        float elapsed = 0.0f;
+
+        while (elapsed < seconds)
+        {
+            if (closeEyes && CurrentLifeState() != LifeStateSleeping)
+            {
+                sleepingEyeTransitionRoutine = null;
+                yield break;
+            }
+            if (!closeEyes && CurrentLifeState() == LifeStateSleeping)
+            {
+                sleepingEyeTransitionRoutine = null;
+                yield break;
+            }
+
+            DisableAutoBlinkForSleeping(source + (closeEyes ? ":closing" : ":opening"));
+            SetBlinkSuppressMorphs(0.0f);
+            float e = Smoother01(elapsed / seconds);
+            float value = Mathf.Lerp(start, target, e);
+            SetEyesClosedMorphs(value);
+            elapsed += Mathf.Max(0.0001f, Time.deltaTime);
+            yield return null;
+        }
+
+        SetBlinkSuppressMorphs(0.0f);
+        SetEyesClosedMorphs(target);
+        lastAppliedEyeState = closeEyes ? "closed" : "open";
+        sleepingEyeTransitionRoutine = null;
+
+        if (closeEyes)
+        {
+            DisableAutoBlinkForSleeping(source + ":close-complete");
+            nextSleepingEyeHoldTime = Time.time + SleepingEyeHoldInterval;
+        }
+        else
+        {
+            RestoreAutoBlinkAfterSleeping(source + ":open-complete");
+        }
+
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Life State eye transition complete / eyes=" + (closeEyes ? "closed" : "open")
+                + " / seconds=" + seconds.ToString("F2", CultureInfo.InvariantCulture)
+                + " / source=" + source);
+        }
+    }
+
+    void StopSleepingEyeTransition(string reason)
+    {
+        if (sleepingEyeTransitionRoutine != null)
+        {
+            try { StopCoroutine(sleepingEyeTransitionRoutine); } catch { }
+            sleepingEyeTransitionRoutine = null;
+            if (debugLog != null && debugLog.val) Log("Stop sleeping eye transition / reason=" + reason);
+        }
+    }
+
+    float GetEyesClosedMorphValueOrDefault(float fallback)
+    {
+        if (containingAtom == null) return fallback;
+        JSONStorable geometry = null;
+        try { geometry = containingAtom.GetStorableByID("geometry"); } catch { geometry = null; }
+        if (geometry == null) return fallback;
+
+        string[] aliases = new string[]
+        {
+            "Eyes Closed",
+            "EyesClosed",
+            "Eyes Closed Left",
+            "Eyes Closed Right",
+            "Eyes Closed L",
+            "Eyes Closed R",
+            "Eyelids Closed",
+            "Eyelids Closed Left",
+            "Eyelids Closed Right",
+            "Eyelid Closed",
+            "Eyelid Closed Left",
+            "Eyelid Closed Right"
+        };
+
+        float maxValue = -1.0f;
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            JSONStorableFloat f = null;
+            try { f = geometry.GetFloatJSONParam(aliases[i]); } catch { f = null; }
+            if (f == null) continue;
+            try { maxValue = Mathf.Max(maxValue, f.val); } catch { }
+        }
+
+        if (maxValue < -0.5f) return fallback;
+        return Mathf.Clamp01(maxValue);
+    }
+
+    void ApplySleepingEyeClosedHold(string source)
+    {
+        DisableAutoBlinkForSleeping(source);
+        SetBlinkSuppressMorphs(0.0f);
+        SetEyesClosedMorphs(1.0f);
+    }
+
+    int SetEyesClosedMorphs(float value)
+    {
+        if (containingAtom == null) return 0;
+        JSONStorable geometry = null;
+        try { geometry = containingAtom.GetStorableByID("geometry"); } catch { geometry = null; }
+        if (geometry == null) return 0;
+
+        string[] aliases = new string[]
+        {
+            "Eyes Closed",
+            "EyesClosed",
+            "Eyes Closed Left",
+            "Eyes Closed Right",
+            "Eyes Closed L",
+            "Eyes Closed R",
+            "Eyelids Closed",
+            "Eyelids Closed Left",
+            "Eyelids Closed Right",
+            "Eyelid Closed",
+            "Eyelid Closed Left",
+            "Eyelid Closed Right"
+        };
+
+        HashSet<string> touched = new HashSet<string>();
+        int count = 0;
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            string alias = aliases[i];
+            if (string.IsNullOrEmpty(alias)) continue;
+            JSONStorableFloat f = null;
+            try { f = geometry.GetFloatJSONParam(alias); } catch { f = null; }
+            if (f == null) continue;
+            string key = f.name;
+            if (string.IsNullOrEmpty(key)) key = alias;
+            if (touched.Contains(key)) continue;
+            touched.Add(key);
+            try
+            {
+                f.val = Mathf.Clamp01(value);
+                count++;
+            }
+            catch { }
+        }
+        return count;
+    }
+
+    int SetBlinkSuppressMorphs(float value)
+    {
+        if (containingAtom == null) return 0;
+        JSONStorable geometry = null;
+        try { geometry = containingAtom.GetStorableByID("geometry"); } catch { geometry = null; }
+        if (geometry == null) return 0;
+
+        string[] aliases = new string[]
+        {
+            "Blink",
+            "blink",
+            "Eye Blink",
+            "EyeBlink",
+            "Eyes Blink",
+            "EyesBlink",
+            "Blink Left",
+            "Blink Right",
+            "Blink L",
+            "Blink R",
+            "Eye Blink Left",
+            "Eye Blink Right",
+            "Eyes Blink Left",
+            "Eyes Blink Right",
+            "Eyelid Blink",
+            "Eyelid Blink Left",
+            "Eyelid Blink Right",
+            "Left Eye Blink",
+            "Right Eye Blink"
+        };
+
+        HashSet<string> touched = new HashSet<string>();
+        int count = 0;
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            string alias = aliases[i];
+            if (string.IsNullOrEmpty(alias)) continue;
+            JSONStorableFloat f = null;
+            try { f = geometry.GetFloatJSONParam(alias); } catch { f = null; }
+            if (f == null) continue;
+            string key = f.name;
+            if (string.IsNullOrEmpty(key)) key = alias;
+            if (touched.Contains(key)) continue;
+            touched.Add(key);
+            try
+            {
+                f.val = Mathf.Clamp01(value);
+                count++;
+            }
+            catch { }
+        }
+        return count;
+    }
+
+    bool HasSavedEyeAutoSystemState()
+    {
+        if (sleepingEyeAutoBoolStates == null) return false;
+        for (int i = 0; i < sleepingEyeAutoBoolStates.Count; i++)
+        {
+            SleepingEyeAutoBoolState st = sleepingEyeAutoBoolStates[i];
+            if (st != null && st.saved) return true;
+        }
+        return false;
+    }
+
+    void DisableAutoBlinkForSleeping(string source)
+    {
+        DisableEyeAutoSystemsForSleeping(source);
+    }
+
+    void RestoreAutoBlinkAfterSleeping(string source)
+    {
+        RestoreEyeAutoSystemsAfterSleeping(source);
+    }
+
+    void DisableEyeAutoSystemsForSleeping(string source)
+    {
+        if (!sleepingEyeAutoSystemsResolved || sleepingEyeAutoBoolStates.Count == 0)
+        {
+            ResolveEyeAutoSystemBoolParams(source);
+        }
+
+        if (sleepingEyeAutoBoolStates.Count == 0)
+        {
+            // Keep the old single-param fallback alive for older builds / unexpected storables.
+            if (sleepingAutoBlinkParam == null && !sleepingAutoBlinkResolved)
+            {
+                ResolveAutoBlinkParam(source);
+            }
+            if (sleepingAutoBlinkParam == null) return;
+
+            if (!sleepingAutoBlinkOriginalSaved)
+            {
+                try { sleepingAutoBlinkOriginalValue = sleepingAutoBlinkParam.val; } catch { sleepingAutoBlinkOriginalValue = false; }
+                sleepingAutoBlinkOriginalSaved = true;
+            }
+            try { if (sleepingAutoBlinkParam.val) sleepingAutoBlinkParam.val = false; } catch { }
+            return;
+        }
+
+        for (int i = 0; i < sleepingEyeAutoBoolStates.Count; i++)
+        {
+            SleepingEyeAutoBoolState st = sleepingEyeAutoBoolStates[i];
+            if (st == null || st.param == null) continue;
+            if (!st.saved)
+            {
+                try { st.originalValue = st.param.val; } catch { st.originalValue = false; }
+                st.saved = true;
+            }
+            try { if (st.param.val) st.param.val = false; } catch { }
+        }
+    }
+
+    void RestoreEyeAutoSystemsAfterSleeping(string source)
+    {
+        bool restoredAny = false;
+        for (int i = 0; i < sleepingEyeAutoBoolStates.Count; i++)
+        {
+            SleepingEyeAutoBoolState st = sleepingEyeAutoBoolStates[i];
+            if (st == null || st.param == null || !st.saved) continue;
+            try { st.param.val = st.originalValue; restoredAny = true; } catch { }
+            st.saved = false;
+        }
+
+        if (sleepingAutoBlinkOriginalSaved)
+        {
+            if (sleepingAutoBlinkParam != null)
+            {
+                try { sleepingAutoBlinkParam.val = sleepingAutoBlinkOriginalValue; restoredAny = true; } catch { }
+            }
+            sleepingAutoBlinkOriginalSaved = false;
+        }
+
+        if (restoredAny && debugLog != null && debugLog.val)
+        {
+            Log("Auto eye systems restore / params=" + AutoBlinkDebugLabel() + " / source=" + source);
+        }
+    }
+
+    void ResolveEyeAutoSystemBoolParams(string source)
+    {
+        sleepingEyeAutoSystemsResolved = true;
+        sleepingEyeAutoBoolStates.Clear();
+
+        if (containingAtom == null)
+        {
+            if (debugLog != null && debugLog.val) Log("Auto eye systems resolve / found=0 / source=" + source + " / reason=no-atom");
+            return;
+        }
+
+        HashSet<string> seen = new HashSet<string>();
+        string[] paramNames = EyeAutoSystemBoolParamNames();
+        string[] directStorableIds = EyeAutoSystemCandidateStorableIds();
+
+        for (int i = 0; i < directStorableIds.Length; i++)
+        {
+            string sid = directStorableIds[i];
+            JSONStorable storable = GetStorableSafe(sid);
+            if (storable == null) continue;
+            AddEyeAutoSystemParamsFromStorable(storable, sid, paramNames, seen);
+        }
+
+        List<string> ids = null;
+        try { ids = containingAtom.GetStorableIDs(); } catch { ids = null; }
+        if (ids != null)
+        {
+            for (int idIndex = 0; idIndex < ids.Count; idIndex++)
+            {
+                string sid = ids[idIndex];
+                if (string.IsNullOrEmpty(sid)) continue;
+                JSONStorable storable = GetStorableSafe(sid);
+                if (storable == null) continue;
+
+                // VaM blocks System.Reflection in plugin security, so use only public JSON params.
+                AddEyeAutoSystemParamsFromStorable(storable, sid, paramNames, seen);
+            }
+        }
+
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Auto eye systems resolve / found=" + sleepingEyeAutoBoolStates.Count.ToString(CultureInfo.InvariantCulture)
+                + " / params=" + AutoBlinkDebugLabel()
+                + " / source=" + source);
+        }
+    }
+
+    string[] EyeAutoSystemBoolParamNames()
+    {
+        return new string[]
+        {
+            "Auto Blink",
+            "AutoBlink",
+            "autoBlink",
+            "Auto Blinking",
+            "AutoBlinking",
+            "autoBlinking",
+            "Blink",
+            "blink",
+            "Blinking",
+            "blinking",
+            "Auto Blink Enabled",
+            "AutoBlinkEnabled",
+            "autoBlinkEnabled",
+            "blinkEnabled",
+            "Blink Enabled",
+            "BlinkEnabled",
+            "Auto Eyelid Morphs",
+            "AutoEyelidMorphs",
+            "autoEyelidMorphs",
+            "Auto Eyelids",
+            "AutoEyelids",
+            "autoEyelids",
+            "Auto Eyelid",
+            "AutoEyelid",
+            "autoEyelid",
+            "Auto Eye Lid Morphs",
+            "AutoEyeLidMorphs",
+            "autoEyeLidMorphs",
+            "Auto Eyelid Morphs Enabled",
+            "AutoEyelidMorphsEnabled",
+            "autoEyelidMorphsEnabled",
+            "Auto Eye Lid Morphs Enabled",
+            "AutoEyeLidMorphsEnabled",
+            "autoEyeLidMorphsEnabled",
+            "Eyelid Morphs Enabled",
+            "EyelidMorphsEnabled",
+            "eyelidMorphsEnabled",
+            "Eyelid Morph Enabled",
+            "EyelidMorphEnabled",
+            "eyelidMorphEnabled"
+        };
+    }
+
+    string[] EyeAutoSystemCandidateStorableIds()
+    {
+        return new string[]
+        {
+            "EyelidControl",
+            "Eye Control",
+            "EyeControl",
+            "Auto Systems",
+            "Auto System",
+            "AutoSystems",
+            "AutoSystem",
+            "Auto Behaviors",
+            "AutoBehaviors",
+            "Auto Behavior",
+            "AutoBehavior",
+            "Auto Behaviours",
+            "AutoBehaviours",
+            "Auto Behaviour",
+            "AutoBehaviour",
+            "Auto Morphs",
+            "AutoMorphs",
+            "geometry",
+            "Geometry"
+        };
+    }
+
+    void AddEyeAutoSystemParamsFromStorable(JSONStorable storable, string storableId, string[] paramNames, HashSet<string> seen)
+    {
+        if (storable == null || paramNames == null) return;
+        for (int i = 0; i < paramNames.Length; i++)
+        {
+            string paramName = paramNames[i];
+            if (string.IsNullOrEmpty(paramName)) continue;
+            JSONStorableBool b = null;
+            try { b = storable.GetBoolJSONParam(paramName); } catch { b = null; }
+            if (b == null) continue;
+            AddEyeAutoSystemBoolState(b, storableId + "/" + paramName, seen);
+        }
+    }
+
+    void AddEyeAutoSystemBoolState(JSONStorableBool param, string source, HashSet<string> seen)
+    {
+        if (param == null) return;
+        string key = source;
+        try
+        {
+            if (!string.IsNullOrEmpty(param.name)) key = source + "#" + param.name;
+        }
+        catch { }
+        if (seen != null && seen.Contains(key)) return;
+        if (seen != null) seen.Add(key);
+
+        SleepingEyeAutoBoolState st = new SleepingEyeAutoBoolState();
+        st.param = param;
+        st.originalValue = false;
+        st.saved = false;
+        st.source = source;
+        sleepingEyeAutoBoolStates.Add(st);
+    }
+
+    bool LooksLikeEyeAutoSystemStorable(string storableId)
+    {
+        if (string.IsNullOrEmpty(storableId)) return false;
+        string s = storableId.ToLowerInvariant();
+        return s.Contains("auto") || s.Contains("blink") || s.Contains("eyelid") || s.Contains("eyecontrol") || s.Contains("eye control") || s.Contains("geometry");
+    }
+
+    void ResolveAutoBlinkParam(string source)
+    {
+        sleepingAutoBlinkResolved = true;
+        sleepingAutoBlinkParam = FindAutoBlinkBoolParam(out sleepingAutoBlinkSource);
+        if (debugLog != null && debugLog.val)
+        {
+            Log("Auto Blink resolve / found=" + (sleepingAutoBlinkParam != null ? "1" : "0")
+                + " / source=" + source
+                + " / param=" + AutoBlinkDebugLabel());
+        }
+    }
+
+    JSONStorableBool FindAutoBlinkBoolParam(out string foundSource)
+    {
+        foundSource = "";
+        if (containingAtom == null) return null;
+
+        List<string> ids = null;
+        try { ids = containingAtom.GetStorableIDs(); } catch { ids = null; }
+        if (ids == null || ids.Count == 0) return null;
+
+        string[] explicitBlinkParamNames = new string[]
+        {
+            "Auto Blink",
+            "AutoBlink",
+            "autoBlink",
+            "Auto Blinking",
+            "AutoBlinking",
+            "autoBlinking",
+            "Blink",
+            "blink",
+            "Blinking",
+            "blinking",
+            "Auto Blink Enabled",
+            "AutoBlinkEnabled",
+            "autoBlinkEnabled",
+            "blinkEnabled",
+            "Blink Enabled",
+            "BlinkEnabled"
+        };
+
+        string[] genericEnableParamNames = new string[]
+        {
+            "enabled",
+            "Enabled",
+            "enable",
+            "Enable",
+            "on",
+            "On",
+            "active",
+            "Active"
+        };
+
+        // First pass: explicit Blink parameter names on any storable.
+        for (int idIndexA = 0; idIndexA < ids.Count; idIndexA++)
+        {
+            string storableIdA = ids[idIndexA];
+            JSONStorable storableA = GetStorableSafe(storableIdA);
+            JSONStorableBool explicitParam = FindFirstBoolParam(storableA, explicitBlinkParamNames, out foundSource, storableIdA);
+            if (explicitParam != null) return explicitParam;
+        }
+
+        // Second pass: generic enable/on only when the storable itself is clearly an Auto Blink storable.
+        for (int idIndexB = 0; idIndexB < ids.Count; idIndexB++)
+        {
+            string storableIdB = ids[idIndexB];
+            if (!LooksLikeAutoBlinkStorable(storableIdB)) continue;
+            JSONStorable storableB = GetStorableSafe(storableIdB);
+            JSONStorableBool genericParam = FindFirstBoolParam(storableB, genericEnableParamNames, out foundSource, storableIdB);
+            if (genericParam != null) return genericParam;
+        }
+
+        return null;
+    }
+
+    JSONStorable GetStorableSafe(string storableId)
+    {
+        if (containingAtom == null || string.IsNullOrEmpty(storableId)) return null;
+        try { return containingAtom.GetStorableByID(storableId); } catch { return null; }
+    }
+
+    JSONStorableBool FindFirstBoolParam(JSONStorable storable, string[] paramNames, out string foundSource, string storableId)
+    {
+        foundSource = "";
+        if (storable == null || paramNames == null) return null;
+
+        for (int paramIndex = 0; paramIndex < paramNames.Length; paramIndex++)
+        {
+            string paramName = paramNames[paramIndex];
+            if (string.IsNullOrEmpty(paramName)) continue;
+            JSONStorableBool boolParam = null;
+            try { boolParam = storable.GetBoolJSONParam(paramName); } catch { boolParam = null; }
+            if (boolParam == null) continue;
+            foundSource = storableId + "/" + paramName;
+            return boolParam;
+        }
+
+        return null;
+    }
+
+    bool LooksLikeAutoBlinkStorable(string storableId)
+    {
+        if (string.IsNullOrEmpty(storableId)) return false;
+        string lowerId = storableId.ToLowerInvariant();
+        bool hasBlink = lowerId.Contains("blink");
+        bool hasAuto = lowerId.Contains("auto");
+        bool hasSystem = lowerId.Contains("system");
+        bool hasEyelidControl = lowerId.Contains("eyelidcontrol") || lowerId.Contains("eyecontrol") || lowerId.Contains("eye control");
+        return hasBlink || hasEyelidControl || (hasAuto && hasSystem);
+    }
+
+    string AutoBlinkDebugLabel()
+    {
+        if (sleepingEyeAutoBoolStates != null && sleepingEyeAutoBoolStates.Count > 0)
+        {
+            int max = Mathf.Min(4, sleepingEyeAutoBoolStates.Count);
+            string label = "";
+            for (int i = 0; i < max; i++)
+            {
+                SleepingEyeAutoBoolState st = sleepingEyeAutoBoolStates[i];
+                if (st == null) continue;
+                if (!string.IsNullOrEmpty(label)) label += ",";
+                label += !string.IsNullOrEmpty(st.source) ? st.source : "<param>";
+            }
+            if (sleepingEyeAutoBoolStates.Count > max) label += ",+" + (sleepingEyeAutoBoolStates.Count - max).ToString(CultureInfo.InvariantCulture);
+            return label;
+        }
+
+        if (sleepingAutoBlinkParam == null) return "<not-found>";
+        if (!string.IsNullOrEmpty(sleepingAutoBlinkSource)) return sleepingAutoBlinkSource;
+        try
+        {
+            if (!string.IsNullOrEmpty(sleepingAutoBlinkParam.name)) return sleepingAutoBlinkParam.name;
+        }
+        catch { }
+        return "<resolved>";
     }
 
     float MotionScale()
@@ -4729,13 +6957,214 @@ public class HumanLifeAction : MVRScript
         return 1.00f;
     }
 
+    float PersonalityCoverFrequencyMultiplier()
+    {
+        string personality = CurrentLifePersonality();
+        if (personality == LifePersonalityBold) return 1.18f;
+        return 1.0f;
+    }
+
+    float PersonalityLookFrequencyMultiplier()
+    {
+        string personality = CurrentLifePersonality();
+        if (personality == LifePersonalityBold) return 1.18f;
+        return 1.0f;
+    }
+
+    float AffectionCoverFrequencyMultiplier()
+    {
+        string affection = CurrentLifeAffection();
+        if (affection == LifeAffectionDislike) return 0.95f;
+        if (affection == LifeAffectionShy) return 1.06f;
+        if (affection == LifeAffectionLike) return 1.12f;
+        return 1.0f;
+    }
+
+    float AffectionLookFrequencyMultiplier()
+    {
+        string affection = CurrentLifeAffection();
+        if (affection == LifeAffectionDislike) return 0.88f;
+        if (affection == LifeAffectionShy) return 0.94f;
+        if (affection == LifeAffectionLike) return 1.18f;
+        return 1.0f;
+    }
+
+    float EffectiveCoverFrequency()
+    {
+        if (randomCoverEnabled == null || !randomCoverEnabled.val) return 0.0f;
+        string state = CurrentLifeState();
+        float result;
+        if (state == LifeStateSleeping) result = 32.0f;
+        else if (state == LifeStateQuiet) result = 48.0f;
+        else if (state == LifeStateShy) result = 68.0f;
+        else if (state == LifeStateActive) result = 95.0f;
+        else result = Mathf.Clamp(SafeFloat(coverFrequency, DefaultCoverFrequency), 0.0f, 100.0f);
+
+        if (state != LifeStateSleeping)
+        {
+            result *= PersonalityCoverFrequencyMultiplier();
+            result *= AffectionCoverFrequencyMultiplier();
+        }
+        return Mathf.Clamp(result, 0.0f, 100.0f);
+    }
+
+    float EffectiveLookFrequency()
+    {
+        if (!IsHeadLookEnabled()) return 0.0f;
+        string state = CurrentLifeState();
+        float result;
+        if (state == LifeStateSleeping) result = 16.0f;
+        else if (state == LifeStateQuiet) result = 28.0f;
+        else if (state == LifeStateShy) result = 46.0f;
+        else if (state == LifeStateActive) result = 75.0f;
+        else result = Mathf.Clamp(SafeFloat(lookFrequency, DefaultLookFrequency), 0.0f, 100.0f);
+
+        if (state != LifeStateSleeping)
+        {
+            result *= PersonalityLookFrequencyMultiplier();
+            result *= AffectionLookFrequencyMultiplier();
+        }
+        return Mathf.Clamp(result, 0.0f, 100.0f);
+    }
+
+    float EffectiveCoverSelfPercent()
+    {
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        string affection = CurrentLifeAffection();
+        if (state == LifeStateQuiet) return 100.0f;
+        if (state == LifeStateSleeping) return 100.0f;
+
+        float result;
+        if (state == LifeStateShy) result = 92.0f;
+        else if (personality == LifePersonalityShy) result = state == LifeStateActive ? 85.0f : 92.0f;
+        else if (personality == LifePersonalityBold) result = state == LifeStateActive ? 45.0f : 55.0f;
+        else if (state == LifeStateActive) result = 65.0f;
+        else result = Mathf.Clamp(SafeFloat(coverSelfPercent, DefaultCoverSelfPercent), 0.0f, 100.0f);
+
+        if (affection == LifeAffectionDislike) result += 24.0f;
+        else if (affection == LifeAffectionShy) result += 30.0f;
+        else if (affection == LifeAffectionLike) result -= 22.0f;
+        return Mathf.Clamp(result, 0.0f, 100.0f);
+    }
+
+    float EffectiveLookTargetPercent()
+    {
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        string affection = CurrentLifeAffection();
+        if (state == LifeStateSleeping) return 0.0f;
+
+        float result;
+        if (state == LifeStateShy) result = 22.0f;
+        else if (personality == LifePersonalityShy)
+        {
+            if (state == LifeStateQuiet) result = 12.0f;
+            else if (state == LifeStateActive) result = 30.0f;
+            else result = 22.0f;
+        }
+        else if (personality == LifePersonalityBold)
+        {
+            if (state == LifeStateQuiet) result = 45.0f;
+            else if (state == LifeStateActive) result = 82.0f;
+            else result = 72.0f;
+        }
+        else if (state == LifeStateQuiet) result = 35.0f;
+        else if (state == LifeStateActive) result = 70.0f;
+        else result = Mathf.Clamp(SafeFloat(lookTargetPercent, DefaultLookTargetPercent), 0.0f, 100.0f);
+
+        if (affection == LifeAffectionDislike) result = result * 0.35f;
+        else if (affection == LifeAffectionShy) result = result * 0.42f;
+        else if (affection == LifeAffectionLike) result = result * 1.25f + 8.0f;
+        return Mathf.Clamp(result, 0.0f, 100.0f);
+    }
+
+    float EffectiveLookAwayPercent()
+    {
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        string affection = CurrentLifeAffection();
+        if (state == LifeStateSleeping) return 100.0f;
+
+        float result;
+        if (state == LifeStateShy) result = 72.0f;
+        else if (personality == LifePersonalityShy)
+        {
+            if (state == LifeStateQuiet) result = 78.0f;
+            else if (state == LifeStateActive) result = 62.0f;
+            else result = 68.0f;
+        }
+        else if (personality == LifePersonalityBold)
+        {
+            if (state == LifeStateQuiet) result = 18.0f;
+            else if (state == LifeStateActive) result = 10.0f;
+            else result = 12.0f;
+        }
+        else if (state == LifeStateQuiet) result = 10.0f;
+        else if (state == LifeStateActive) result = 25.0f;
+        else result = Mathf.Clamp(SafeFloat(lookAwayPercent, DefaultLookAwayPercent), 0.0f, 100.0f);
+
+        if (affection == LifeAffectionDislike) result += 28.0f;
+        else if (affection == LifeAffectionShy) result += 34.0f;
+        else if (affection == LifeAffectionLike) result -= 14.0f;
+        return Mathf.Clamp(result, 0.0f, 100.0f);
+    }
+
+    float EffectiveBreathScale()
+    {
+        float scale = Mathf.Max(0.0f, SafeFloat(breathScale, DefaultBreathScale));
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        if (state == LifeStateSleeping) return scale * 0.55f;
+        if (state == LifeStateQuiet) scale *= 0.78f;
+        else if (state == LifeStateShy) scale *= 0.88f;
+        else if (state == LifeStateActive) scale *= 1.30f;
+        if (personality == LifePersonalityShy) scale *= 0.95f;
+        else if (personality == LifePersonalityBold) scale *= 1.08f;
+        return scale;
+    }
+
+    float EffectiveShoulderSwayScale()
+    {
+        float scale = Mathf.Max(0.0f, SafeFloat(shoulderSwayScale, DefaultShoulderSwayScale));
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        if (state == LifeStateSleeping) return scale * 0.35f;
+        if (state == LifeStateQuiet) scale *= 0.70f;
+        else if (state == LifeStateShy) scale *= 1.10f;
+        else if (state == LifeStateActive) scale *= 1.25f;
+        if (personality == LifePersonalityShy) scale *= 1.18f;
+        else if (personality == LifePersonalityBold) scale *= 1.08f;
+        if (CurrentLifeAffection() == LifeAffectionDislike) scale *= 1.10f;
+        else if (CurrentLifeAffection() == LifeAffectionShy) scale *= 1.16f;
+        else if (CurrentLifeAffection() == LifeAffectionLike) scale *= 1.04f;
+        return scale;
+    }
+
+    float EffectiveLegScale()
+    {
+        float scale = Mathf.Clamp(SafeFloat(legScale, DefaultLegScale), 0.0f, 5.0f);
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        if (state == LifeStateSleeping) return Mathf.Clamp(scale * 0.32f, 0.0f, 5.0f);
+        if (state == LifeStateQuiet) scale *= 0.70f;
+        else if (state == LifeStateShy) scale *= 1.12f;
+        else if (state == LifeStateActive) scale *= 1.30f;
+        if (personality == LifePersonalityShy) scale *= 1.20f;
+        else if (personality == LifePersonalityBold) scale *= 1.10f;
+        if (CurrentLifeAffection() == LifeAffectionDislike) scale *= 1.12f;
+        else if (CurrentLifeAffection() == LifeAffectionShy) scale *= 1.18f;
+        else if (CurrentLifeAffection() == LifeAffectionLike) scale *= 1.04f;
+        return Mathf.Clamp(scale, 0.0f, 5.0f);
+    }
+
     float EffectiveBreathAmount()
     {
         string mode = CurrentMotionMode();
         float baseAmount = 0.0100f;
         if (mode == LifeMotionSmall) baseAmount = 0.0060f;
         else if (mode == LifeMotionLarge) baseAmount = 0.0150f;
-        return baseAmount * Mathf.Max(0.0f, SafeFloat(breathScale, DefaultBreathScale));
+        return baseAmount * Mathf.Max(0.0f, EffectiveBreathScale());
     }
 
     float EffectiveLookTargetHoldMin()
@@ -4784,7 +7213,7 @@ public class HumanLifeAction : MVRScript
         float baseAmount = 0.0080f;
         if (mode == LifeMotionSmall) baseAmount = 0.0040f;
         else if (mode == LifeMotionLarge) baseAmount = 0.0120f;
-        return baseAmount * Mathf.Max(0.0f, SafeFloat(breathScale, DefaultBreathScale));
+        return baseAmount * Mathf.Max(0.0f, EffectiveBreathScale());
     }
 
     float EffectiveBreathRotationDegrees()
@@ -4793,7 +7222,7 @@ public class HumanLifeAction : MVRScript
         float baseDegrees = 1.00f;
         if (mode == LifeMotionSmall) baseDegrees = 0.55f;
         else if (mode == LifeMotionLarge) baseDegrees = 1.45f;
-        return baseDegrees * Mathf.Max(0.0f, SafeFloat(breathScale, DefaultBreathScale));
+        return baseDegrees * Mathf.Max(0.0f, EffectiveBreathScale());
     }
 
     float EffectiveShoulderSwayAmount()
@@ -4802,12 +7231,12 @@ public class HumanLifeAction : MVRScript
         float baseAmount = 0.0040f;
         if (mode == LifeMotionSmall) baseAmount = 0.0025f;
         else if (mode == LifeMotionLarge) baseAmount = 0.0060f;
-        return baseAmount * Mathf.Max(0.0f, SafeFloat(shoulderSwayScale, DefaultShoulderSwayScale));
+        return baseAmount * Mathf.Max(0.0f, EffectiveShoulderSwayScale());
     }
 
     bool IsCover100Mode()
     {
-        return randomCoverEnabled != null && randomCoverEnabled.val && SafeFloat(coverFrequency, DefaultCoverFrequency) >= 99.5f;
+        return randomCoverEnabled != null && randomCoverEnabled.val && EffectiveCoverFrequency() >= 99.5f;
     }
 
     float EffectiveCoverPrepareSeconds()
@@ -4875,28 +7304,88 @@ public class HumanLifeAction : MVRScript
 
     void GetEffectiveInterval(out float min, out float max)
     {
+        string state = CurrentLifeState();
+        string personality = CurrentLifePersonality();
+        string affection = CurrentLifeAffection();
+        if (state == LifeStateSleeping)
+        {
+            min = 6.0f;
+            max = 14.0f;
+            return;
+        }
+        if (state == LifeStateQuiet)
+        {
+            min = 4.0f;
+            max = 10.0f;
+            if (personality == LifePersonalityBold) { min = 3.0f; max = 7.0f; }
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
+            return;
+        }
+        if (state == LifeStateShy)
+        {
+            min = 3.2f;
+            max = 8.5f;
+            if (personality == LifePersonalityBold) { min = 2.6f; max = 6.8f; }
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
+            return;
+        }
+        if (state == LifeStateActive && !IsCover100Mode())
+        {
+            min = 2.0f;
+            max = 5.0f;
+            if (personality == LifePersonalityShy) { min = 1.8f; max = 4.5f; }
+            else if (personality == LifePersonalityBold) { min = 1.4f; max = 3.5f; }
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
+            return;
+        }
+
         string mode = CurrentMotionMode();
         if (IsCover100Mode())
         {
             // v010: Cover 100 is a deliberate stress/visibility mode.
-            if (mode == LifeMotionSmall) { min = 1.0f; max = 1.8f; return; }
-            if (mode == LifeMotionLarge) { min = 0.25f; max = 0.65f; return; }
-            min = 0.45f; max = 1.00f; return;
+            if (mode == LifeMotionSmall) { min = 1.0f; max = 1.8f; ApplyAffectionIntervalBias(ref min, ref max, affection); return; }
+            if (mode == LifeMotionLarge) { min = 0.25f; max = 0.65f; ApplyAffectionIntervalBias(ref min, ref max, affection); return; }
+            min = 0.45f;
+            max = 1.00f;
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
+            return;
         }
         if (mode == LifeMotionSmall)
         {
             min = 6.0f;
             max = 14.0f;
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
             return;
         }
         if (mode == LifeMotionLarge)
         {
             min = 3.0f;
             max = 7.0f;
+            ApplyAffectionIntervalBias(ref min, ref max, affection);
             return;
         }
         min = DefaultIntervalMin;
         max = DefaultIntervalMax;
+        ApplyAffectionIntervalBias(ref min, ref max, affection);
+    }
+
+    void ApplyAffectionIntervalBias(ref float min, ref float max, string affection)
+    {
+        if (affection == LifeAffectionLike)
+        {
+            min *= 0.90f;
+            max *= 0.90f;
+        }
+        else if (affection == LifeAffectionDislike)
+        {
+            min *= 1.08f;
+            max *= 1.12f;
+        }
+        else if (affection == LifeAffectionShy)
+        {
+            min *= 0.92f;
+            max *= 1.02f;
+        }
     }
 
     float EffectiveLegBaseRotationDegrees()
@@ -4907,7 +7396,7 @@ public class HumanLifeAction : MVRScript
         float baseAmount = 2.40f;
         if (mode == LifeMotionSmall) baseAmount = 1.35f;
         else if (mode == LifeMotionLarge) baseAmount = 4.20f;
-        float scale = Mathf.Clamp(SafeFloat(legScale, DefaultLegScale), 0.0f, 5.0f);
+        float scale = EffectiveLegScale();
         return baseAmount * scale;
     }
 
@@ -4918,7 +7407,7 @@ public class HumanLifeAction : MVRScript
         float baseAmount = 0.010f;
         if (mode == LifeMotionSmall) baseAmount = 0.005f;
         else if (mode == LifeMotionLarge) baseAmount = 0.018f;
-        float scale = Mathf.Clamp(SafeFloat(legScale, DefaultLegScale), 0.0f, 5.0f);
+        float scale = EffectiveLegScale();
         return baseAmount * scale;
     }
 
@@ -4959,12 +7448,13 @@ public class HumanLifeAction : MVRScript
         if (statusText == null) return;
         float nextIn = nextGestureTime > 0.0f ? Mathf.Max(0.0f, nextGestureTime - Time.time) : 0.0f;
         statusText.val = "HumanLifeAction / " + message
+            + " / state=" + CurrentLifeState()
             + " / motion=" + CurrentMotionMode()
             + " / breath=" + (breathLoopRoutine != null ? "ON" : "OFF")
             + " / headLook=" + (IsHeadLookEnabled() ? "ON" : "OFF")
             + " / leg=" + (IsLegMotionEnabled() ? "ON" : "OFF")
             + " / legPos=" + (IsLegPositionAssistEnabled() ? "ON" : "OFF")
-            + " / legScale=" + SafeFloat(legScale, DefaultLegScale).ToString("F1", CultureInfo.InvariantCulture)
+            + " / legScale=" + EffectiveLegScale().ToString("F1", CultureInfo.InvariantCulture)
             + " / legBase=" + (legBaseLoopRoutine != null ? "ON" : "OFF")
             + " / hbaPause=" + (legPausedByHba ? "ON" : "OFF")
             + " / dockingPause=" + (legPausedByExternalDockingPoseAssist ? "ON" : "OFF")

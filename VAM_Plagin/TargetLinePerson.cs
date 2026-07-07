@@ -1,3 +1,14 @@
+// VERSION: TargetLinePerson_v288_dance_pair_motion_max_050_fix.cs
+// DANCE_PAIR_MOTION_MAX_050_FIX_BUILD 2026-07-07: Sets Dance Hip Pair Motion slider range to -0.50..0.50 for the current fixed Dance Mode tuning.
+// DANCE_PAIR_DIRECTION_SWAP_BUILD 2026-07-07: Swaps Dance Pair Direction target-side semantics so Normal/Counter match the observed motion labels; target hip remains sync, target chest/head lag unchanged.
+// DANCE_PAIR_BASIS_YELLOW_GUIDE_BUILD 2026-07-07: Adds Dance Pair Basis selector. Yellow Guide uses the captured yellow guide direction for Dance Hip Pair Motion, while Hip Pair Line preserves the direct self-hip to target-hip basis.
+// DANCE_TARGET_LAG_CHEST_HEAD_BUILD 2026-07-07: Makes Dance Target Lag affect only target chest/head. Target hip stays synchronized immediately, while target chest/head follow with lag.
+// DANCE_PAIR_DIRECTION_BUILD 2026-07-07: Adds Dance Pair Direction selector under Dance Hip Pair Motion. Normal fixes target-side pair motion by using the same self-to-target hip direction; Counter preserves the previous opposite target movement as a selectable dance variant.
+// DANCE_SAFE_OVERLAY_SLIDER_ACTIVE_BUILD 2026-07-06: Reworks Dance Mode from base-position forcing into a last-step additive overlay. Manual dance can run only while sliders are active, returns smoothly to zero, and target motion can lag behind. Only hip/chest/head are touched; no IK states are changed.
+// DANCE_PAIR_HIP_MOTION_BUILD 2026-07-06: Adds Dance Hip Pair Motion directly under Dance Mode. It uses the captured self-target hip direction to add a mirrored forward/back plus up/down hip-upper motion while still touching only hip/chest/head controls.
+// DANCE_HIP_UPPER_POS_XYZ_SELF_TARGET_ONLY_BUILD 2026-07-06: Adds Dance Hip-Upper Pos Z and keeps Dance Mode limited to self/target hip/chest/head controls only. Hands/elbows/lower/P controllers are not touched.
+// DANCE_HIP_UPPER_POS_XY_SELF_TARGET_ONLY_BUILD 2026-07-06: Narrows Dance Mode to Hip-Upper Pos X/Y only on self and target; only hip/chest/head controls are moved, hands/elbows/lower/P controllers are not touched.
+// DANCE_HIP_UPPER_POS_XY_TARGET_LINK_BUILD 2026-07-06: Adds Dance Mode with Hip-Upper Pos X/Y sliders in TargetLinePerson and optional target-linked Hip-Upper movement.
 // DEBUG_VIEW_GEN_MARKER_NO_NORMAL_LOG_BUILD 2026-07-05: Red/blue Gen source markers now render only while Debug View is ON, and the Gen source visual log is no longer written as a normal always-on VaM log.
 // BLUE_DISTANCE_SLIDER_5CM_BUILD 2026-07-05: Adds Blue Point Distance slider under Distance; default 5cm and shared by red/blue visual marker, Depth P Follow, and Yellow Guide pre-angle blue->red route.
 // PFOLLOW_BLUE_ROUTE_4CM_BUILD 2026-07-05: Moves the blue approach marker/route point to 4cm from the red live origin on the output/front side; Depth P Follow and Yellow Guide pre-angle blue->red routing share the same distance.
@@ -278,6 +289,21 @@ public class TargetLinePerson : MVRScript
     float lowTargetActionHipDrop;
     JSONStorableBool autoPose;
     JSONStorableBool autoPoseLieMode;
+    JSONStorableBool danceMode;
+    JSONStorableFloat danceHipPairMotion;
+    JSONStorableStringChooser dancePairBasis;
+    JSONStorableStringChooser dancePairDirection;
+    JSONStorableFloat danceTargetLagSeconds;
+    JSONStorableBool danceWhileSliderActive;
+    JSONStorableFloat danceActiveHoldSeconds;
+    JSONStorableFloat danceReturnSeconds;
+    JSONStorableBool danceRespectBusy;
+    JSONStorableFloat danceBusyCooldown;
+    JSONStorableFloat danceHipUpperPosX;
+    JSONStorableFloat danceHipUpperPosY;
+    JSONStorableFloat danceHipUpperPosZ;
+    JSONStorableBool danceTargetLink;
+    JSONStorableFloat danceTargetScale;
 
     JSONStorableFloat sitGroundYThreshold;
 
@@ -372,6 +398,29 @@ public class TargetLinePerson : MVRScript
     FreeControllerV3.RotationState pushSavedPBaseRotationState;
     FreeControllerV3.RotationState pushSavedPMidRotationState;
     FreeControllerV3.RotationState pushSavedPTipRotationState;
+
+    readonly Dictionary<string, Vector3> danceOwnBaseLocalPositions = new Dictionary<string, Vector3>();
+    readonly Dictionary<string, Vector3> danceTargetBaseLocalPositions = new Dictionary<string, Vector3>();
+    readonly Dictionary<string, FreeControllerV3.PositionState> danceOwnBasePositionStates = new Dictionary<string, FreeControllerV3.PositionState>();
+    readonly Dictionary<string, FreeControllerV3.PositionState> danceTargetBasePositionStates = new Dictionary<string, FreeControllerV3.PositionState>();
+    bool danceBaseCaptured;
+    string danceBaseTargetUid = "";
+    Vector3 dancePairBaseDirWorld = Vector3.forward;
+    bool dancePairBaseDirCaptured;
+    const string TargetLinePersonVersionName = "TargetLinePerson_v287_dance_pair_direction_swap";
+    const string DancePairBasisYellowGuide = "Yellow Guide";
+    const string DancePairBasisHipPairLine = "Hip Pair Line";
+    const string DancePairDirectionNormal = "Normal";
+    const string DancePairDirectionCounter = "Counter";
+    Vector3 danceOwnAppliedLocalDelta = Vector3.zero;
+    Vector3 danceTargetHipAppliedLocalDelta = Vector3.zero;
+    Vector3 danceTargetUpperAppliedLocalDelta = Vector3.zero;
+    Vector3 danceTargetUpperSmoothedLocalDelta = Vector3.zero;
+    bool danceTargetUpperLagInitialized;
+    string danceAppliedTargetUid = "";
+    float danceLastSliderChangeTime = -9999.0f;
+    float danceEffectiveWeight = 0.0f;
+    float danceBusyUntil = -9999.0f;
 
     const float PushPDepthScaleDefault = 1.50f;
     const float PushPDepthScaleMin = 1.00f;
@@ -1119,6 +1168,156 @@ public class TargetLinePerson : MVRScript
         CreateScrollablePopup(targetControllerChooser);
         lastTargetControllerMode = targetControllerChooser.val;
 
+        danceMode = new JSONStorableBool(
+            "Dance Mode",
+            false
+        );
+        danceMode.setCallbackFunction = OnDanceModeChanged;
+        RegisterBool(danceMode);
+        CreateToggle(danceMode, true);
+
+        danceHipPairMotion = new JSONStorableFloat(
+            "Dance Hip Pair Motion",
+            0.0f,
+            -0.50f,
+            0.50f
+        );
+        danceHipPairMotion.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceHipPairMotion);
+        CreateSlider(danceHipPairMotion, true);
+
+        dancePairBasis = new JSONStorableStringChooser(
+            "Dance Pair Basis",
+            new List<string>()
+            {
+                DancePairBasisYellowGuide,
+                DancePairBasisHipPairLine
+            },
+            DancePairBasisYellowGuide,
+            "Dance Pair Basis"
+        );
+        dancePairBasis.setCallbackFunction = OnDancePairBasisChanged;
+        RegisterStringChooser(dancePairBasis);
+        CreateScrollablePopup(dancePairBasis, true);
+
+        dancePairDirection = new JSONStorableStringChooser(
+            "Dance Pair Direction",
+            new List<string>()
+            {
+                DancePairDirectionNormal,
+                DancePairDirectionCounter
+            },
+            DancePairDirectionNormal,
+            "Dance Pair Direction"
+        );
+        dancePairDirection.setCallbackFunction = OnDancePairDirectionChanged;
+        RegisterStringChooser(dancePairDirection);
+        CreateScrollablePopup(dancePairDirection, true);
+
+        danceTargetLagSeconds = new JSONStorableFloat(
+            "Dance Target Lag Seconds",
+            0.18f,
+            0.0f,
+            1.00f
+        );
+        danceTargetLagSeconds.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceTargetLagSeconds);
+        CreateSlider(danceTargetLagSeconds, true);
+
+        danceWhileSliderActive = new JSONStorableBool(
+            "Dance While Slider Active",
+            true
+        );
+        danceWhileSliderActive.setCallbackFunction = OnDanceGateChanged;
+        RegisterBool(danceWhileSliderActive);
+        CreateToggle(danceWhileSliderActive, true);
+
+        danceActiveHoldSeconds = new JSONStorableFloat(
+            "Dance Active Hold Seconds",
+            0.25f,
+            0.05f,
+            2.00f
+        );
+        danceActiveHoldSeconds.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceActiveHoldSeconds);
+        CreateSlider(danceActiveHoldSeconds, true);
+
+        danceReturnSeconds = new JSONStorableFloat(
+            "Dance Return Seconds",
+            0.20f,
+            0.01f,
+            2.00f
+        );
+        danceReturnSeconds.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceReturnSeconds);
+        CreateSlider(danceReturnSeconds, true);
+
+        danceRespectBusy = new JSONStorableBool(
+            "Dance Respect Busy",
+            true
+        );
+        danceRespectBusy.setCallbackFunction = OnDanceGateChanged;
+        RegisterBool(danceRespectBusy);
+        CreateToggle(danceRespectBusy, true);
+
+        danceBusyCooldown = new JSONStorableFloat(
+            "Dance Busy Cooldown",
+            0.35f,
+            0.0f,
+            2.00f
+        );
+        danceBusyCooldown.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceBusyCooldown);
+        CreateSlider(danceBusyCooldown, true);
+
+        danceHipUpperPosX = new JSONStorableFloat(
+            "Dance Hip-Upper Pos X",
+            0.0f,
+            -0.50f,
+            0.50f
+        );
+        danceHipUpperPosX.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceHipUpperPosX);
+        CreateSlider(danceHipUpperPosX, true);
+
+        danceHipUpperPosY = new JSONStorableFloat(
+            "Dance Hip-Upper Pos Y",
+            0.0f,
+            -0.50f,
+            0.50f
+        );
+        danceHipUpperPosY.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceHipUpperPosY);
+        CreateSlider(danceHipUpperPosY, true);
+
+        danceHipUpperPosZ = new JSONStorableFloat(
+            "Dance Hip-Upper Pos Z",
+            0.0f,
+            -0.50f,
+            0.50f
+        );
+        danceHipUpperPosZ.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceHipUpperPosZ);
+        CreateSlider(danceHipUpperPosZ, true);
+
+        danceTargetLink = new JSONStorableBool(
+            "Dance Target Link",
+            true
+        );
+        danceTargetLink.setCallbackFunction = OnDanceTargetLinkChanged;
+        RegisterBool(danceTargetLink);
+        CreateToggle(danceTargetLink, true);
+
+        danceTargetScale = new JSONStorableFloat(
+            "Dance Target Scale",
+            1.0f,
+            0.0f,
+            2.0f
+        );
+        danceTargetScale.setCallbackFunction = OnDanceSliderChanged;
+        RegisterFloat(danceTargetScale);
+        CreateSlider(danceTargetScale, true);
+
         performanceModeChooser = new JSONStorableStringChooser(
             "Performance Mode",
             new List<string>()
@@ -1719,7 +1918,40 @@ public class TargetLinePerson : MVRScript
         RegisterAction(new JSONStorableAction("Toggle Auto Pose Lie", ActionToggleAutoPoseLieMode));
         RegisterAction(new JSONStorableAction("Auto Pose Lie", ActionSetAutoPoseLie));
         RegisterAction(new JSONStorableAction("Auto Pose Sit", ActionSetAutoPoseSit));
+        RegisterAction(new JSONStorableAction("Dance Mode ON", ActionDanceModeOn));
+        RegisterAction(new JSONStorableAction("Dance Mode OFF", ActionDanceModeOff));
+        RegisterAction(new JSONStorableAction("Dance Reset", ActionDanceReset));
+        RegisterAction(new JSONStorableAction("Dance Capture Base", ActionDanceCaptureBase));
         RegisterAction(new JSONStorableAction("HUD FX Test", ActionHudFxTest));
+    }
+
+    void ActionDanceModeOn()
+    {
+        if (danceMode != null) danceMode.val = true;
+    }
+
+    void ActionDanceModeOff()
+    {
+        if (danceMode != null) danceMode.val = false;
+    }
+
+    void ActionDanceReset()
+    {
+        if (danceHipPairMotion != null) danceHipPairMotion.val = 0.0f;
+        if (danceHipUpperPosX != null) danceHipUpperPosX.val = 0.0f;
+        if (danceHipUpperPosY != null) danceHipUpperPosY.val = 0.0f;
+        if (danceHipUpperPosZ != null) danceHipUpperPosZ.val = 0.0f;
+        danceLastSliderChangeTime = -9999.0f;
+        danceEffectiveWeight = 0.0f;
+        ResetDanceTargetLagState();
+        UpdateDanceModeNow("action reset");
+    }
+
+    void ActionDanceCaptureBase()
+    {
+        ResetDanceHipUpper("action capture base");
+        CaptureDanceHipUpperBase("action capture base");
+        UpdateDanceModeNow("action capture base");
     }
 
     void ActionHudFxTest()
@@ -2247,6 +2479,7 @@ public class TargetLinePerson : MVRScript
     {
         // v215: Target Pelvis Auto is one-shot only; do not hold pelvis in Update.
         UpdateAutoPoseLieButtonUi();
+        UpdateDanceModeNow("update");
 
         if (!captured)
         {
@@ -3099,6 +3332,584 @@ public class TargetLinePerson : MVRScript
         return null;
     }
 
+    string[] GetDanceHipUpperControllerNames()
+    {
+        // v283: Dance Mode is a safe overlay and is deliberately limited to these controls.
+        // Do not move hands/elbows/lower-body/P controllers here, and do not change IK states.
+        return new string[]
+        {
+            "hipControl",
+            "chestControl",
+            "headControl"
+        };
+    }
+
+    void OnDanceModeChanged(bool value)
+    {
+        if (value)
+        {
+            CaptureDanceHipUpperBase("dance mode on");
+            danceLastSliderChangeTime = -9999.0f;
+            danceEffectiveWeight = IsDanceWhileSliderActive() ? 0.0f : 1.0f;
+            UpdateDanceModeNow("dance mode on");
+        }
+        else
+        {
+            ResetDanceHipUpper("dance mode off");
+        }
+    }
+
+    void OnDanceSliderChanged(float value)
+    {
+        MarkDanceSliderActivity();
+        UpdateDanceModeNow("dance slider");
+    }
+
+    void OnDancePairBasisChanged(string value)
+    {
+        RemoveDanceTargetOverlay("dance pair basis changed");
+        ResetDanceTargetLagState();
+        MarkDanceSliderActivity();
+        UpdateDanceModeNow("dance pair basis changed");
+    }
+
+    void OnDancePairDirectionChanged(string value)
+    {
+        RemoveDanceTargetOverlay("dance pair direction changed");
+        ResetDanceTargetLagState();
+        MarkDanceSliderActivity();
+        UpdateDanceModeNow("dance pair direction changed");
+    }
+
+    bool IsDancePairBasisYellowGuide()
+    {
+        return dancePairBasis == null || dancePairBasis.val == DancePairBasisYellowGuide;
+    }
+
+    bool IsDancePairDirectionCounter()
+    {
+        return dancePairDirection != null && dancePairDirection.val == DancePairDirectionCounter;
+    }
+
+    void OnDanceGateChanged(bool value)
+    {
+        if (!value)
+        {
+            danceLastSliderChangeTime = -9999.0f;
+        }
+        else
+        {
+            MarkDanceSliderActivity();
+        }
+        UpdateDanceModeNow("dance gate changed");
+    }
+
+    void OnDanceTargetLinkChanged(bool value)
+    {
+        RemoveDanceTargetOverlay("dance target link changed");
+        ResetDanceTargetLagState();
+        if (danceMode != null && danceMode.val)
+        {
+            CaptureDanceHipUpperBase("dance target link changed");
+            MarkDanceSliderActivity();
+            UpdateDanceModeNow("dance target link changed");
+        }
+    }
+
+    bool IsDanceModeEnabled()
+    {
+        return danceMode != null && danceMode.val;
+    }
+
+    bool IsDanceWhileSliderActive()
+    {
+        return danceWhileSliderActive != null && danceWhileSliderActive.val;
+    }
+
+    void MarkDanceSliderActivity()
+    {
+        danceLastSliderChangeTime = Time.time;
+        if (danceMode != null && danceMode.val)
+        {
+            danceEffectiveWeight = 1.0f;
+        }
+    }
+
+    void UpdateDanceModeNow(string reason)
+    {
+        if (!IsDanceModeEnabled())
+        {
+            RemoveDanceOverlay(reason + " disabled");
+            return;
+        }
+
+        Atom targetAtom = targetPersonChooser != null ? FindAtom(targetPersonChooser.val) : null;
+        string currentTargetUid = targetAtom != null ? targetAtom.uid : "";
+        bool targetLink = danceTargetLink == null || danceTargetLink.val;
+
+        if (danceAppliedTargetUid != currentTargetUid && !string.IsNullOrEmpty(danceAppliedTargetUid))
+        {
+            RemoveDanceTargetOverlay(reason + " target changed");
+        }
+
+        if (!danceBaseCaptured || danceBaseTargetUid != currentTargetUid)
+        {
+            CaptureDanceHipUpperBase(reason + " recapture");
+        }
+
+        float activeWeight = UpdateDanceEffectiveWeight(reason);
+        if (activeWeight <= 0.0001f)
+        {
+            ApplyDanceOverlayLocalDeltas(Vector3.zero, targetAtom, Vector3.zero, Vector3.zero, targetLink, reason + " inactive");
+            return;
+        }
+
+        float x = danceHipUpperPosX != null ? danceHipUpperPosX.val : 0.0f;
+        float y = danceHipUpperPosY != null ? danceHipUpperPosY.val : 0.0f;
+        float z = danceHipUpperPosZ != null ? danceHipUpperPosZ.val : 0.0f;
+        float pairMotion = danceHipPairMotion != null ? danceHipPairMotion.val : 0.0f;
+
+        Vector3 manualOwnLocalDelta = new Vector3(x, y, z);
+        Vector3 ownPairWorldDelta = GetDanceOwnPairWorldDelta(pairMotion);
+        Vector3 ownDelta = manualOwnLocalDelta + WorldDeltaToAtomLocalDelta(containingAtom, ownPairWorldDelta);
+        ownDelta *= activeWeight;
+
+        Vector3 targetHipDelta = Vector3.zero;
+        Vector3 targetUpperDelta = Vector3.zero;
+        if (targetLink && targetAtom != null)
+        {
+            float scale = danceTargetScale != null ? danceTargetScale.val : 1.0f;
+            Vector3 manualTargetLocalDelta = manualOwnLocalDelta * scale;
+            Vector3 targetPairWorldDelta = GetDanceTargetPairWorldDelta(pairMotion * scale);
+            Vector3 targetDesiredDelta = manualTargetLocalDelta + WorldDeltaToAtomLocalDelta(targetAtom, targetPairWorldDelta);
+            targetDesiredDelta *= activeWeight;
+
+            // v285: keep target hip synchronized immediately. Lag is applied only to target chest/head.
+            targetHipDelta = targetDesiredDelta;
+            targetUpperDelta = ApplyDanceTargetUpperLag(targetDesiredDelta);
+        }
+        else
+        {
+            ResetDanceTargetLagState();
+        }
+
+        ApplyDanceOverlayLocalDeltas(ownDelta, targetAtom, targetHipDelta, targetUpperDelta, targetLink, reason);
+    }
+
+    float UpdateDanceEffectiveWeight(string reason)
+    {
+        bool blocked = IsDanceBlockedByBusy();
+        if (blocked)
+        {
+            float cooldown = danceBusyCooldown != null ? Mathf.Max(0.0f, danceBusyCooldown.val) : 0.35f;
+            danceBusyUntil = Time.time + cooldown;
+        }
+
+        bool wantsActive = true;
+        if (IsDanceWhileSliderActive())
+        {
+            float hold = danceActiveHoldSeconds != null ? Mathf.Max(0.0f, danceActiveHoldSeconds.val) : 0.25f;
+            wantsActive = (Time.time - danceLastSliderChangeTime) <= hold;
+        }
+
+        if (Time.time < danceBusyUntil)
+        {
+            wantsActive = false;
+        }
+
+        float targetWeight = wantsActive ? 1.0f : 0.0f;
+        if (targetWeight >= danceEffectiveWeight)
+        {
+            danceEffectiveWeight = targetWeight;
+        }
+        else
+        {
+            float returnSec = danceReturnSeconds != null ? Mathf.Max(0.01f, danceReturnSeconds.val) : 0.20f;
+            danceEffectiveWeight = Mathf.MoveTowards(danceEffectiveWeight, targetWeight, Time.deltaTime / returnSec);
+        }
+
+        return Mathf.Clamp01(danceEffectiveWeight);
+    }
+
+    bool IsDanceBlockedByBusy()
+    {
+        if (danceRespectBusy != null && !danceRespectBusy.val)
+        {
+            return false;
+        }
+
+        if (isAvoidMoving || targetSwitchRetractBusy || pushPRoutine != null || switchRetractRoutine != null)
+        {
+            return true;
+        }
+
+        if (IsExternalDanceBusyFlagActive())
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    bool IsExternalDanceBusyFlagActive()
+    {
+        if (containingAtom == null)
+        {
+            return false;
+        }
+
+        string[] flagNames = new string[]
+        {
+            "HR Pose Busy",
+            "HumanReceiver Pose Busy",
+            "HC Pose Busy",
+            "humanPoseControler Busy",
+            "Pose Busy"
+        };
+
+        foreach (string storableId in containingAtom.GetStorableIDs())
+        {
+            if (string.IsNullOrEmpty(storableId))
+            {
+                continue;
+            }
+
+            bool likelyPosePlugin =
+                storableId.IndexOf("HumanReceiver", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                storableId.IndexOf("MyHumanReceiver", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                storableId.IndexOf("humanPoseControler", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                storableId.IndexOf("HumanPoseControler", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (!likelyPosePlugin)
+            {
+                continue;
+            }
+
+            JSONStorable storable = containingAtom.GetStorableByID(storableId);
+            if (storable == null)
+            {
+                continue;
+            }
+
+            for (int i = 0; i < flagNames.Length; i++)
+            {
+                JSONStorableBool flag = storable.GetBoolJSONParam(flagNames[i]);
+                if (flag != null && flag.val)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    Vector3 ApplyDanceTargetUpperLag(Vector3 desiredDelta)
+    {
+        float lag = danceTargetLagSeconds != null ? Mathf.Max(0.0f, danceTargetLagSeconds.val) : 0.0f;
+        if (lag <= 0.0001f)
+        {
+            danceTargetUpperSmoothedLocalDelta = desiredDelta;
+            danceTargetUpperLagInitialized = true;
+            return desiredDelta;
+        }
+
+        if (!danceTargetUpperLagInitialized)
+        {
+            danceTargetUpperSmoothedLocalDelta = Vector3.zero;
+            danceTargetUpperLagInitialized = true;
+        }
+
+        float t = 1.0f - Mathf.Exp(-Time.deltaTime / lag);
+        danceTargetUpperSmoothedLocalDelta = Vector3.Lerp(danceTargetUpperSmoothedLocalDelta, desiredDelta, Mathf.Clamp01(t));
+        return danceTargetUpperSmoothedLocalDelta;
+    }
+
+    void ResetDanceTargetLagState()
+    {
+        danceTargetUpperSmoothedLocalDelta = Vector3.zero;
+        danceTargetUpperLagInitialized = false;
+    }
+
+    void ApplyDanceOverlayLocalDeltas(Vector3 ownDelta, Atom targetAtom, Vector3 targetHipDelta, Vector3 targetUpperDelta, bool targetLink, string reason)
+    {
+        ApplyDanceLocalDeltaDifference(containingAtom, ref danceOwnAppliedLocalDelta, ownDelta);
+
+        if (targetLink && targetAtom != null)
+        {
+            danceAppliedTargetUid = targetAtom.uid;
+            ApplyDanceLocalDeltaDifferenceToControllers(targetAtom, ref danceTargetHipAppliedLocalDelta, targetHipDelta, new string[] { "hipControl" });
+            ApplyDanceLocalDeltaDifferenceToControllers(targetAtom, ref danceTargetUpperAppliedLocalDelta, targetUpperDelta, new string[] { "chestControl", "headControl" });
+        }
+        else
+        {
+            RemoveDanceTargetOverlay(reason + " target off");
+        }
+    }
+
+    void ApplyDanceLocalDeltaDifference(Atom atom, ref Vector3 appliedDelta, Vector3 desiredDelta)
+    {
+        ApplyDanceLocalDeltaDifferenceToControllers(atom, ref appliedDelta, desiredDelta, GetDanceHipUpperControllerNames());
+    }
+
+    void ApplyDanceLocalDeltaDifferenceToControllers(Atom atom, ref Vector3 appliedDelta, Vector3 desiredDelta, string[] names)
+    {
+        if (atom == null)
+        {
+            appliedDelta = Vector3.zero;
+            return;
+        }
+
+        Vector3 diff = desiredDelta - appliedDelta;
+        if (diff.sqrMagnitude < 0.00000001f)
+        {
+            appliedDelta = desiredDelta;
+            return;
+        }
+
+        if (names == null)
+        {
+            appliedDelta = desiredDelta;
+            return;
+        }
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            FreeControllerV3 fc = FindControllerExact(atom, names[i]);
+            if (fc == null)
+            {
+                continue;
+            }
+
+            Vector3 current = GetControllerLocalPositionSafe(fc);
+            SetControllerLocalPositionNoStateSafe(fc, current + diff);
+        }
+
+        appliedDelta = desiredDelta;
+    }
+
+    void RemoveDanceOverlay(string reason)
+    {
+        ApplyDanceLocalDeltaDifference(containingAtom, ref danceOwnAppliedLocalDelta, Vector3.zero);
+        RemoveDanceTargetOverlay(reason);
+        danceEffectiveWeight = 0.0f;
+        ResetDanceTargetLagState();
+    }
+
+    void RemoveDanceTargetOverlay(string reason)
+    {
+        if (danceTargetHipAppliedLocalDelta.sqrMagnitude < 0.00000001f &&
+            danceTargetUpperAppliedLocalDelta.sqrMagnitude < 0.00000001f)
+        {
+            danceAppliedTargetUid = "";
+            return;
+        }
+
+        Atom targetAtom = !string.IsNullOrEmpty(danceAppliedTargetUid) ? FindAtom(danceAppliedTargetUid) : null;
+        if (targetAtom == null && targetPersonChooser != null)
+        {
+            targetAtom = FindAtom(targetPersonChooser.val);
+        }
+
+        ApplyDanceLocalDeltaDifferenceToControllers(targetAtom, ref danceTargetHipAppliedLocalDelta, Vector3.zero, new string[] { "hipControl" });
+        ApplyDanceLocalDeltaDifferenceToControllers(targetAtom, ref danceTargetUpperAppliedLocalDelta, Vector3.zero, new string[] { "chestControl", "headControl" });
+        ResetDanceTargetLagState();
+        danceAppliedTargetUid = "";
+    }
+
+    Vector3 GetDanceOwnPairWorldDelta(float amount)
+    {
+        if (Mathf.Abs(amount) < 0.0001f)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 dir = GetDancePairDirectionWorld();
+        // Positive: self hip-upper moves toward target and upward.
+        // Negative: self hip-upper moves away from target and downward.
+        return (dir * amount) + (Vector3.up * amount);
+    }
+
+    Vector3 GetDanceTargetPairWorldDelta(float amount)
+    {
+        if (Mathf.Abs(amount) < 0.0001f)
+        {
+            return Vector3.zero;
+        }
+
+        Vector3 dir = GetDancePairDirectionWorld();
+        // Normal: corrected label behavior; target uses the same basis direction as the observed normal-looking motion.
+        // Counter: preserves the opposite/counter motion as the interesting alternate variant.
+        Vector3 horizontal = IsDancePairDirectionCounter() ? (-dir * amount) : (dir * amount);
+        return horizontal + (Vector3.up * amount);
+    }
+
+    Vector3 GetDancePairDirectionWorld()
+    {
+        Vector3 dir;
+        if (IsDancePairBasisYellowGuide() && TryGetDanceYellowGuideDirectionWorld(out dir))
+        {
+            return dir;
+        }
+
+        if (dancePairBaseDirCaptured && dancePairBaseDirWorld.sqrMagnitude > 0.000001f)
+        {
+            dir = dancePairBaseDirWorld;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude > 0.000001f)
+            {
+                return dir.normalized;
+            }
+        }
+
+        if (containingAtom != null && containingAtom.mainController != null && containingAtom.mainController.transform != null)
+        {
+            Vector3 fallback = containingAtom.mainController.transform.forward;
+            fallback.y = 0.0f;
+            if (fallback.sqrMagnitude > 0.000001f)
+            {
+                return fallback.normalized;
+            }
+        }
+
+        return Vector3.forward;
+    }
+
+    bool TryGetDanceYellowGuideDirectionWorld(out Vector3 dir)
+    {
+        dir = Vector3.zero;
+
+        if (hasYellowPPath && yellowPPathPoints != null && yellowPPathPoints.Length >= YellowPPathPointCount)
+        {
+            Vector3 start = yellowPPathPoints[0];
+            Vector3 end = yellowPPathPoints[Mathf.Min(4, YellowPPathPointCount - 1)];
+            dir = end - start;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude > 0.000001f)
+            {
+                dir.Normalize();
+                return true;
+            }
+
+            end = yellowPPathPoints[YellowPPathPointCount - 1];
+            dir = end - start;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude > 0.000001f)
+            {
+                dir.Normalize();
+                return true;
+            }
+        }
+
+        if (hasCapturedMoveLine)
+        {
+            dir = capturedMoveLineEnd - capturedMoveLineStart;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude > 0.000001f)
+            {
+                dir.Normalize();
+                return true;
+            }
+        }
+
+        dir = Vector3.zero;
+        return false;
+    }
+
+    void CaptureDancePairBaseDirection(Atom targetAtom)
+    {
+        dancePairBaseDirWorld = GetDanceFallbackPairDirectionWorld();
+        dancePairBaseDirCaptured = false;
+
+        FreeControllerV3 ownHip = FindControllerExact(containingAtom, "hipControl");
+        FreeControllerV3 targetHip = FindControllerExact(targetAtom, "hipControl");
+        if (ownHip == null || targetHip == null)
+        {
+            return;
+        }
+
+        Vector3 ownHipWorld = GetControllerWorldPosition(ownHip, containingAtom != null && containingAtom.transform != null ? containingAtom.transform.position : Vector3.zero);
+        Vector3 targetHipWorld = GetControllerWorldPosition(targetHip, targetAtom != null && targetAtom.transform != null ? targetAtom.transform.position : Vector3.zero);
+        Vector3 dir = targetHipWorld - ownHipWorld;
+        dir.y = 0.0f;
+        if (dir.sqrMagnitude < 0.000001f)
+        {
+            return;
+        }
+
+        dancePairBaseDirWorld = dir.normalized;
+        dancePairBaseDirCaptured = true;
+    }
+
+    Vector3 GetDanceFallbackPairDirectionWorld()
+    {
+        if (containingAtom != null && containingAtom.mainController != null && containingAtom.mainController.transform != null)
+        {
+            Vector3 dir = containingAtom.mainController.transform.forward;
+            dir.y = 0.0f;
+            if (dir.sqrMagnitude > 0.000001f)
+            {
+                return dir.normalized;
+            }
+        }
+
+        return Vector3.forward;
+    }
+
+    Vector3 WorldDeltaToAtomLocalDelta(Atom atom, Vector3 worldDelta)
+    {
+        if (atom == null || worldDelta.sqrMagnitude < 0.0000001f)
+        {
+            return Vector3.zero;
+        }
+
+        Transform root = null;
+        if (atom.mainController != null && atom.mainController.transform != null)
+        {
+            root = atom.mainController.transform;
+        }
+        else if (atom.transform != null)
+        {
+            root = atom.transform;
+        }
+
+        if (root == null)
+        {
+            return worldDelta;
+        }
+
+        return Quaternion.Inverse(root.rotation) * worldDelta;
+    }
+
+    void CaptureDanceHipUpperBase(string reason)
+    {
+        Atom targetAtom = targetPersonChooser != null ? FindAtom(targetPersonChooser.val) : null;
+        CaptureDancePairBaseDirection(targetAtom);
+        danceBaseTargetUid = targetAtom != null ? targetAtom.uid : "";
+        danceBaseCaptured = true;
+
+        DebugLog(
+            "[TargetLinePerson] Dance overlay base captured / version=" + TargetLinePersonVersionName +
+            " / reason=" + reason +
+            " / targetUid=" + danceBaseTargetUid
+        );
+    }
+
+    void ResetDanceHipUpper(string reason)
+    {
+        RemoveDanceOverlay(reason);
+        danceOwnBaseLocalPositions.Clear();
+        danceTargetBaseLocalPositions.Clear();
+        danceOwnBasePositionStates.Clear();
+        danceTargetBasePositionStates.Clear();
+        danceBaseCaptured = false;
+        danceBaseTargetUid = "";
+        dancePairBaseDirWorld = Vector3.forward;
+        dancePairBaseDirCaptured = false;
+
+        DebugLog("[TargetLinePerson] Dance overlay reset / version=" + TargetLinePersonVersionName + " / reason=" + reason);
+    }
+
     FreeControllerV3 FindController(Atom atom, string keyword)
     {
         if (atom == null || atom.freeControllers == null)
@@ -3928,6 +4739,7 @@ public class TargetLinePerson : MVRScript
     {
         ClearLookupCaches();
         RefreshGenHeadAtomList();
+        ResetDanceHipUpper("person changed to " + value);
         ResetCaptureStateForTargetChange("person changed to " + value);
     }
 
@@ -15921,6 +16733,8 @@ void LogNowDockingAutoPoseProbe()
 
     void OnDestroy()
     {
+        ResetDanceHipUpper("destroy");
+
         if (pushPRoutine != null)
         {
             StopCoroutine(pushPRoutine);
