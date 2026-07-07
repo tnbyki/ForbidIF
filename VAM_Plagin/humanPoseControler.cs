@@ -1,15 +1,9 @@
 // ============================================================
 // humanPoseControler.cs
-// Version: v085_load_defaults_pink
+// Version: v074_root_xyz_carry_controls
 // Date: 2026-07-06
 // Base: humanControler_v036_turn_to_target_hdc_route.cs / HumanDrivenController_v103_external_enable_actions.cs
 // Summary:
-// - v085 makes Load User Defaults pink while keeping Cycle Pose / Cycle Back / Cycle Reset / numbered Cycle buttons standard color.
-// - v084 moves Cycle Pose Slider to the very top of the right column and restores standard button color for Cycle Pose and later cycle buttons.
-// - v083 moves Root X/Y/Z sliders to the right-top, places Load User Defaults directly above Cycle Pose, and keeps Cycle Slider Status above the left HDC/status text.
-// - v082 hides Root XYZ status text and Root Origin/Home buttons, keeping only Root X/Y/Z sliders in the right Root Offset area.
-// - v081 moves Cycle status under Target Person, moves Face/Butt Target to the right Root Offset area, keeps them pink, and places Cycle controls below Root Offset.
-// - v080 reverts Face/Butt Target turn behavior to the pre-leg-IK-touch v077 path: hand/elbow IK OFF only, no foot/knee comply/restore, keeping stepped turn, root XYZ, Cycle Slider top, and Load User Defaults left button.
 // - v018 makes Upper Low Leg <-> Upper Low Leg transitions direct.
 // - v018 makes Upper Low Leg Front a full target pose, not a two-step Upper Low + leg-only route.
 // - v018 skips no-op pose controls and fixes quaternion hemisphere before Slerp.
@@ -107,10 +101,6 @@
 // - v013 removes the visible Legs Back button and leg calculation sliders.
 // - v015 updates Upper Low POSE with corrected axis.
 // - v016 updates Upper Low POSE to the flat/non-twist test pose.
-// - v075 changes visual target-facing controls and adds Face/Butt action aliases.
-// - v076 corrects the actual tested mapping: Face Target uses yaw 0, Butt Target uses yaw 180.
-// - v076 turns hand/elbow IK OFF before root target-facing rotation so arms do not remain in the old world pose.
-// - v077 makes Face/Butt Target rotation stepped/smooth instead of a single rough root snap.
 // ============================================================
 
 using UnityEngine;
@@ -179,10 +169,6 @@ public class humanPoseControler : MVRScript
     private const float POSE_TRANSITION_FULL_DISTANCE_DEFAULT = 0.35f;
     private const float POSE_TRANSITION_DOCKING_EVENT_EPS = 0.001f;
     private const float CYCLE_SLIDER_CAPTURE_DELAY_SEC = 0.20f;
-    private const float VISUAL_FACE_TARGET_YAW_OFFSET_DEG = 0.0f;
-    private const float VISUAL_BUTT_TARGET_YAW_OFFSET_DEG = 180.0f;
-    private const float TARGET_TURN_SECONDS_DEFAULT = 0.45f;
-    private const float TARGET_TURN_STEPS_DEFAULT = 12.0f;
 
     private JSONStorableFloat transitionTime;
     private JSONStorableFloat upperStandY;
@@ -217,8 +203,6 @@ public class humanPoseControler : MVRScript
     private JSONStorableFloat selfMoveHeight;
     private JSONStorableString selfMoveStatus;
     private JSONStorableFloat targetFacingYaw;
-    private JSONStorableFloat targetTurnSeconds;
-    private JSONStorableFloat targetTurnSteps;
     private JSONStorableString targetFacingStatus;
     private JSONStorableFloat rootMoveX;
     private JSONStorableFloat rootMoveY;
@@ -228,7 +212,6 @@ public class humanPoseControler : MVRScript
     private JSONStorable hdc;
     private string hdcStorableId = "";
     private Coroutine activeRoutine;
-    private Coroutine targetFacingTurnRoutine;
     private string currentPoseKey = POSE_NONE;
     private float nextPOSE_InfoPollTime = 0f;
     private string lastPOSE_SelfPostureDisplay = "";
@@ -469,6 +452,11 @@ public class humanPoseControler : MVRScript
             RegisterStringChooser(targetPersonChooser);
             CreatePopup(targetPersonChooser);
 
+            statusText = new JSONStorableString("humanControler Status", "ready");
+            RegisterString(statusText);
+            UIDynamicTextField tf = CreateTextField(statusText);
+            if (tf != null) tf.height = 90f;
+
             poseSelfPostureText = new JSONStorableString("POSE Self Posture", "POSE_SelfPosture: NoTarget");
             poseTargetPostureText = new JSONStorableString("POSE Target Posture", "POSE_TargetPosture: NoTarget");
             poseSpatialRelationText = new JSONStorableString("POSE Spatial Relation", "POSE_SpatialRelation: NoTarget");
@@ -487,8 +475,6 @@ public class humanPoseControler : MVRScript
             selfMoveHeight = new JSONStorableFloat("Self Move Height", 0.0f, -1.0f, 1.0f, true, true);
             selfMoveStatus = new JSONStorableString("Self Move Status", "Self Move: origin not captured");
             targetFacingYaw = new JSONStorableFloat("Target Facing Yaw", 0.0f, -180.0f, 180.0f, true, true);
-            targetTurnSeconds = new JSONStorableFloat("Target Turn Seconds", TARGET_TURN_SECONDS_DEFAULT, 0.05f, 2.00f, true, true);
-            targetTurnSteps = new JSONStorableFloat("Target Turn Steps", TARGET_TURN_STEPS_DEFAULT, 2.0f, 36.0f, true, true);
             targetFacingStatus = new JSONStorableString("Target Facing Status", "Target Facing: not applied");
             rootMoveX = new JSONStorableFloat("Root X Offset", 0.0f, -2.0f, 2.0f, true, true);
             rootMoveY = new JSONStorableFloat("Root Y Offset", 0.0f, -2.0f, 2.0f, true, true);
@@ -511,26 +497,11 @@ public class humanPoseControler : MVRScript
             RegisterFloat(selfMoveHeight);
             RegisterString(selfMoveStatus);
             RegisterFloat(targetFacingYaw);
-            RegisterFloat(targetTurnSeconds);
-            RegisterFloat(targetTurnSteps);
             RegisterString(targetFacingStatus);
             RegisterFloat(rootMoveX);
             RegisterFloat(rootMoveY);
             RegisterFloat(rootMoveZ);
             RegisterString(rootMoveStatus);
-
-            // v083: Cycle slider status is shown directly under Target Person,
-            // above the left HDC/status text.
-            if (cyclePoseSliderStatus != null)
-            {
-                UIDynamicTextField cycleStatusTf = CreateTextField(cyclePoseSliderStatus, false);
-                if (cycleStatusTf != null) cycleStatusTf.height = 38f;
-            }
-
-            statusText = new JSONStorableString("humanControler Status", "ready");
-            RegisterString(statusText);
-            UIDynamicTextField tf = CreateTextField(statusText);
-            if (tf != null) tf.height = 90f;
 
             CaptureSelfMoveOrigin(false);
             MarkSelfMoveSliderValuesObserved();
@@ -548,8 +519,16 @@ public class humanPoseControler : MVRScript
             // The light-pink buttons are the Cycle workflow group.
             // ============================================================
 
-            // v081: Face/Butt Target buttons moved to the right Root Offset area.
-            // Keep the sliders/status here on the left for detailed tuning.
+            CreateLeftMacroButton("Turn Front To Target", delegate()
+            {
+                SetTargetFacingYawAndApply(0.0f, true, "button front");
+            });
+
+            CreateLeftMacroButton("Turn Back To Target", delegate()
+            {
+                SetTargetFacingYawAndApply(180.0f, true, "button back");
+            });
+
             CreateTargetFacingControlsLeft();
 
             // v050: Upper X visible buttons are hidden here.
@@ -575,45 +554,34 @@ public class humanPoseControler : MVRScript
 
             CreatePOSE_InfoTextFieldsLeft();
 
-            // v084: Cycle Pose Slider is the very top of the right column.
-            // Cycle Slider Status remains on the left, above the HDC/status text.
-            CreateCycleSliderControlsRight();
-
-            // v083/v084: Root X/Y/Z sliders sit directly under the Cycle Pose Slider.
-            CreateRootXYZControlsRight();
-
-            // v081/v084: visual target-facing buttons live near Root Offset and stay pink.
-            CreatePinkRightMacroButton("Face Target", delegate()
-            {
-                SetTargetFacingYawAndApply(VISUAL_FACE_TARGET_YAW_OFFSET_DEG, true, "button face target");
-            });
-
-            CreatePinkRightMacroButton("Butt Target", delegate()
-            {
-                SetTargetFacingYawAndApply(VISUAL_BUTT_TARGET_YAW_OFFSET_DEG, true, "button butt target");
-            });
-
-            // v083: Load User Defaults is directly above Cycle Pose.
-            // v085: Load User Defaults is pink; Cycle controls below it stay standard color.
-            CreatePinkRightMacroButton("Load User Defaults", delegate()
-            {
-                StartMacro("Load User Defaults", MacroLoadUserDefaults());
-            });
-
-            CreateRightMacroButton("Cycle Pose", delegate()
+            // Right-top Cycle control group.
+            CreateCycleRightMacroButton("Cycle Pose", delegate()
             {
                 StartMacro("Cycle Pose", MacroCyclePose());
             });
 
-            CreateRightMacroButton("Cycle Back", delegate()
+            CreateCycleRightMacroButton("Cycle Back", delegate()
             {
                 StartMacro("Cycle Back", MacroCycleBack());
             });
 
-            CreateRightMacroButton("Cycle Reset", delegate()
+            CreateCycleRightMacroButton("Cycle Reset", delegate()
             {
                 StartMacro("Cycle Reset", MacroCycleReset());
             });
+
+            CreateCycleRightMacroButton("Load User Defaults", delegate()
+            {
+                StartMacro("Load User Defaults", MacroLoadUserDefaults());
+            });
+
+            // v073: right-top direct root offset sliders. These are world-axis offsets
+            // from a captured root origin and do not route through HDC.
+            CreateRootXYZControlsRight();
+
+            // v049: right-top slider. The slider uses CyclePoseNode direct POSE blending;
+            // normal Cycle buttons still run the old macro route.
+            CreateCycleSliderControlsRight();
 
             // Direct Cycle step buttons. These call the same logic as Cycle Pose step-by-step,
             // but labels are now generated from the CyclePoseNode list for future insertion.
@@ -644,7 +612,7 @@ public class humanPoseControler : MVRScript
         return CreateMacroButton(label, onClick, true);
     }
 
-    private UIDynamicButton CreatePinkRightMacroButton(string label, Action onClick)
+    private UIDynamicButton CreateCycleRightMacroButton(string label, Action onClick)
     {
         UIDynamicButton ui = CreateRightMacroButton(label, onClick);
         SetMacroButtonBaseColor(label, cycleButtonColor);
@@ -653,7 +621,7 @@ public class humanPoseControler : MVRScript
 
     private UIDynamicButton CreateCycleStepRightButton(string label, int step)
     {
-        return CreateRightMacroButton(label, delegate()
+        return CreateCycleRightMacroButton(label, delegate()
         {
             StartMacro(label, MacroCycleDirectStep(step, label));
         });
@@ -661,8 +629,6 @@ public class humanPoseControler : MVRScript
 
     private void CreateRootXYZControlsRight()
     {
-        // v082: keep this area compact. Only show the actual Root X/Y/Z sliders.
-        // Root status text and Origin/Home buttons remain internal/external-only.
         if (rootMoveX != null)
             CreateSlider(rootMoveX, true);
 
@@ -671,12 +637,34 @@ public class humanPoseControler : MVRScript
 
         if (rootMoveZ != null)
             CreateSlider(rootMoveZ, true);
+
+        if (rootMoveStatus != null)
+        {
+            UIDynamicTextField tf = CreateTextField(rootMoveStatus, true);
+            if (tf != null) tf.height = 42f;
+        }
+
+        CreateRightMacroButton("Root Origin Here", delegate()
+        {
+            CaptureRootXYZOrigin(true);
+        });
+
+        CreateRightMacroButton("Root Home XYZ", delegate()
+        {
+            ResetRootXYZSliders();
+        });
     }
 
     private void CreateCycleSliderControlsRight()
     {
         if (cyclePoseSlider != null)
             CreateSlider(cyclePoseSlider, true);
+
+        if (cyclePoseSliderStatus != null)
+        {
+            UIDynamicTextField tf = CreateTextField(cyclePoseSliderStatus, true);
+            if (tf != null) tf.height = 38f;
+        }
     }
 
     private void CreateCycleNodeButtonsRight()
@@ -745,12 +733,6 @@ public class humanPoseControler : MVRScript
     {
         if (targetFacingYaw != null)
             CreateSlider(targetFacingYaw, false);
-
-        if (targetTurnSeconds != null)
-            CreateSlider(targetTurnSeconds, false);
-
-        if (targetTurnSteps != null)
-            CreateSlider(targetTurnSteps, false);
 
         if (targetFacingStatus != null)
         {
@@ -837,62 +819,11 @@ public class humanPoseControler : MVRScript
         float targetYaw = NormalizeSignedAngle(faceTarget.eulerAngles.y + yawOffsetDeg);
         Quaternion targetRot = Quaternion.Euler(currentEuler.x, targetYaw, currentEuler.z);
 
-        // Target-facing root rotation can leave active hand/elbow IK controls behind in world space.
-        // Turn them OFF first and keep them OFF; pose/cycle actions can turn them back ON when needed.
-        SetHandArmIKOffForTargetFacing(reason);
-
-        StartTargetFacingSteppedRotation(targetRot, yawOffsetDeg, reason);
-    }
-
-    private void StartTargetFacingSteppedRotation(Quaternion targetRot, float yawOffsetDeg, string reason)
-    {
-        if (targetFacingTurnRoutine != null)
-        {
-            try { StopCoroutine(targetFacingTurnRoutine); } catch { }
-            targetFacingTurnRoutine = null;
-        }
-
-        targetFacingTurnRoutine = StartCoroutine(TargetFacingSteppedRotationRoutine(targetRot, yawOffsetDeg, reason));
-    }
-
-    private IEnumerator TargetFacingSteppedRotationRoutine(Quaternion targetRot, float yawOffsetDeg, string reason)
-    {
-        Transform root = GetSelfMoveRootTransform();
-        if (root == null)
-        {
-            UpdateTargetFacingStatus("failed: self root missing", yawOffsetDeg);
-            targetFacingTurnRoutine = null;
-            yield break;
-        }
-
-        Quaternion startRot = root.rotation;
-        Vector3 startEuler = NormalizeEuler(startRot.eulerAngles);
-        Vector3 targetEuler = NormalizeEuler(targetRot.eulerAngles);
-
-        float seconds = targetTurnSeconds != null ? Mathf.Max(0.01f, targetTurnSeconds.val) : TARGET_TURN_SECONDS_DEFAULT;
-        int steps = targetTurnSteps != null ? Mathf.Clamp(Mathf.RoundToInt(targetTurnSteps.val), 2, 36) : Mathf.RoundToInt(TARGET_TURN_STEPS_DEFAULT);
-        float wait = seconds / Mathf.Max(1, steps);
-
-        for (int i = 1; i <= steps; i++)
-        {
-            float t = Mathf.Clamp01((float)i / (float)steps);
-            float eased = t * t * (3.0f - 2.0f * t);
-            float yaw = Mathf.LerpAngle(startEuler.y, targetEuler.y, eased);
-            Quaternion stepRot = Quaternion.Euler(startEuler.x, yaw, startEuler.z);
-
-            ApplySelfRootWorldRotation(stepRot);
-            UpdateTargetFacingStatus("turning " + i + "/" + steps, yawOffsetDeg);
-
-            if (i < steps)
-                yield return new WaitForSeconds(wait);
-        }
-
         ApplySelfRootWorldRotation(targetRot);
 
         targetFacingDirty = true;
         targetFacingLastChangeTime = Time.time;
         UpdateTargetFacingStatus(string.IsNullOrEmpty(reason) ? "applied" : reason, yawOffsetDeg);
-        targetFacingTurnRoutine = null;
     }
 
     private void ApplySelfRootWorldRotation(Quaternion targetRot)
@@ -916,37 +847,13 @@ public class humanPoseControler : MVRScript
         }
         catch { }
     }
-    private void SetHandArmIKOffForTargetFacing(string reason)
-    {
-        SetControllerIKOff("lHandControl");
-        SetControllerIKOff("rHandControl");
-        SetControllerIKOff("lElbowControl");
-        SetControllerIKOff("rElbowControl");
-
-        LogDebug("Target facing hand/elbow IK OFF / reason=" + (reason ?? ""));
-    }
-
-    private void SetControllerIKOff(string controllerName)
-    {
-        FreeControllerV3 fc = FindController(controllerName);
-        if (fc == null)
-            return;
-
-        try
-        {
-            fc.currentPositionState = FreeControllerV3.PositionState.Off;
-            fc.currentRotationState = FreeControllerV3.RotationState.Off;
-        }
-        catch { }
-    }
-
 
     private void UpdateTargetFacingStatus(string state, float yaw)
     {
         if (targetFacingStatus == null)
             return;
 
-        targetFacingStatus.val = "Target Facing: " + state + " / yaw=" + F(NormalizeSignedAngle(yaw)) + " / 0=face / 180=butt";
+        targetFacingStatus.val = "Target Facing: " + state + " / yaw=" + F(NormalizeSignedAngle(yaw)) + " / 0=target / +/-180=back";
     }
 
     private float NormalizeSignedAngle(float angle)
@@ -1476,25 +1383,14 @@ public class humanPoseControler : MVRScript
             StartMacro("Dog", MacroDogPose());
         }));
 
-        RegisterAction(new JSONStorableAction("HC Face Target", delegate()
-        {
-            SetTargetFacingYawAndApply(VISUAL_FACE_TARGET_YAW_OFFSET_DEG, true, "external face target");
-        }));
-
-        RegisterAction(new JSONStorableAction("HC Butt Target", delegate()
-        {
-            SetTargetFacingYawAndApply(VISUAL_BUTT_TARGET_YAW_OFFSET_DEG, true, "external butt target");
-        }));
-
-        // Compatibility aliases. These now use visual meaning, not root.forward meaning.
         RegisterAction(new JSONStorableAction("HC Turn Front To Target", delegate()
         {
-            SetTargetFacingYawAndApply(VISUAL_FACE_TARGET_YAW_OFFSET_DEG, true, "external front alias");
+            SetTargetFacingYawAndApply(0.0f, true, "external front");
         }));
 
         RegisterAction(new JSONStorableAction("HC Turn Back To Target", delegate()
         {
-            SetTargetFacingYawAndApply(VISUAL_BUTT_TARGET_YAW_OFFSET_DEG, true, "external back alias");
+            SetTargetFacingYawAndApply(180.0f, true, "external back");
         }));
 
         RegisterAction(new JSONStorableAction("HC Upper X 45", delegate()
@@ -1670,12 +1566,6 @@ public class humanPoseControler : MVRScript
 
     private void StopMacroInternal(bool log)
     {
-        if (targetFacingTurnRoutine != null)
-        {
-            try { StopCoroutine(targetFacingTurnRoutine); } catch { }
-            targetFacingTurnRoutine = null;
-        }
-
         if (activeRoutine != null)
         {
             StopCoroutine(activeRoutine);
@@ -1717,10 +1607,10 @@ public class humanPoseControler : MVRScript
         cyclePoseNodes.Add(new CyclePoseNode(20, "21_LegMji"));
         cyclePoseNodes.Add(new CyclePoseNode(21, "22_UpperMid"));
         cyclePoseNodes.Add(new CyclePoseNode(22, "23_Stand"));
-        cyclePoseNodes.Add(new CyclePoseNode(23, "24_ButtTarget"));
-        cyclePoseNodes.Add(new CyclePoseNode(24, "25_ButtTarget_Fwd45"));
-        cyclePoseNodes.Add(new CyclePoseNode(25, "26_ButtTarget_Fwd90"));
-        cyclePoseNodes.Add(new CyclePoseNode(26, "27_FaceTargetStand"));
+        cyclePoseNodes.Add(new CyclePoseNode(23, "24_TurnBack"));
+        cyclePoseNodes.Add(new CyclePoseNode(24, "25_TurnBack_Fwd45"));
+        cyclePoseNodes.Add(new CyclePoseNode(25, "26_TurnBack_Fwd90"));
+        cyclePoseNodes.Add(new CyclePoseNode(26, "27_TurnFrontStand"));
         cyclePoseNodes.Add(new CyclePoseNode(27, "28_StandHandUp"));
     }
 
@@ -1764,12 +1654,6 @@ public class humanPoseControler : MVRScript
 
     private void CancelActiveMacroForCycleSlider()
     {
-        if (targetFacingTurnRoutine != null)
-        {
-            try { StopCoroutine(targetFacingTurnRoutine); } catch { }
-            targetFacingTurnRoutine = null;
-        }
-
         if (activeRoutine != null)
         {
             try { StopCoroutine(activeRoutine); } catch { }
@@ -1912,13 +1796,13 @@ public class humanPoseControler : MVRScript
             case 22:
                 return GetStandPoseEntries();
             case 23:
-                return ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), false);
-            case 24:
-                return ApplyHipUpperRotXToEntries(ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), false), 45.0f);
-            case 25:
-                return ApplyHipUpperRotXToEntries(ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), false), 90.0f);
-            case 26:
                 return ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), true);
+            case 24:
+                return ApplyHipUpperRotXToEntries(ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), true), 45.0f);
+            case 25:
+                return ApplyHipUpperRotXToEntries(ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), true), 90.0f);
+            case 26:
+                return ApplyTargetNoRootYawToEntries(GetStandPoseEntries(), false);
             case 27:
                 return GetStandHandUpPoseEntries();
         }
@@ -1993,7 +1877,7 @@ public class humanPoseControler : MVRScript
         return copy;
     }
 
-    private StandPoseEntry[] ApplyTargetNoRootYawToEntries(StandPoseEntry[] source, bool faceTarget)
+    private StandPoseEntry[] ApplyTargetNoRootYawToEntries(StandPoseEntry[] source, bool back)
     {
         StandPoseEntry[] copy = ClonePoseEntries(source);
         if (copy == null || copy.Length == 0)
@@ -2018,9 +1902,7 @@ public class humanPoseControler : MVRScript
         if (dirWorld.magnitude < 0.001f)
             return copy;
 
-        // Actual tested mapping: local/root forward visually corresponds to the face side.
-        // Butt Target therefore uses the opposite direction.
-        if (!faceTarget)
+        if (back)
             dirWorld = -dirWorld;
 
         Vector3 desiredLocalDir = root.InverseTransformDirection(dirWorld.normalized);
@@ -2213,14 +2095,14 @@ public class humanPoseControler : MVRScript
                 yield break;
 
             case 24:
-                // Butt Target +45 depends on the previous Butt Target step.
-                yield return StartCoroutine(MacroFaceTarget(false));
+                // Turn Back +45 depends on the previous Turn Back step.
+                yield return StartCoroutine(MacroFaceTarget(true));
                 yield return StartCoroutine(MacroUpperX("Upper X 45", upperX45Deg != null ? upperX45Deg.val : 45f));
                 yield break;
 
             case 25:
-                // Butt Target +90 depends on the previous Butt Target step.
-                yield return StartCoroutine(MacroFaceTarget(false));
+                // Turn Back +90 depends on the previous Turn Back step.
+                yield return StartCoroutine(MacroFaceTarget(true));
                 yield return StartCoroutine(MacroUpperX("Upper X 90", upperX90Deg != null ? upperX90Deg.val : 90f));
                 yield break;
         }
@@ -2438,24 +2320,24 @@ public class humanPoseControler : MVRScript
                 break;
 
             case 23:
-                SetStatus("Cycle Pose: Butt Target");
-                yield return StartCoroutine(MacroFaceTarget(false));
+                SetStatus("Cycle Pose: Turn Back To Target");
+                yield return StartCoroutine(MacroFaceTarget(true));
                 break;
 
             case 24:
-                SetStatus("Cycle Pose: Butt Target +45");
+                SetStatus("Cycle Pose: Turn Back +45");
                 yield return StartCoroutine(MacroUpperX("Upper X 45", upperX45Deg != null ? upperX45Deg.val : 45f));
                 break;
 
             case 25:
-                SetStatus("Cycle Pose: Butt Target +90");
+                SetStatus("Cycle Pose: Turn Back +90");
                 yield return StartCoroutine(MacroUpperX("Upper X 90", upperX90Deg != null ? upperX90Deg.val : 90f));
                 break;
 
             case 26:
-                SetStatus("Cycle Pose: Face Target + Stand");
+                SetStatus("Cycle Pose: Turn Front + Stand");
                 yield return StartCoroutine(MacroUpperX("Upper X 0", 0f));
-                yield return StartCoroutine(MacroFaceTarget(true));
+                yield return StartCoroutine(MacroFaceTarget(false));
                 yield return StartCoroutine(MacroStandPose());
                 break;
 
@@ -4199,13 +4081,9 @@ public class humanPoseControler : MVRScript
         return v ? "1" : "0";
     }
 
-    private IEnumerator MacroFaceTarget(bool faceTarget)
+    private IEnumerator MacroFaceTarget(bool back)
     {
-        SetTargetFacingYawAndApply(
-            faceTarget ? VISUAL_FACE_TARGET_YAW_OFFSET_DEG : VISUAL_BUTT_TARGET_YAW_OFFSET_DEG,
-            true,
-            faceTarget ? "macro face target" : "macro butt target"
-        );
+        SetTargetFacingYawAndApply(back ? 180.0f : 0.0f, true, back ? "macro back" : "macro front");
         yield return null;
     }
 

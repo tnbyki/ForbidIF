@@ -1,8 +1,14 @@
+// HLA_V125_LIFE_THIGH_ROTATION_TOGGLE: Adds visible Life Thigh Rotation ON/OFF toggle. When OFF, Life Leg Motion does not set thigh RotationState.On or write thigh rotations; thighs stay Position=Comply / Rotation=Off for safer Dance/HBA coexistence.
+// HLA_V124_LEG_LIVE_PELVIS_AXES: Life Leg Motion now derives thigh sway axes from current hip/thigh/mainController pelvis direction instead of containingAtom.transform, reduces same-direction drift bias, and waits longer before resuming after external motion.
+// HLA_V123_LEG_UI_TLP_DANCE_PAUSE: Shows Life Leg Motion/Scale controls and auto-pauses Life thigh base motion while TargetLinePerson Dance Mode is active.
 // HLA_V122_INDEPENDENT_LOOK_TIMER: Splits LookTarget/LookCamera/LookAway into an independent look timer so gaze can run even when RandomCover is active; Cover/hand gestures remain on lifeGestureRoutine and Look uses lookGestureRoutine.
 // HLA_V121_COVER_HEAD_FACE_MOUTH_RESTORE: Restores the existing Head/Face/Mouth cover target labels to RandomCover so legacy head-reach/chest-avoid/front-lane logic is used again; keeps v119 live body surface points and leaves Cheek L/R as low-weight extra targets.
 // HLA_V120_COVER_FACE_TARGETS_RESTORE: Restores explicit RandomCover face targets (Self Face/Mouth/Chin/Cheek and low-weight Target Face) using live head/chest points while keeping v119 live body surface points.
 // HLA_V119_LIVE_BODY_SURFACE_POINTS: UpperChest/Belly/Thigh RandomCover surface targets now use live chest/hip/thigh controller positions, keeping mainController fixed-height body surface only as fallback.
 // HLA_V118_COVER_SHOULDER_SIDE_MATCH_LIVE_POINT: RandomCover shoulder targets now match the selected hand side, and Self/Target shoulder points use live chest/head controller axes before falling back to root surface estimates.
+// HLA_V128_DIAGNOSTIC_GATE_LOGS: Adds explicit diagnostic logs for HBA/Dance busy gates, resume backoff, cover/look start/skip/abort, thigh state, and plugin destroy/reload so instability can be isolated from logs.
+// HLA_V127_HBA_RESUME_BACKOFF_NO_IMMEDIATE_COVER: Makes HBA idle resume conservative: longer stable-idle wait, no immediate cover/look after resume, skips random cover/look if HBA/Dance becomes busy, and removes legacy forced hba-resume cover.
+// HLA_V126_STABLE_HBA_IDLE_COVER_GATE: Adds stable HBA-idle gate for Life gestures, removes forced hba-resume cover, and debounces/skips external Cover actions while HBA/Dance is busy.
 // HLA_V117_EXTERNAL_LIFE_IF_ALIASES: Adds AI-facing alias actions for HumanReceiver HUM_LIFE(state/expression/personality) routing while keeping v116 expression Sad default 0.60.
 // HLA_V116_EXPRESSION_SAD_DEFAULT_060: Renames the expression-side Shy slot to Sad : しょんぼり, defaults Sad Morph to Sad with max 0.60, and keeps old Shy actions as compatibility aliases.
 // HLA_V115_EXPRESSION_SHY_SAD_DEFAULT: Changes Shy expression built-in default morph to Sad with max 0.20 while keeping Like/Dislike/Shy under Life Expression.
@@ -101,6 +107,7 @@ public class HumanLifeAction : MVRScript
     JSONStorableBool lifeEnabled;
     JSONStorableBool debugLog;
     JSONStorableBool logCoverDetail;
+    JSONStorableBool diagnoseLog;
     JSONStorableStringChooser lifeMotionMode;
     JSONStorableStringChooser lifeStateMode;
     JSONStorableStringChooser lifePersonalityMode;
@@ -121,8 +128,10 @@ public class HumanLifeAction : MVRScript
     JSONStorableBool lookCameraEnabled;
     JSONStorableBool randomCoverEnabled;
     JSONStorableBool lifeLegMotionEnabled;
+    JSONStorableBool lifeLegRotationEnabled;
     JSONStorableBool lifeLegPositionAssistEnabled;
     JSONStorableBool autoPauseLegOnHbaActive;
+    JSONStorableBool autoPauseLegOnTlpDanceActive;
     JSONStorableBool autoPauseGesturesOnHbaActive;
     JSONStorableBool respectExistingHandIk;
     JSONStorableBool poseChangeSafe;
@@ -220,12 +229,18 @@ public class HumanLifeAction : MVRScript
     const float SelfHeadElbowFinalLooseBlend = 0.62f;
     const float GestureLegMotionWeight = 14.0f;
     const float HbaProgressPauseThreshold = 0.005f;
-    const float HbaLegResumeDelaySeconds = 0.75f;
-    const float LegExternalChangeResumeDelaySeconds = 0.75f;
-    const float HbaBreathResumeDelaySeconds = 0.75f;
-    const float HbaGestureResumeDelaySeconds = 0.45f;
+    const float HbaLegResumeDelaySeconds = 2.00f; // v127: HBA can flicker after a short idle gap
+    const float TlpDanceLegResumeDelaySeconds = 0.90f;
+    const float LegExternalChangeResumeDelaySeconds = 1.25f;
+    const float HbaBreathResumeDelaySeconds = 2.00f; // v127: avoid breath restart during HBA progress flicker
+    const float HbaGestureResumeDelaySeconds = 2.25f; // v127: conservative post-HBA gesture backoff
+    const float HbaGestureStableIdleSeconds = 2.25f; // v127: HBA idle must be stable before Life resumes
+    const float ExternalCoverActionDebounceSeconds = 0.65f;
+    const float DiagnosticHeartbeatSeconds = 2.00f;
+    const float DiagnosticGateThrottleSeconds = 0.75f;
     const float ExternalDockingPoseAssistPauseWindowSeconds = 7.00f; // TargetLinePerson 5s assist + 2s settle suppress
     const float ExternalDockingPoseAssistResolveInterval = 0.15f;
+    const float ExternalTargetLineDanceResolveInterval = 0.15f;
 
     const float GestureNoneWeight = 40.0f;
     const float GestureBreathWeight = 25.0f;
@@ -320,7 +335,7 @@ public class HumanLifeAction : MVRScript
     const float LegReturnSecondsMax = 1.85f;
     const float LegPairChance = 30.0f;
     const float LegBaseSwaySideRatio = 0.80f;
-    const float LegBaseSingleSideBias = 0.72f;
+    const float LegBaseSingleSideBias = 0.35f; // v124: reduce same-direction thigh drift so legs do not appear to flow sideways
 
     FreeControllerV3 chestControl;
     FreeControllerV3 headControl;
@@ -345,6 +360,9 @@ public class HumanLifeAction : MVRScript
     JSONStorable externalDockingPoseAssistStorable;
     JSONStorableBool externalDockingPoseAssistActiveParam;
     JSONStorableFloat externalDockingPoseAssistLastEventTimeParam;
+    JSONStorable externalTargetLineDanceStorable;
+    JSONStorableBool externalTargetLineDanceModeParam;
+    JSONStorableBool externalTargetLineDanceActiveParam;
     JSONStorable targetGrabberStorable;
     JSONStorableBool tgHeldTargetLHandParam;
     JSONStorableBool tgHeldTargetRHandParam;
@@ -354,16 +372,28 @@ public class HumanLifeAction : MVRScript
     bool externalDockingPoseAssistCached = false;
     string externalDockingPoseAssistSourceCached = "";
     float externalDockingPoseAssistElapsedCached = -1.0f;
+    bool externalTargetLineDanceCached = false;
+    string externalTargetLineDanceSourceCached = "";
+    string externalTargetLineDanceReasonCached = "";
     float nextHbaResolveTime = -999.0f;
     float nextExternalDockingPoseAssistResolveTime = -999.0f;
+    float nextExternalTargetLineDanceResolveTime = -999.0f;
     float nextTargetGrabberResolveTime = -999.0f;
     float hbaLegResumeAllowedTime = -999.0f;
     float legExternalResumeAllowedTime = -999.0f;
+    float lastLegSafeReleaseTime = -999.0f;
     bool legPausedByHba = false;
     bool legPausedByExternalDockingPoseAssist = false;
+    bool legPausedByExternalTargetLineDance = false;
     float hbaBreathResumeAllowedTime = -999.0f;
     bool breathPausedByHba = false;
     float hbaGestureResumeAllowedTime = -999.0f;
+    float hbaGestureIdleSinceTime = -999.0f;
+    float lastExternalCoverActionTime = -999.0f;
+    string lastExternalCoverActionKey = "";
+    float lastDiagnosticHeartbeatTime = -999.0f;
+    float lastDiagnosticGateLogTime = -999.0f;
+    string lastDiagnosticGateKey = "";
     bool lifeGesturePausedByHba = false;
     bool forceCoverOnNextGesture = false;
     ControllerSnapshot activeBreathSnapshot;
@@ -492,6 +522,10 @@ public class HumanLifeAction : MVRScript
             logCoverDetail = new JSONStorableBool("HLA Log Cover Detail", false);
             RegisterBool(logCoverDetail);
             // v095: internal/debug detail toggle is registered for compatibility but hidden from the simple UI.
+
+            diagnoseLog = new JSONStorableBool("HLA Diagnose Log", true);
+            RegisterBool(diagnoseLog);
+            CreateToggle(diagnoseLog, true);
 
             lifeStateMode = new JSONStorableStringChooser(
                 "Life State",
@@ -622,7 +656,13 @@ public class HumanLifeAction : MVRScript
 
             lifeLegMotionEnabled = new JSONStorableBool("Life Leg Motion", true);
             RegisterBool(lifeLegMotionEnabled);
-            // v095: hidden. Life State controls effective leg motion.
+            // v123: visible again so Dance/thigh conflicts can be cut off manually.
+            CreateToggle(lifeLegMotionEnabled, false);
+
+            lifeLegRotationEnabled = new JSONStorableBool("Life Thigh Rotation", false);
+            RegisterBool(lifeLegRotationEnabled);
+            // v125: OFF keeps thighs safe: Position=Comply / Rotation=Off. Turn ON to restore the old rotation-only Life Leg Motion.
+            CreateToggle(lifeLegRotationEnabled, false);
 
             lifeLegPositionAssistEnabled = new JSONStorableBool("Life Leg Position Assist", false);
             RegisterBool(lifeLegPositionAssistEnabled);
@@ -631,6 +671,10 @@ public class HumanLifeAction : MVRScript
             autoPauseLegOnHbaActive = new JSONStorableBool("Auto Pause Leg On HBA Active", true);
             RegisterBool(autoPauseLegOnHbaActive);
             // v095: hidden safety toggle. Keep registered/default ON.
+
+            autoPauseLegOnTlpDanceActive = new JSONStorableBool("Auto Pause Leg On TLP Dance", true);
+            RegisterBool(autoPauseLegOnTlpDanceActive);
+            CreateToggle(autoPauseLegOnTlpDanceActive, false);
 
             autoPauseGesturesOnHbaActive = new JSONStorableBool("Auto Pause Gestures On HBA Active", true);
             RegisterBool(autoPauseGesturesOnHbaActive);
@@ -684,7 +728,8 @@ public class HumanLifeAction : MVRScript
 
             legScale = new JSONStorableFloat("Life Leg Scale", DefaultLegScale, 0.0f, 5.0f, true);
             RegisterFloat(legScale);
-            // v095: hidden tuning slider. Life State applies the effective scale.
+            // v123: visible again for tuning/cutoff while Dance Mode is being tested.
+            CreateSlider(legScale, false);
 
             coverFrequency = new JSONStorableFloat("Life Cover Frequency", DefaultCoverFrequency, 0.0f, 100.0f, true);
             RegisterFloat(coverFrequency);
@@ -788,6 +833,7 @@ public class HumanLifeAction : MVRScript
             ApplyLifeStateEyeControl("init");
             ApplyAffectionMorphTarget("init");
             UpdateStatus("Ready");
+            NormalLog("Init / build=HLA_V128_DIAGNOSTIC_GATE_LOGS / diagnose=" + ((diagnoseLog != null && diagnoseLog.val) ? "ON" : "OFF"));
         }
         catch (Exception e)
         {
@@ -798,6 +844,8 @@ public class HumanLifeAction : MVRScript
     void Update()
     {
         if (!initialized) return;
+
+        UpdateDiagnosticsHeartbeat();
 
         MaintainLifeStateEyeControl();
         MaintainAffectionMorphControl();
@@ -851,16 +899,15 @@ public class HumanLifeAction : MVRScript
     void RunRandomLifeGesture()
     {
         ResolveControllers();
+        DiagnoseLog("Life roll start / " + BuildCoreDiagnosticSummary());
 
         if (forceCoverOnNextGesture)
         {
+            // v127: legacy forced hba-resume cover is intentionally disabled.
+            // HBA progress can bounce back shortly after a 0.0 idle frame, so starting
+            // a cover immediately here causes start -> handoff-release twitching.
             forceCoverOnNextGesture = false;
-            if (randomCoverEnabled != null && randomCoverEnabled.val && EffectiveCoverFrequency() > 0.001f)
-            {
-                Log("Life roll / selected=RandomCover / mode=hba-resume");
-                RequestRandomCover("hba-resume");
-                return;
-            }
+            Log("Life roll / hba-resume forced cover ignored / mode=stable-backoff");
         }
 
         // v046: Cover Frequency is now an independent percent roll.
@@ -898,6 +945,16 @@ public class HumanLifeAction : MVRScript
         if (!IsHeadLookEnabled()) return;
         if (lookGestureRoutine != null) return;
         if (Time.time < nextLookGestureTime) return;
+
+        string busyReason;
+        if (IsHbaOrDanceBusyForExternalCover(out busyReason))
+        {
+            DiagnoseLogThrottled("look-busy", "Look skipped / reason=busy:" + busyReason
+                + " / nextWasDue=1 / routine=0");
+            ScheduleNextLookGesture("look-busy:" + busyReason);
+            return;
+        }
+
         RunRandomLookGesture();
     }
 
@@ -914,7 +971,7 @@ public class HumanLifeAction : MVRScript
         float lookRoll = UnityEngine.Random.Range(0.0f, 100.0f);
         if (lookRoll > lookPercent)
         {
-            Log("Look roll / miss / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
+            DiagnoseLog("Look roll / miss / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
                 + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
                 + " / mode=independent-timer");
             ScheduleNextLookGesture("look-miss");
@@ -955,7 +1012,7 @@ public class HumanLifeAction : MVRScript
             acc += c.weight;
             if (pickRoll <= acc)
             {
-                Log("Look roll / selected=" + c.name
+                DiagnoseLog("Look roll / selected=" + c.name
                     + " / lookRoll=" + lookRoll.ToString("F1", CultureInfo.InvariantCulture)
                     + " / look%=" + lookPercent.ToString("F1", CultureInfo.InvariantCulture)
                     + " / pick=" + pickRoll.ToString("F1", CultureInfo.InvariantCulture)
@@ -1020,7 +1077,7 @@ public class HumanLifeAction : MVRScript
         if (chestControl == null) return;
         activeBreathSnapshot = CaptureController(chestControl);
         breathLoopRoutine = StartCoroutine(BreathLoopRoutine(source));
-        Log("Breath loop start / source=" + source + " / controller=" + (chestControl != null ? chestControl.name : "<none>"));
+        DiagnoseLog("Breath loop start / source=" + source + " / controller=" + (chestControl != null ? chestControl.name : "<none>"));
     }
 
     IEnumerator BreathLoopRoutine(string source)
@@ -1244,7 +1301,9 @@ public class HumanLifeAction : MVRScript
     {
         if (!IsLegMotionEnabled())
         {
-            StopLegBaseLoop("leg-disabled");
+            // v125: when leg motion is disabled because thigh rotation is OFF, release instead of restoring an old Rotation=On snapshot.
+            StopLegBaseLoop("leg-disabled", false);
+            EnsureLifeThighSafeStates("leg-disabled");
             return;
         }
 
@@ -1267,6 +1326,99 @@ public class HumanLifeAction : MVRScript
                 StartLegBaseLoop("auto");
             }
         }
+    }
+
+    void GetLiveLegBaseAxes(out Vector3 forward, out Vector3 right, out string source)
+    {
+        forward = Vector3.forward;
+        right = Vector3.right;
+        source = "fallback";
+
+        Vector3 refForward;
+        Vector3 refRight;
+        string refSource;
+        GetLegReferenceAxes(out refForward, out refRight, out refSource);
+
+        Vector3 lPos = lThighControl != null ? GetControllerPosition(lThighControl) : Vector3.zero;
+        Vector3 rPos = rThighControl != null ? GetControllerPosition(rThighControl) : Vector3.zero;
+        bool hasLR = lThighControl != null && rThighControl != null;
+
+        if (hasLR)
+        {
+            Vector3 thighRight = rPos - lPos;
+            thighRight.y = 0.0f;
+            if (thighRight.sqrMagnitude > 0.0004f)
+            {
+                thighRight.Normalize();
+                if (refRight.sqrMagnitude > 0.0001f && Vector3.Dot(thighRight, refRight) < 0.0f)
+                    thighRight = -thighRight;
+
+                Vector3 thighForward = Vector3.Cross(thighRight, Vector3.up);
+                thighForward.y = 0.0f;
+                if (thighForward.sqrMagnitude > 0.0001f)
+                {
+                    thighForward.Normalize();
+                    if (refForward.sqrMagnitude > 0.0001f && Vector3.Dot(thighForward, refForward) < 0.0f)
+                        thighForward = -thighForward;
+
+                    Vector3 correctedRight = Vector3.Cross(Vector3.up, thighForward);
+                    correctedRight.y = 0.0f;
+                    if (correctedRight.sqrMagnitude > 0.0001f)
+                    {
+                        correctedRight.Normalize();
+                        if (Vector3.Dot(correctedRight, thighRight) < 0.0f)
+                            correctedRight = -correctedRight;
+
+                        forward = thighForward;
+                        right = correctedRight;
+                        source = "thighLR+" + refSource;
+                        return;
+                    }
+                }
+            }
+        }
+
+        forward = refForward;
+        right = refRight;
+        source = refSource;
+    }
+
+    void GetLegReferenceAxes(out Vector3 forward, out Vector3 right, out string source)
+    {
+        forward = Vector3.forward;
+        right = Vector3.right;
+        source = "world";
+
+        Transform t = null;
+        if (hipControl != null)
+        {
+            if (hipControl.control != null) t = hipControl.control;
+            else t = hipControl.transform;
+            source = "hipControl";
+        }
+        else if (containingAtom != null && containingAtom.mainController != null && containingAtom.mainController.transform != null)
+        {
+            t = containingAtom.mainController.transform;
+            source = "mainController";
+        }
+        else if (containingAtom != null && containingAtom.transform != null)
+        {
+            t = containingAtom.transform;
+            source = "atomTransform";
+        }
+
+        if (t != null)
+        {
+            forward = t.forward;
+            right = t.right;
+        }
+
+        forward.y = 0.0f;
+        right.y = 0.0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        if (right.sqrMagnitude < 0.0001f) right = Vector3.right;
+        forward.Normalize();
+        right.Normalize();
     }
 
     void StartLegBaseLoop(string source)
@@ -1302,21 +1454,30 @@ public class HumanLifeAction : MVRScript
         float sideBias = UnityEngine.Random.value < 0.5f ? -1.0f : 1.0f;
         float lastLog = -999.0f;
         bool positionAssist = IsLegPositionAssistEnabled();
+        bool rotationAssist = IsLegRotationEnabled();
 
         if (lCtrl != null)
         {
-            try { lCtrl.currentRotationState = FreeControllerV3.RotationState.On; } catch { }
+            try { lCtrl.currentRotationState = rotationAssist ? FreeControllerV3.RotationState.On : FreeControllerV3.RotationState.Off; } catch { }
             if (positionAssist)
             {
                 try { lCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
             }
+            else
+            {
+                try { lCtrl.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+            }
         }
         if (rCtrl != null)
         {
-            try { rCtrl.currentRotationState = FreeControllerV3.RotationState.On; } catch { }
+            try { rCtrl.currentRotationState = rotationAssist ? FreeControllerV3.RotationState.On : FreeControllerV3.RotationState.Off; } catch { }
             if (positionAssist)
             {
                 try { rCtrl.currentPositionState = FreeControllerV3.PositionState.On; } catch { }
+            }
+            else
+            {
+                try { rCtrl.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
             }
         }
 
@@ -1342,19 +1503,20 @@ public class HumanLifeAction : MVRScript
                 }
             }
 
+            positionAssist = IsLegPositionAssistEnabled();
+            rotationAssist = IsLegRotationEnabled();
+            if (!rotationAssist && !positionAssist)
+                break;
+
             float dt = Mathf.Max(0.0001f, Time.deltaTime);
             float cycleSeconds = EffectiveLegBaseCycleSeconds();
             phase += (Mathf.PI * 2.0f) * dt / cycleSeconds;
             slowPhase += (Mathf.PI * 2.0f) * dt / Mathf.Max(5.0f, cycleSeconds * 3.5f);
 
-            Vector3 rootForward = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.forward : Vector3.forward;
-            Vector3 rootRight = containingAtom != null && containingAtom.transform != null ? containingAtom.transform.right : Vector3.right;
-            rootForward.y = 0.0f;
-            rootRight.y = 0.0f;
-            if (rootForward.sqrMagnitude < 0.0001f) rootForward = Vector3.forward;
-            if (rootRight.sqrMagnitude < 0.0001f) rootRight = Vector3.right;
-            rootForward.Normalize();
-            rootRight.Normalize();
+            Vector3 rootForward;
+            Vector3 rootRight;
+            string axisSource;
+            GetLiveLegBaseAxes(out rootForward, out rootRight, out axisSource);
 
             float amount = EffectiveLegBaseRotationDegrees();
             float posAmount = positionAssist ? EffectiveLegBasePositionAmount() : 0.0f;
@@ -1371,9 +1533,12 @@ public class HumanLifeAction : MVRScript
                 Vector3 lPos = lBasePos
                     + rootRight * ((-openNorm + singleNorm * 0.45f) * posAmount)
                     + rootForward * (relaxNorm * posAmount * 0.35f);
-                SetControllerRotation(lCtrl, lApply);
+                if (rotationAssist)
+                {
+                    SetControllerRotation(lCtrl, lApply);
+                    lLastRot = lApply;
+                }
                 if (positionAssist) SetControllerPosition(lCtrl, lPos);
-                lLastRot = lApply;
             }
             if (rCtrl != null)
             {
@@ -1381,9 +1546,12 @@ public class HumanLifeAction : MVRScript
                 Vector3 rPos = rBasePos
                     + rootRight * ((openNorm + singleNorm * 0.45f) * posAmount)
                     + rootForward * (-relaxNorm * posAmount * 0.35f);
-                SetControllerRotation(rCtrl, rApply);
+                if (rotationAssist)
+                {
+                    SetControllerRotation(rCtrl, rApply);
+                    rLastRot = rApply;
+                }
                 if (positionAssist) SetControllerPosition(rCtrl, rPos);
-                rLastRot = rApply;
             }
 
             if (debugLog != null && debugLog.val && Time.time - lastLog > 4.0f)
@@ -1392,14 +1560,24 @@ public class HumanLifeAction : MVRScript
                 Log("Leg base loop / amount=" + amount.ToString("F2", CultureInfo.InvariantCulture)
                     + " / pos=" + posAmount.ToString("F3", CultureInfo.InvariantCulture)
                     + " / posAssist=" + (positionAssist ? "1" : "0")
-                    + " / cycle=" + cycleSeconds.ToString("F1", CultureInfo.InvariantCulture));
+                    + " / rotAssist=" + (rotationAssist ? "1" : "0")
+                    + " / cycle=" + cycleSeconds.ToString("F1", CultureInfo.InvariantCulture)
+                    + " / axis=" + axisSource);
             }
 
             yield return null;
         }
 
-        RestoreController(activeLegBaseLeftSnapshot);
-        RestoreController(activeLegBaseRightSnapshot);
+        if (rotationAssist || positionAssist)
+        {
+            RestoreController(activeLegBaseLeftSnapshot);
+            RestoreController(activeLegBaseRightSnapshot);
+        }
+        else
+        {
+            ReleaseLegBaseThighForHandoff(activeLegBaseLeftSnapshot, "leg-safe-off");
+            ReleaseLegBaseThighForHandoff(activeLegBaseRightSnapshot, "leg-safe-off");
+        }
         activeLegBaseLeftSnapshot = null;
         activeLegBaseRightSnapshot = null;
         legBaseLoopRoutine = null;
@@ -1435,6 +1613,27 @@ public class HumanLifeAction : MVRScript
     }
 
 
+    void EnsureLifeThighSafeStates(string reason)
+    {
+        if (Time.time - lastLegSafeReleaseTime < 0.25f)
+            return;
+        lastLegSafeReleaseTime = Time.time;
+
+        ResolveControllers();
+        ReleaseLifeThighSafeState(lThighControl, reason);
+        ReleaseLifeThighSafeState(rThighControl, reason);
+    }
+
+    void ReleaseLifeThighSafeState(FreeControllerV3 ctrl, string reason)
+    {
+        if (ctrl == null) return;
+        try { ctrl.currentRotationState = FreeControllerV3.RotationState.Off; } catch { }
+        if (!IsLegPositionAssistEnabled())
+        {
+            try { ctrl.currentPositionState = FreeControllerV3.PositionState.Comply; } catch { }
+        }
+    }
+
     void ReleaseLegBaseThighForHandoff(ControllerSnapshot snap, string reason)
     {
         if (snap == null || snap.controller == null) return;
@@ -1469,6 +1668,7 @@ public class HumanLifeAction : MVRScript
         if (!IsAutoPauseGesturesOnHbaActive())
         {
             lifeGesturePausedByHba = false;
+            hbaGestureIdleSinceTime = -999.0f;
             return false;
         }
 
@@ -1480,45 +1680,139 @@ public class HumanLifeAction : MVRScript
 
         if (!hasHba)
         {
+            if (lifeGesturePausedByHba)
+                DiagnoseLog("HBA gate release / reason=no-hba-params");
             lifeGesturePausedByHba = false;
+            hbaGestureIdleSinceTime = -999.0f;
             return false;
         }
 
         bool nowActive = active || progress > HbaProgressPauseThreshold;
         if (nowActive)
         {
+            hbaGestureIdleSinceTime = -999.0f;
             hbaGestureResumeAllowedTime = Time.time + HbaGestureResumeDelaySeconds;
             forceCoverOnNextGesture = false;
             if (!lifeGesturePausedByHba)
             {
                 lifeGesturePausedByHba = true;
                 StopLifeGestureForHbaActive(progress, active);
-                Log("Life gestures auto pause by HBA / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture) + " / active=" + (active ? "1" : "0"));
+                DiagnoseLog("Life gestures auto pause by HBA / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+                    + " / active=" + (active ? "1" : "0")
+                    + " / routine=" + (lifeGestureRoutine != null ? "1" : "0")
+                    + " / lookRoutine=" + (lookGestureRoutine != null ? "1" : "0"));
             }
+            return true;
+        }
+
+        if (hbaGestureIdleSinceTime < 0.0f)
+        {
+            hbaGestureIdleSinceTime = Time.time;
+            hbaGestureResumeAllowedTime = Time.time + HbaGestureResumeDelaySeconds;
+            DiagnoseLog("HBA idle gate start / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+                + " / active=" + (active ? "1" : "0")
+                + " / stableWait=" + HbaGestureStableIdleSeconds.ToString("F2", CultureInfo.InvariantCulture)
+                + " / backoff=" + HbaGestureResumeDelaySeconds.ToString("F2", CultureInfo.InvariantCulture));
+            return true;
+        }
+
+        float idleFor = Time.time - hbaGestureIdleSinceTime;
+        if (idleFor < HbaGestureStableIdleSeconds)
+        {
+            DiagnoseLogThrottled("hba-idle-wait", "HBA idle gate wait / idleFor=" + idleFor.ToString("F2", CultureInfo.InvariantCulture)
+                + " / need=" + HbaGestureStableIdleSeconds.ToString("F2", CultureInfo.InvariantCulture)
+                + " / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+                + " / active=" + (active ? "1" : "0"));
             return true;
         }
 
         if (Time.time < hbaGestureResumeAllowedTime)
         {
+            DiagnoseLogThrottled("hba-backoff-wait", "HBA resume backoff wait / remain=" + (hbaGestureResumeAllowedTime - Time.time).ToString("F2", CultureInfo.InvariantCulture)
+                + " / idleFor=" + idleFor.ToString("F2", CultureInfo.InvariantCulture)
+                + " / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+                + " / active=" + (active ? "1" : "0"));
             return true;
         }
 
         if (lifeGesturePausedByHba)
         {
             lifeGesturePausedByHba = false;
-            if (randomCoverEnabled != null && randomCoverEnabled.val && EffectiveCoverFrequency() > 0.001f)
-            {
-                forceCoverOnNextGesture = true;
-                ScheduleNextGestureSoon("hba-idle-resume-cover", 0.20f, 0.55f);
-                ScheduleNextLookGestureSoon("hba-idle-resume-look", 0.25f, 0.70f);
-            }
-            else
-            {
-                ScheduleNextGestureSoon("hba-idle-resume", 0.30f, 0.80f);
-                ScheduleNextLookGestureSoon("hba-idle-resume-look", 0.35f, 0.90f);
-            }
-            Log("Life gestures auto resume after HBA idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
+            forceCoverOnNextGesture = false;
+            // v127: resume means "allow Life again", not "start a motion now".
+            // Use the normal interval so a late HBA progress bounce does not cut a just-started gesture.
+            ScheduleNextGesture("hba-stable-idle-resume");
+            ScheduleNextLookGesture("hba-stable-idle-resume-look");
+            DiagnoseLog("Life gestures auto resume after stable HBA idle / progress="
+                + progress.ToString("F3", CultureInfo.InvariantCulture)
+                + " / idleFor=" + idleFor.ToString("F2", CultureInfo.InvariantCulture)
+                + " / forceCover=0"
+                + " / nextLife=" + (nextGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture)
+                + " / nextLook=" + (nextLookGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture));
         }
+        return false;
+    }
+
+    bool IsHbaOrDanceBusyForExternalCover(out string reason)
+    {
+        reason = "";
+
+        bool hasHba = false;
+        float progress = 0.0f;
+        bool active = false;
+        if (TryReadHbaProgress(out progress)) hasHba = true;
+        if (TryReadHbaActive(out active)) hasHba = true;
+
+        if (hasHba && (active || progress > HbaProgressPauseThreshold))
+        {
+            reason = "hba-active/progress=" + progress.ToString("F3", CultureInfo.InvariantCulture) + "/active=" + (active ? "1" : "0");
+            return true;
+        }
+
+        if (IsExternalTargetLineDanceActive())
+        {
+            reason = "tlp-dance-active";
+            return true;
+        }
+
+        return false;
+    }
+
+    bool IsExternalCoverActionSource(string source)
+    {
+        if (string.IsNullOrEmpty(source)) return false;
+        string s = source.ToLowerInvariant();
+        return s.IndexOf("action", StringComparison.Ordinal) >= 0 ||
+               s.IndexOf("external", StringComparison.Ordinal) >= 0 ||
+               s.IndexOf("hba", StringComparison.Ordinal) >= 0;
+    }
+
+    bool ShouldSkipExternalCoverAction(string actionKey, string source)
+    {
+        if (string.IsNullOrEmpty(actionKey))
+            actionKey = "cover";
+
+        if (lastExternalCoverActionKey == actionKey &&
+            Time.time - lastExternalCoverActionTime < ExternalCoverActionDebounceSeconds)
+        {
+            DiagnoseLog("External cover skipped / action=" + actionKey
+                + " / reason=debounce"
+                + " / dt=" + (Time.time - lastExternalCoverActionTime).ToString("F2", CultureInfo.InvariantCulture)
+                + " / source=" + source);
+            return true;
+        }
+
+        string busyReason;
+        if (IsExternalCoverActionSource(source) && IsHbaOrDanceBusyForExternalCover(out busyReason))
+        {
+            DiagnoseLog("External cover skipped / action=" + actionKey
+                + " / reason=busy:" + busyReason
+                + " / source=" + source);
+            return true;
+        }
+
+        lastExternalCoverActionKey = actionKey;
+        lastExternalCoverActionTime = Time.time;
         return false;
     }
 
@@ -1571,7 +1865,7 @@ public class HumanLifeAction : MVRScript
             if (!breathPausedByHba)
             {
                 breathPausedByHba = true;
-                Log("Breath auto pause by HBA / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture) + " / active=" + (active ? "1" : "0"));
+                DiagnoseLog("Breath auto pause by HBA / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture) + " / active=" + (active ? "1" : "0"));
             }
             return true;
         }
@@ -1584,7 +1878,7 @@ public class HumanLifeAction : MVRScript
         if (breathPausedByHba)
         {
             breathPausedByHba = false;
-            Log("Breath auto resume after HBA idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
+            DiagnoseLog("Breath auto resume after HBA idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
         }
         return false;
     }
@@ -1594,38 +1888,60 @@ public class HumanLifeAction : MVRScript
         return autoPauseLegOnHbaActive != null && autoPauseLegOnHbaActive.val;
     }
 
+    bool IsAutoPauseLegOnTlpDanceActive()
+    {
+        return autoPauseLegOnTlpDanceActive != null && autoPauseLegOnTlpDanceActive.val;
+    }
+
     bool IsLegPausedByHba()
     {
-        if (!IsAutoPauseLegOnHbaActive())
+        bool autoPauseHba = IsAutoPauseLegOnHbaActive();
+        bool autoPauseDance = IsAutoPauseLegOnTlpDanceActive();
+
+        if (!autoPauseHba && !autoPauseDance)
         {
             legPausedByHba = false;
             legPausedByExternalDockingPoseAssist = false;
+            legPausedByExternalTargetLineDance = false;
             return false;
         }
 
         bool hasHba = false;
         float progress = 0.0f;
         bool active = false;
-        if (TryReadHbaProgress(out progress)) hasHba = true;
-        if (TryReadHbaActive(out active)) hasHba = true;
+        if (autoPauseHba)
+        {
+            if (TryReadHbaProgress(out progress)) hasHba = true;
+            if (TryReadHbaActive(out active)) hasHba = true;
+        }
 
-        bool dockingPoseAssistActive = IsExternalDockingPoseAssistActive();
-        bool hbaNowActive = hasHba && (active || progress > HbaProgressPauseThreshold);
-        bool nowActive = hbaNowActive || dockingPoseAssistActive;
+        bool dockingPoseAssistActive = autoPauseHba && IsExternalDockingPoseAssistActive();
+        bool hbaNowActive = autoPauseHba && hasHba && (active || progress > HbaProgressPauseThreshold);
+        bool tlpDanceActive = autoPauseDance && IsExternalTargetLineDanceActive();
+        bool nowActive = hbaNowActive || dockingPoseAssistActive || tlpDanceActive;
 
         if (nowActive)
         {
-            hbaLegResumeAllowedTime = Time.time + HbaLegResumeDelaySeconds;
-            if (!legPausedByHba || legPausedByExternalDockingPoseAssist != dockingPoseAssistActive)
+            float resumeDelay = tlpDanceActive && !hbaNowActive && !dockingPoseAssistActive
+                ? TlpDanceLegResumeDelaySeconds
+                : HbaLegResumeDelaySeconds;
+            hbaLegResumeAllowedTime = Time.time + resumeDelay;
+            if (!legPausedByHba ||
+                legPausedByExternalDockingPoseAssist != dockingPoseAssistActive ||
+                legPausedByExternalTargetLineDance != tlpDanceActive)
             {
                 legPausedByHba = true;
                 legPausedByExternalDockingPoseAssist = dockingPoseAssistActive;
+                legPausedByExternalTargetLineDance = tlpDanceActive;
                 NormalLog("Leg auto pause / hba=" + (hbaNowActive ? "1" : "0")
                     + " / dockingPoseAssist=" + (dockingPoseAssistActive ? "1" : "0")
+                    + " / tlpDance=" + (tlpDanceActive ? "1" : "0")
                     + " / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
                     + " / active=" + (active ? "1" : "0")
                     + " / dockingSource=" + (string.IsNullOrEmpty(externalDockingPoseAssistSourceCached) ? "-" : externalDockingPoseAssistSourceCached)
-                    + " / dockingElapsed=" + externalDockingPoseAssistElapsedCached.ToString("F2", CultureInfo.InvariantCulture));
+                    + " / dockingElapsed=" + externalDockingPoseAssistElapsedCached.ToString("F2", CultureInfo.InvariantCulture)
+                    + " / danceSource=" + (string.IsNullOrEmpty(externalTargetLineDanceSourceCached) ? "-" : externalTargetLineDanceSourceCached)
+                    + " / danceReason=" + (string.IsNullOrEmpty(externalTargetLineDanceReasonCached) ? "-" : externalTargetLineDanceReasonCached));
             }
             return true;
         }
@@ -1639,9 +1955,101 @@ public class HumanLifeAction : MVRScript
         {
             legPausedByHba = false;
             legPausedByExternalDockingPoseAssist = false;
+            legPausedByExternalTargetLineDance = false;
             NormalLog("Leg auto resume after external idle / progress=" + progress.ToString("F3", CultureInfo.InvariantCulture));
         }
         return false;
+    }
+
+    bool IsExternalTargetLineDanceActive()
+    {
+        ResolveExternalTargetLineDanceParams(false);
+        return externalTargetLineDanceCached;
+    }
+
+    void ResolveExternalTargetLineDanceParams(bool force)
+    {
+        if (!force && Time.time < nextExternalTargetLineDanceResolveTime) return;
+        nextExternalTargetLineDanceResolveTime = Time.time + ExternalTargetLineDanceResolveInterval;
+
+        externalTargetLineDanceStorable = null;
+        externalTargetLineDanceModeParam = null;
+        externalTargetLineDanceActiveParam = null;
+        externalTargetLineDanceCached = false;
+        externalTargetLineDanceSourceCached = "";
+        externalTargetLineDanceReasonCached = "";
+
+        List<Atom> atoms = null;
+        try { atoms = SuperController.singleton != null ? SuperController.singleton.GetAtoms() : null; } catch { atoms = null; }
+        if (atoms == null) return;
+
+        for (int ai = 0; ai < atoms.Count; ai++)
+        {
+            Atom atom = atoms[ai];
+            if (atom == null) continue;
+
+            List<string> ids = null;
+            try { ids = atom.GetStorableIDs(); } catch { ids = null; }
+            if (ids == null) continue;
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                string sid = ids[i];
+                if (string.IsNullOrEmpty(sid)) continue;
+
+                JSONStorable st = null;
+                try { st = atom.GetStorableByID(sid); } catch { st = null; }
+                if (st == null) continue;
+
+                JSONStorableBool danceModeParam = null;
+                try { danceModeParam = st.GetBoolJSONParam("Dance Mode"); } catch { danceModeParam = null; }
+                if (danceModeParam == null) continue;
+
+                bool danceModeOn = false;
+                try { danceModeOn = danceModeParam.val; } catch { danceModeOn = false; }
+                if (!danceModeOn) continue;
+
+                bool activeByExport = false;
+                bool hasExport = false;
+                JSONStorableBool activeParam = null;
+                try { activeParam = st.GetBoolJSONParam("TLP Dance Active"); } catch { activeParam = null; }
+                if (activeParam == null)
+                {
+                    try { activeParam = st.GetBoolJSONParam("Dance Active"); } catch { activeParam = null; }
+                }
+                if (activeParam != null)
+                {
+                    hasExport = true;
+                    try { activeByExport = activeParam.val; } catch { activeByExport = false; }
+                }
+
+                float pair = ReadFloatParam(st, "Dance Hip Pair Motion", 0.0f);
+                float x = ReadFloatParam(st, "Dance Hip-Upper Pos X", 0.0f);
+                float y = ReadFloatParam(st, "Dance Hip-Upper Pos Y", 0.0f);
+                float z = ReadFloatParam(st, "Dance Hip-Upper Pos Z", 0.0f);
+                bool hasMotion = Mathf.Abs(pair) > 0.0005f || Mathf.Abs(x) > 0.0005f || Mathf.Abs(y) > 0.0005f || Mathf.Abs(z) > 0.0005f;
+
+                bool active = hasExport ? activeByExport : hasMotion;
+                if (!active) continue;
+
+                externalTargetLineDanceStorable = st;
+                externalTargetLineDanceModeParam = danceModeParam;
+                externalTargetLineDanceActiveParam = activeParam;
+                externalTargetLineDanceCached = true;
+                externalTargetLineDanceSourceCached = (atom != null ? atom.uid : "<atom>") + "/" + sid;
+                externalTargetLineDanceReasonCached = hasExport ? "export-active" : "dance-mode+nonzero-slider";
+                return;
+            }
+        }
+    }
+
+    float ReadFloatParam(JSONStorable st, string name, float fallback)
+    {
+        if (st == null || string.IsNullOrEmpty(name)) return fallback;
+        JSONStorableFloat p = null;
+        try { p = st.GetFloatJSONParam(name); } catch { p = null; }
+        if (p == null) return fallback;
+        try { return p.val; } catch { return fallback; }
     }
 
     bool IsExternalDockingPoseAssistActive()
@@ -2037,6 +2445,13 @@ public class HumanLifeAction : MVRScript
     void RequestLookAtPosition(string label, Vector3 targetPos, string source, Atom trackingTarget)
     {
         ResolveControllers();
+        string busyReason;
+        if (IsHbaOrDanceBusyForExternalCover(out busyReason))
+        {
+            Log("Look skipped / label=" + label + " / source=" + source + " / reason=" + busyReason);
+            ScheduleNextLookGesture("look-busy:" + source);
+            return;
+        }
         if (!IsHeadLookEnabled())
         {
             UpdateStatus(label + " skipped: Life Head Look OFF");
@@ -2195,9 +2610,17 @@ public class HumanLifeAction : MVRScript
 
     void RequestRandomCover(string source)
     {
+        DiagnoseLog("Cover request / source=" + source + " / " + BuildCoreDiagnosticSummary());
         // v040: TargetGrabber held hand is not a global cover stop.
         // Only the matching L/R hand is excluded in PickHandForCover().
         ResolveControllers();
+        string busyReason;
+        if (IsHbaOrDanceBusyForExternalCover(out busyReason))
+        {
+            DiagnoseLog("Cover selected / skipped=busy / source=" + source + " / reason=" + busyReason);
+            ScheduleNextGesture("cover-busy:" + source);
+            return;
+        }
         FreeControllerV3 hand = PickHandForCover();
         if (hand == null)
         {
@@ -2233,6 +2656,7 @@ public class HumanLifeAction : MVRScript
                 + " / source=" + source);
         }
 
+        DiagnoseLog("Cover start / hand=" + GetHandLabel(hand) + " / target=" + targetLabel + " / source=" + source);
         StopLifeGesture(source + ":before-cover");
         if (IsFreeCoverLabel(targetLabel))
         {
@@ -2253,11 +2677,15 @@ public class HumanLifeAction : MVRScript
 
     void RequestExternalSelfHeadCover(string source)
     {
+        if (ShouldSkipExternalCoverAction("HLA_Cover_SelfHead", source))
+            return;
         RequestTestSelfHeadCover("external-self-head:" + source);
     }
 
     void RequestExternalSelfHipCover(string source)
     {
+        if (ShouldSkipExternalCoverAction("HLA_Cover_SelfHip", source))
+            return;
         RequestTestSelfHipCover("external-self-hip:" + source);
     }
 
@@ -5089,6 +5517,7 @@ public class HumanLifeAction : MVRScript
 
     public void OnDestroy()
     {
+        try { NormalLog("OnDestroy / build=HLA_V128_DIAGNOSTIC_GATE_LOGS / reason=plugin-unload-or-script-reload / " + BuildCoreDiagnosticSummary()); } catch { }
         try { StopAllLife("destroy"); } catch { }
         try { SetBlinkSuppressMorphs(0.0f); } catch { }
         try { SetEyesClosedMorphs(0.0f); } catch { }
@@ -5149,7 +5578,7 @@ public class HumanLifeAction : MVRScript
         lookGestureRoutine = null;
         UpdateStatus("Pose changed: Life look aborted");
         ScheduleNextLookGesture("pose-change:" + reason);
-        Log("Pose change safe / abort look / reason=" + reason);
+        DiagnoseLog("Pose change safe / abort look / reason=" + reason + " / primary=" + ControllerDeltaInfo(primary) + " / secondary=" + ControllerDeltaInfo(secondary));
     }
 
     void AbortGestureForPoseChange(ControllerSnapshot primary, ControllerSnapshot secondary, string reason)
@@ -5316,7 +5745,7 @@ public class HumanLifeAction : MVRScript
             GetEffectiveInterval(out min, out max);
         }
         nextGestureTime = Time.time + UnityEngine.Random.Range(min, max);
-        Log("Next life gesture / in=" + (nextGestureTime - Time.time).ToString("F1", CultureInfo.InvariantCulture) + " / reason=" + reason);
+        DiagnoseLog("Next life gesture / in=" + (nextGestureTime - Time.time).ToString("F1", CultureInfo.InvariantCulture) + " / reason=" + reason);
     }
 
     void ScheduleNextGestureSoon(string reason, float min, float max)
@@ -5324,7 +5753,7 @@ public class HumanLifeAction : MVRScript
         min = Mathf.Max(0.0f, min);
         max = Mathf.Max(min, max);
         nextGestureTime = Time.time + UnityEngine.Random.Range(min, max);
-        Log("Next life gesture soon / in=" + (nextGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
+        DiagnoseLog("Next life gesture soon / in=" + (nextGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
     }
 
 
@@ -5342,7 +5771,7 @@ public class HumanLifeAction : MVRScript
             GetEffectiveInterval(out min, out max);
         }
         nextLookGestureTime = Time.time + UnityEngine.Random.Range(min, max);
-        Log("Next look gesture / in=" + (nextLookGestureTime - Time.time).ToString("F1", CultureInfo.InvariantCulture) + " / reason=" + reason);
+        DiagnoseLog("Next look gesture / in=" + (nextLookGestureTime - Time.time).ToString("F1", CultureInfo.InvariantCulture) + " / reason=" + reason);
     }
 
     void ScheduleNextLookGestureSoon(string reason, float min, float max)
@@ -5350,7 +5779,7 @@ public class HumanLifeAction : MVRScript
         min = Mathf.Max(0.0f, min);
         max = Mathf.Max(min, max);
         nextLookGestureTime = Time.time + UnityEngine.Random.Range(min, max);
-        Log("Next look gesture soon / in=" + (nextLookGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
+        DiagnoseLog("Next look gesture soon / in=" + (nextLookGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture) + " / reason=" + reason);
     }
 
     ControllerSnapshot CaptureController(FreeControllerV3 fc)
@@ -5617,8 +6046,15 @@ public class HumanLifeAction : MVRScript
 
     bool IsLegMotionEnabled()
     {
-        // v102: Sleeping/Quiet use rotation-only thigh micro-motion for subtle fidgeting.
-        return lifeLegMotionEnabled != null && lifeLegMotionEnabled.val && EffectiveLegScale() > 0.0001f;
+        // v125: Life Leg Motion is active only when at least one thigh output path is enabled.
+        // Default safe setup is Position=Comply / Rotation=Off, so Rotation must be explicitly enabled for rotation sway.
+        return lifeLegMotionEnabled != null && lifeLegMotionEnabled.val && EffectiveLegScale() > 0.0001f
+            && (IsLegRotationEnabled() || IsLegPositionAssistEnabled());
+    }
+
+    bool IsLegRotationEnabled()
+    {
+        return lifeLegRotationEnabled != null && lifeLegRotationEnabled.val;
     }
 
     bool IsLegPositionAssistEnabled()
@@ -7453,15 +7889,99 @@ public class HumanLifeAction : MVRScript
             + " / breath=" + (breathLoopRoutine != null ? "ON" : "OFF")
             + " / headLook=" + (IsHeadLookEnabled() ? "ON" : "OFF")
             + " / leg=" + (IsLegMotionEnabled() ? "ON" : "OFF")
+            + " / legRot=" + (IsLegRotationEnabled() ? "ON" : "OFF")
             + " / legPos=" + (IsLegPositionAssistEnabled() ? "ON" : "OFF")
             + " / legScale=" + EffectiveLegScale().ToString("F1", CultureInfo.InvariantCulture)
+            + " / tlpDancePause=" + (IsAutoPauseLegOnTlpDanceActive() ? "ON" : "OFF")
             + " / legBase=" + (legBaseLoopRoutine != null ? "ON" : "OFF")
             + " / hbaPause=" + (legPausedByHba ? "ON" : "OFF")
             + " / dockingPause=" + (legPausedByExternalDockingPoseAssist ? "ON" : "OFF")
+            + " / dancePause=" + (legPausedByExternalTargetLineDance ? "ON" : "OFF")
             + " / last=" + lastGesture
             + " / next=" + nextIn.ToString("F1", CultureInfo.InvariantCulture) + "s";
     }
 
+
+    bool IsDiagnoseLogOn()
+    {
+        return diagnoseLog != null && diagnoseLog.val;
+    }
+
+    void DiagnoseLog(string message)
+    {
+        if (IsDiagnoseLogOn())
+            NormalLog("DIAG / " + message);
+    }
+
+    void DiagnoseLogThrottled(string key, string message)
+    {
+        if (!IsDiagnoseLogOn()) return;
+        if (lastDiagnosticGateKey == key && Time.time - lastDiagnosticGateLogTime < DiagnosticGateThrottleSeconds) return;
+        lastDiagnosticGateKey = key;
+        lastDiagnosticGateLogTime = Time.time;
+        NormalLog("DIAG / " + message);
+    }
+
+    void UpdateDiagnosticsHeartbeat()
+    {
+        if (!IsDiagnoseLogOn()) return;
+        if (Time.time - lastDiagnosticHeartbeatTime < DiagnosticHeartbeatSeconds) return;
+        lastDiagnosticHeartbeatTime = Time.time;
+        NormalLog("DIAG / heartbeat / " + BuildCoreDiagnosticSummary());
+    }
+
+    string BuildCoreDiagnosticSummary()
+    {
+        float progress = 0.0f;
+        bool active = false;
+        bool hasProgress = TryReadHbaProgress(out progress);
+        bool hasActive = TryReadHbaActive(out active);
+        bool hbaBusy = (hasProgress || hasActive) && (active || progress > HbaProgressPauseThreshold);
+        bool tlpDance = false;
+        try { tlpDance = IsExternalTargetLineDanceActive(); } catch { tlpDance = false; }
+
+        string lThighState = ControllerStateText(lThighControl);
+        string rThighState = ControllerStateText(rThighControl);
+        return "hbaBusy=" + (hbaBusy ? "1" : "0")
+            + " / hbaProgress=" + progress.ToString("F3", CultureInfo.InvariantCulture)
+            + " / hbaActive=" + (active ? "1" : "0")
+            + " / tlpDance=" + (tlpDance ? "1" : "0")
+            + " / lifePaused=" + (lifeGesturePausedByHba ? "1" : "0")
+            + " / legPaused=" + (legPausedByHba ? "1" : "0")
+            + " / breathPaused=" + (breathPausedByHba ? "1" : "0")
+            + " / coverRoutine=" + (lifeGestureRoutine != null ? "1" : "0")
+            + " / lookRoutine=" + (lookGestureRoutine != null ? "1" : "0")
+            + " / breathLoop=" + (breathLoopRoutine != null ? "1" : "0")
+            + " / legLoop=" + (legBaseLoopRoutine != null ? "1" : "0")
+            + " / nextLife=" + (nextGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture)
+            + " / nextLook=" + (nextLookGestureTime - Time.time).ToString("F2", CultureInfo.InvariantCulture)
+            + " / lThigh=" + lThighState
+            + " / rThigh=" + rThighState;
+    }
+
+    string ControllerStateText(FreeControllerV3 fc)
+    {
+        if (fc == null) return "<none>";
+        string pos = "?";
+        string rot = "?";
+        try { pos = fc.currentPositionState.ToString(); } catch { }
+        try { rot = fc.currentRotationState.ToString(); } catch { }
+        return fc.name + ":pos=" + pos + ":rot=" + rot;
+    }
+
+    string ControllerDeltaInfo(ControllerSnapshot snap)
+    {
+        if (snap == null || snap.controller == null) return "<none>";
+        float posDelta = 0.0f;
+        float rotDelta = 0.0f;
+        try { posDelta = Vector3.Distance(GetControllerPosition(snap.controller), snap.position); } catch { }
+        try { rotDelta = Quaternion.Angle(GetControllerRotation(snap.controller), snap.rotation); } catch { }
+        return snap.controller.name
+            + ":posDelta=" + posDelta.ToString("F3", CultureInfo.InvariantCulture)
+            + ":rotDelta=" + rotDelta.ToString("F1", CultureInfo.InvariantCulture)
+            + ":posLimit=" + PoseChangePositionThreshold.ToString("F3", CultureInfo.InvariantCulture)
+            + ":rotLimit=" + PoseChangeRotationThreshold.ToString("F1", CultureInfo.InvariantCulture);
+    }
 
     void NormalLog(string message)
     {
